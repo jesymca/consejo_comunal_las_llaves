@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consejo Comunal Urb. Las Llaves | Sitio en Construcción</title>
+  
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22 fill=%22%232563eb%22><circle cx=%2250%22 cy=%2250%22 r=%2245%22 fill=%22%232563eb%22/><text x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22sans-serif%22 font-weight=%22bold%22>CC</text></svg>">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Fuentes -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .bg-grid {
+      background-size: 40px 40px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between relative overflow-hidden bg-grid">
+
+  <!-- Luces decorativas de fondo -->
+  <div class="absolute -top-32 -left-32 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none"></div>
+  <div class="absolute -bottom-32 -right-32 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none"></div>
+
+  <!-- Encabezado simple -->
+  <header class="w-full max-w-5xl mx-auto px-6 py-8 flex items-center justify-between z-10">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/30">
+        CC
+      </div>
+      <div>
+        <h2 class="font-bold text-sm tracking-wide uppercase text-slate-200">Consejo Comunal</h2>
+        <p class="text-xs text-slate-400 font-medium">Urb. Las Llaves</p>
+      </div>
+    </div>
+    
+    <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+      <span class="w-2 h-2 rounded-full bg-blue-400 animate-ping"></span>
+      En Desarrollo
+    </span>
+  </header>
+
+  <!-- Contenido Central -->
+  <main class="w-full max-w-3xl mx-auto px-6 py-12 flex flex-col items-center text-center z-10 my-auto">
+    
+    <!-- Ícono / Badge -->
+    <div class="mb-6 p-4 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-xl backdrop-blur-md">
+      <svg class="w-10 h-10 text-blue-500 animate-pulse" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233l2.809-2.808a2.652 2.652 0 00-3.75-3.75l-2.808 2.808m3.75 3.75L15.34 9.13m-2.808-2.808L9.13 8.72m0 0L3.586 14.26a2.548 2.548 0 003.586 3.586L9.13 8.72z"></path>
+      </svg>
+    </div>
+
+    <!-- Título Principal -->
+    <h1 class="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white mb-6">
+      Estamos construyendo nuestra <span class="bg-gradient-to-r from-blue-400 via-sky-300 to-indigo-400 bg-clip-text text-transparent">plataforma digital</span>
+    </h1>
+
+    <!-- Subtítulo -->
+    <p class="text-base sm:text-lg text-slate-400 max-w-xl mb-10 leading-relaxed">
+      Muy pronto los vecinos de la <strong>Urb. Las Llaves</strong> contaremos con un espacio moderno para consultar comunicados, gestiones comunitarias y novedades del sector.
+    </p>
+
+    <!-- Tarjetas informativas de progreso -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full text-left">
+      <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">
+        <div class="text-blue-400 font-semibold text-sm mb-1">01. Gestión Activa</div>
+        <p class="text-xs text-slate-400 leading-normal">Optimización de canales para trámites y cartas de residencia.</p>
+      </div>
+
+      <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">
+        <div class="text-blue-400 font-semibold text-sm mb-1">02. Información Vecinal</div>
+        <p class="text-xs text-slate-400 leading-normal">Cartelera digital de avisos, reuniones y jornadas de atención.</p>
+      </div>
+
+      <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">
+        <div class="text-blue-400 font-semibold text-sm mb-1">03. Participación</div>
+        <p class="text-xs text-slate-400 leading-normal">Mecanismos abiertos para propuestas y reportes de la comunidad.</p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Pie de página -->
+  <footer class="w-full max-w-5xl mx-auto px-6 py-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 z-10">
+    <p>© 2026 Consejo Comunal Urb. Las Llaves. Todos los derechos reservados.</p>
+    <div class="flex items-center gap-1.5">
+      <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+      <span>Servidores operativos</span>
+    </div>
+  </footer>
+
+</body>
+</html>
