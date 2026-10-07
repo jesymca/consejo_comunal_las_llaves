@@ -17,27 +17,78 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
   <style>
+    :root {
+      color-scheme: dark;
+    }
+
     body {
       font-family: 'Plus Jakarta Sans', sans-serif;
+      overflow-x: hidden;
+      overflow-y: auto;
     }
+
     .bg-grid {
       background-size: 40px 40px;
       background-image: 
         linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
         linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
     }
+
+    .hero-title {
+      font-size: clamp(2.25rem, 6vw, 4.5rem);
+      line-height: 1.08;
+      letter-spacing: -0.05em;
+    }
+
+    @media (max-width: 640px) {
+      .responsive-header {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 1rem;
+      }
+
+      .responsive-header .brand {
+        justify-content: center;
+      }
+
+      .responsive-main {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+      }
+
+      .info-card {
+        padding: 1rem;
+      }
+    }
+
+    @media (max-width: 360px) {
+      .responsive-header {
+        padding-top: 1.25rem;
+      }
+
+      .status-pill {
+        font-size: 0.65rem;
+        padding-left: 0.65rem;
+        padding-right: 0.65rem;
+      }
+
+      .info-card {
+        padding: 0.875rem;
+      }
+    }
   </style>
 </head>
-<body class="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between relative overflow-hidden bg-grid">
+<body class="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between relative overflow-x-hidden bg-grid">
 
   <!-- Luces decorativas de fondo -->
-  <div class="absolute -top-32 -left-32 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none"></div>
-  <div class="absolute -bottom-32 -right-32 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none"></div>
+  <div class="absolute left-0 top-0 w-40 h-40 sm:-top-32 sm:-left-32 sm:w-96 sm:h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none"></div>
+  <div class="absolute right-0 bottom-0 w-40 h-40 sm:-bottom-32 sm:-right-32 sm:w-96 sm:h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none"></div>
 
   <!-- Encabezado simple -->
-  <header class="w-full max-w-5xl mx-auto px-6 py-8 flex items-center justify-between z-10">
-    <div class="flex items-center gap-3">
-      <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/30">
+  <header class="responsive-header w-full max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex items-center justify-between z-10">
+    <div class="brand flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/30 shrink-0">
         CC
       </div>
       <div>
@@ -46,14 +97,14 @@
       </div>
     </div>
     
-    <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+    <span class="status-pill inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 whitespace-nowrap">
       <span class="w-2 h-2 rounded-full bg-blue-400 animate-ping"></span>
       En Desarrollo
     </span>
   </header>
 
   <!-- Contenido Central -->
-  <main class="w-full max-w-3xl mx-auto px-6 py-12 flex flex-col items-center text-center z-10 my-auto">
+  <main class="responsive-main w-full max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col items-center text-center z-10 my-auto">
     
     <!-- Ícono / Badge -->
     <div class="mb-6 p-4 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-xl backdrop-blur-md">
@@ -63,28 +114,28 @@
     </div>
 
     <!-- Título Principal -->
-    <h1 class="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white mb-6">
+    <h1 class="hero-title font-extrabold tracking-tight text-white mb-5 sm:mb-6">
       Estamos construyendo nuestra <span class="bg-gradient-to-r from-blue-400 via-sky-300 to-indigo-400 bg-clip-text text-transparent">plataforma digital</span>
     </h1>
 
     <!-- Subtítulo -->
-    <p class="text-base sm:text-lg text-slate-400 max-w-xl mb-10 leading-relaxed">
+    <p class="text-sm sm:text-base md:text-lg text-slate-400 max-w-xl mb-8 sm:mb-10 leading-relaxed px-2 sm:px-0">
       Muy pronto los vecinos de la <strong>Urb. Las Llaves</strong> contaremos con un espacio moderno para consultar comunicados, gestiones comunitarias y novedades del sector.
     </p>
 
     <!-- Tarjetas informativas de progreso -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full text-left">
-      <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">
+      <div class="info-card p-4 sm:p-5 rounded-xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">
         <div class="text-blue-400 font-semibold text-sm mb-1">01. Gestión Activa</div>
         <p class="text-xs text-slate-400 leading-normal">Optimización de canales para trámites y cartas de residencia.</p>
       </div>
 
-      <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">
+      <div class="info-card p-4 sm:p-5 rounded-xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">
         <div class="text-blue-400 font-semibold text-sm mb-1">02. Información Vecinal</div>
         <p class="text-xs text-slate-400 leading-normal">Cartelera digital de avisos, reuniones y jornadas de atención.</p>
       </div>
 
-      <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">
+      <div class="info-card p-4 sm:p-5 rounded-xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">
         <div class="text-blue-400 font-semibold text-sm mb-1">03. Participación</div>
         <p class="text-xs text-slate-400 leading-normal">Mecanismos abiertos para propuestas y reportes de la comunidad.</p>
       </div>
@@ -93,9 +144,9 @@
   </main>
 
   <!-- Pie de página -->
-  <footer class="w-full max-w-5xl mx-auto px-6 py-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 z-10">
+  <footer class="w-full max-w-5xl mx-auto px-4 sm:px-6 py-5 sm:py-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 text-[11px] sm:text-xs text-slate-500 z-10 text-center sm:text-left">
     <p>© 2026 Consejo Comunal Urb. Las Llaves. Todos los derechos reservados.</p>
-    <div class="flex items-center gap-1.5">
+    <div class="flex items-center justify-center gap-1.5">
       <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
       <span>Servidores operativos</span>
     </div>
