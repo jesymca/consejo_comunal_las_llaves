@@ -1,0 +1,278 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { X, UserPlus, AlertCircle, CheckCircle, ShieldAlert } from 'lucide-react';
+import { VEREDAS, getCasasPorVereda, CALIDADES_TENENCIA, normalizarCedula } from '@/lib/territory';
+
+export default function ModalRegistroVecino({ initialCedula = '', onClose, onRegistroExitoso }) {
+  const [cedula, setCedula] = useState(initialCedula || '');
+  const [nombres, setNombres] = useState('');
+  const [apellidos, setApellidos] = useState('');
+  const [vereda, setVereda] = useState('A');
+  const [casasDisponibles, setCasasDisponibles] = useState([]);
+  const [casa, setCasa] = useState('');
+  const [tiempoResidencia, setTiempoResidencia] = useState('');
+  const [calidadTenencia, setCalidadTenencia] = useState('Propia');
+  const [telefono, setTelefono] = useState('');
+  const [email, setEmail] = useState('');
+  const [sexo, setSexo] = useState('M');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [exito, setExito] = useState(false);
+
+  // Actualizar casas disponibles cuando cambia la vereda
+  useEffect(() => {
+    if (vereda) {
+      const casas = getCasasPorVereda(vereda);
+      setCasasDisponibles(casas);
+      setCasa(casas[0] || '');
+    }
+  }, [vereda]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/vecinos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'register',
+          cedula: normalizarCedula(cedula),
+          nombres,
+          apellidos,
+          vereda,
+          casa,
+          tiempo_residencia: tiempoResidencia,
+          calidad_tenencia: calidadTenencia,
+          telefono,
+          email,
+          sexo,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al registrar vecino');
+      }
+
+      setExito(true);
+      setTimeout(() => {
+        if (onRegistroExitoso) onRegistroExitoso(data);
+      }, 2000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
+      <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+        
+        {/* Botón cerrar */}
+        <button
+          onClick={onClose}
+          className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center">
+            <UserPlus className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-white">Registro Comunal de Vecino</h3>
+            <p className="text-xs text-slate-400">Padrón oficial del Consejo Comunal Las Llaves</p>
+          </div>
+        </div>
+
+        {/* Advertencia comunal sobre aprobación */}
+        <div className="mb-5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex gap-2.5 items-start">
+          <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+          <div>
+            <span className="font-bold">Aviso importante de auditoría:</span> Al registrarte, tus datos quedarán en estado <strong>PENDIENTE</strong>. Podrás tramitar y descargar documentos una vez que un Administrador o Super Administrador apruebe que resides en la vereda indicada.
+          </div>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs flex gap-2 items-center">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {exito ? (
+          <div className="py-8 text-center">
+            <CheckCircle className="w-12 h-12 text-emerald-400 mx-auto mb-3 animate-bounce" />
+            <h4 className="text-base font-bold text-white mb-1">¡Registro recibido con éxito!</h4>
+            <p className="text-xs text-slate-300">
+              Tus datos han sido registrados en la base de datos comunal. La vocería ejecutiva evaluará tu aprobación a la brevedad.
+            </p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            
+            {/* Cédula */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Cédula de Identidad *
+              </label>
+              <input
+                type="text"
+                required
+                value={cedula}
+                onChange={(e) => setCedula(e.target.value)}
+                placeholder="V-12345678"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            {/* Nombres y Apellidos */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Nombres Completos *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={nombres}
+                  onChange={(e) => setNombres(e.target.value)}
+                  placeholder="Ej: JUAN CARLOS"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500 uppercase"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Apellidos Completos *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={apellidos}
+                  onChange={(e) => setApellidos(e.target.value)}
+                  placeholder="Ej: PÉREZ ROJAS"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500 uppercase"
+                />
+              </div>
+            </div>
+
+            {/* Vereda y Casa (Filtro Estricto) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Vereda *
+                </label>
+                <select
+                  value={vereda}
+                  onChange={(e) => setVereda(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
+                >
+                  {VEREDAS.map((v) => (
+                    <option key={v} value={v}>Vereda {v}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Número de Casa *
+                </label>
+                <select
+                  value={casa}
+                  onChange={(e) => setCasa(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
+                >
+                  {casasDisponibles.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <span className="text-[10px] text-slate-500 mt-1 block">Casas autorizadas en Vereda {vereda}</span>
+              </div>
+            </div>
+
+            {/* Desde cuándo vive allí y En Calidad de */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Desde cuándo vive allí *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={tiempoResidencia}
+                  onChange={(e) => setTiempoResidencia(e.target.value)}
+                  placeholder="Ej: 10 años / Desde 2014"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  En calidad de *
+                </label>
+                <select
+                  value={calidadTenencia}
+                  onChange={(e) => setCalidadTenencia(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
+                >
+                  {CALIDADES_TENENCIA.map((ct) => (
+                    <option key={ct} value={ct}>{ct}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Teléfono y Género */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Teléfono de Contacto
+                </label>
+                <input
+                  type="text"
+                  value={telefono}
+                  onChange={(e) => setTelefono(e.target.value)}
+                  placeholder="0414-1234567"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Sexo
+                </label>
+                <select
+                  value={sexo}
+                  onChange={(e) => setSexo(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
+                >
+                  <option value="M">Masculino</option>
+                  <option value="F">Femenino</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Botón de Enviar */}
+            <div className="pt-2">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xs transition shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2"
+              >
+                {loading ? 'Registrando...' : 'Enviar Solicitud de Registro Comunal'}
+              </button>
+            </div>
+
+          </form>
+        )}
+
+      </div>
+    </div>
+  );
+}
