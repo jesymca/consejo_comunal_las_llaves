@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/turso';
-import { normalizarCedula, esCasaValida, getCasasPorVereda } from '@/lib/territory';
+import {
+  normalizarCedula, esCasaValida, getCasasPorVereda,
+  decodificarParentesco, decodificarInstruccion, decodificarSalud
+} from '@/lib/territory';
 import { extractUserFromRequest, hasPermission } from '@/lib/auth';
 import { registrarAuditoria } from '@/lib/audit';
 
@@ -97,6 +100,13 @@ export async function POST(request) {
         email,
         sexo,
         fecha_nacimiento,
+        parentesco,
+        nivel_instruccion,
+        instruccion,
+        profesion_ocupacion,
+        condicion_salud,
+        salud,
+        observaciones: obsCustom,
       } = body;
 
       if (!cedula || !nombres || !vereda || !casa) {
@@ -113,6 +123,23 @@ export async function POST(request) {
           error: `La casa ${cUpper} no pertenece a las casas válidas de la Vereda ${vUpper}.`
         }, { status: 400 });
       }
+
+      // Decodificar campos demográficos si vienen con códigos o abreviaturas
+      const finalParentesco = decodificarParentesco(parentesco || 'a');
+      const finalInstruccion = decodificarInstruccion(nivel_instruccion || instruccion || 'c');
+      const finalSalud = decodificarSalud(condicion_salud || salud || 'e');
+      const finalOcupacion = (profesion_ocupacion || '').trim();
+
+      const demographicData = {
+        parentesco: finalParentesco,
+        nivel_instruccion: finalInstruccion,
+        profesion_ocupacion: finalOcupacion,
+        condicion_salud: finalSalud,
+      };
+
+      const finalObservaciones = obsCustom 
+        ? `${obsCustom} | ${JSON.stringify(demographicData)}`
+        : JSON.stringify(demographicData);
 
       // Verificar si ya existe
       const existing = await db.execute({
@@ -149,8 +176,8 @@ export async function POST(request) {
           cedula, nombres, apellidos, vereda, casa, tiempo_residencia,
           calidad_tenencia, telefono, email, sexo, fecha_nacimiento,
           estado_aprobacion, aprobado_por_usuario_id, aprobado_por_nombre,
-          aprobado_en, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          aprobado_en, observaciones, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           normCedula,
           nombres.trim().toUpperCase(),
@@ -167,6 +194,7 @@ export async function POST(request) {
           aprobadoPorId,
           aprobadoPorNombre,
           aprobadoEn,
+          finalObservaciones,
           now,
           now,
         ]
@@ -291,35 +319,47 @@ export async function POST(request) {
       const errors = [];
 
       rows.forEach((row, index) => {
-        // Soporta formato clásico y formato censo por habitante
-        // Formato Censo Habitante: [NUMERO_FAMILIA, CEDULA, NOMBRES, APELLIDOS, VEREDA, CASA, SEXO, FECHA_NAC, PARENTESCO, INSTRUCCION, OCUPACION, SALUD, TELEFONO, TIEMPO_RESIDENCIA, TENENCIA, EMAIL]
-        // Formato Vecinos Clásico: [CEDULA, NOMBRES, APELLIDOS, VEREDA, CASA, TIEMPO_RESIDENCIA, CALIDAD_TENENCIA, TELEFONO, EMAIL]
-        
+        if (!row) return;
+
+        // Estructura Estándar Unificada de 15 Columnas:
+        // 0: CEDULA
+        // 1: NOMBRES
+        // 2: APELLIDOS
+        // 3: NUMERO_FAMILIA
+        // 4: VEREDA
+        // 5: CASA
+        // 6: TIEMPO_RESIDENCIA_ANOS
+        // 7: CALIDAD_TENENCIA
+        // 8: SEXO
+        // 9: PARENTESCO
+        // 10: NIVEL_INSTRUCCION
+        // 11: PROFESION_OCUPACION
+        // 12: CONDICION_SALUD
+        // 13: TELEFONO
+        // 14: EMAIL
+
         let cedulaRaw = row.cedula;
         let nombresRaw = row.nombres;
         let apellidosRaw = row.apellidos || '';
+        let numFamRaw = Number(row.numero_familia || row.num_familia || 1);
         let veredaRaw = (row.vereda || '').toString().trim().toUpperCase();
         let casaRaw = (row.casa || '').toString().trim().toUpperCase();
-        let tiempoRaw = (row.tiempo_residencia || '').toString().trim();
+        let tiempoRaw = (row.tiempo_residencia_anos || row.tiempo_residencia || '').toString().trim();
         let tenenciaRaw = (row.calidad_tenencia || 'Propia').toString().trim();
+        let sexoRaw = (row.sexo || 'M').toString().trim().toUpperCase();
+        let parentescoRaw = (row.parentesco || 'a').toString().trim();
+        let instruccionRaw = (row.nivel_instruccion || row.instruccion || 'c').toString().trim();
+        let ocupacionRaw = (row.profesion_ocupacion || row.ocupacion || '').toString().trim();
+        let saludRaw = (row.condicion_salud || row.salud || 'e').toString().trim();
         let telfRaw = (row.telefono || '').toString().trim();
         let emailRaw = (row.email || '').toString().trim();
-        let sexoRaw = (row.sexo || 'M').toString().trim().toUpperCase();
-        let fechaNacRaw = (row.fecha_nacimiento || row.fecha_nac || '').toString().trim();
-        let parentescoRaw = (row.parentesco || 'a').toString().trim().toLowerCase();
-        let instruccionRaw = (row.instruccion || 'c').toString().trim().toLowerCase();
-        let ocupacionRaw = (row.profesion_ocupacion || row.ocupacion || '').toString().trim();
-        let saludRaw = (row.salud || 'e').toString().trim().toLowerCase();
-        let numFamRaw = Number(row.numero_familia || row.nro_fam || 1);
 
         if (Array.isArray(row)) {
-          // Detectar si la columna 0 es un número pequeño (NUMERO_FAMILIA) o una cédula
           const col0 = (row[0] || '').toString().trim();
           const col1 = (row[1] || '').toString().trim();
-          
+
+          // Caso Legacy: [0: NUMERO_FAMILIA, 1: CEDULA, 2: NOMBRES, 3: APELLIDOS, 4: VEREDA, 5: CASA...]
           if (/^\d{1,2}$/.test(col0) && (/^[VvEeJjGgPp]?[-]?\d+/.test(col1) || col1.length >= 6)) {
-            // Formato Censo Habitante:
-            // [0: FAM_NRO, 1: CEDULA, 2: NOMBRES, 3: APELLIDOS, 4: VEREDA, 5: CASA, 6: SEXO, 7: FECHA_NAC, 8: PARENTESCO, 9: INSTRUCCION, 10: OCUPACION, 11: SALUD, 12: TELEFONO, 13: TIEMPO_RESIDENCIA, 14: TENENCIA, 15: EMAIL]
             numFamRaw = Number(col0) || 1;
             cedulaRaw = col1;
             nombresRaw = row[2];
@@ -327,29 +367,34 @@ export async function POST(request) {
             veredaRaw = (row[4] || '').toString().trim().toUpperCase();
             casaRaw = (row[5] || '').toString().trim().toUpperCase();
             sexoRaw = (row[6] || 'M').toString().trim().toUpperCase();
-            fechaNacRaw = (row[7] || '').toString().trim();
-            parentescoRaw = (row[8] || 'a').toString().trim().toLowerCase();
-            instruccionRaw = (row[9] || 'c').toString().trim().toLowerCase();
+            parentescoRaw = (row[8] || 'a').toString().trim();
+            instruccionRaw = (row[9] || 'c').toString().trim();
             ocupacionRaw = (row[10] || '').toString().trim();
-            saludRaw = (row[11] || 'e').toString().trim().toLowerCase();
+            saludRaw = (row[11] || 'e').toString().trim();
             telfRaw = (row[12] || '').toString().trim();
             tiempoRaw = (row[13] || '').toString().trim();
             tenenciaRaw = (row[14] || 'Propia').toString().trim();
             emailRaw = (row[15] || '').toString().trim();
           } else {
-            // Formato Clásico de Vecinos:
-            // [0: CEDULA, 1: NOMBRES, 2: APELLIDOS, 3: VEREDA, 4: CASA, 5: TIEMPO_RESIDENCIA, 6: TENENCIA, 7: TELEFONO, 8: EMAIL, 9: SEXO, 10: FECHA_NAC]
+            // Caso Estándar Oficial Requerido:
+            // [0: CEDULA, 1: NOMBRES, 2: APELLIDOS, 3: NUMERO_FAMILIA, 4: VEREDA, 5: CASA,
+            //  6: TIEMPO_RESIDENCIA_ANOS, 7: CALIDAD_TENENCIA, 8: SEXO, 9: PARENTESCO,
+            //  10: NIVEL_INSTRUCCION, 11: PROFESION_OCUPACION, 12: CONDICION_SALUD, 13: TELEFONO, 14: EMAIL]
             cedulaRaw = col0;
             nombresRaw = col1;
             apellidosRaw = row[2] || '';
-            veredaRaw = (row[3] || '').toString().trim().toUpperCase();
-            casaRaw = (row[4] || '').toString().trim().toUpperCase();
-            tiempoRaw = (row[5] || '').toString().trim();
-            tenenciaRaw = (row[6] || 'Propia').toString().trim();
-            telfRaw = (row[7] || '').toString().trim();
-            emailRaw = (row[8] || '').toString().trim();
-            if (row[9]) sexoRaw = row[9].toString().trim().toUpperCase();
-            if (row[10]) fechaNacRaw = row[10].toString().trim();
+            numFamRaw = Number(row[3]) || 1;
+            veredaRaw = (row[4] || '').toString().trim().toUpperCase();
+            casaRaw = (row[5] || '').toString().trim().toUpperCase();
+            tiempoRaw = (row[6] || '').toString().trim();
+            tenenciaRaw = (row[7] || 'Propia').toString().trim();
+            if (row[8]) sexoRaw = row[8].toString().trim().toUpperCase();
+            if (row[9]) parentescoRaw = row[9].toString().trim();
+            if (row[10]) instruccionRaw = row[10].toString().trim();
+            if (row[11]) ocupacionRaw = row[11].toString().trim();
+            if (row[12]) saludRaw = row[12].toString().trim();
+            if (row[13]) telfRaw = row[13].toString().trim();
+            if (row[14]) emailRaw = row[14].toString().trim();
           }
         }
 
@@ -364,6 +409,11 @@ export async function POST(request) {
           return;
         }
 
+        // Mapeo automático de códigos por letra a valores completos legibles
+        const parentescoDecod = decodificarParentesco(parentescoRaw);
+        const instruccionDecod = decodificarInstruccion(instruccionRaw);
+        const saludDecod = decodificarSalud(saludRaw);
+
         parsedRows.push({
           numero_familia: numFamRaw,
           cedula: normCed,
@@ -371,12 +421,14 @@ export async function POST(request) {
           apellidos: apellidosRaw.toString().trim().toUpperCase(),
           vereda: veredaRaw,
           casa: casaRaw,
-          sexo: ['F', 'FEMENINO'].includes(sexoRaw) ? 'F' : 'M',
-          fecha_nacimiento: fechaNacRaw,
-          parentesco: parentescoRaw,
-          instruccion: instruccionRaw,
-          profesion_ocupacion: ocupacionRaw,
-          salud: saludRaw,
+          sexo: ['F', 'FEMENINO', 'MUJER'].includes(sexoRaw) ? 'F' : 'M',
+          parentesco: parentescoDecod,
+          parentesco_codigo: parentescoRaw.toLowerCase(),
+          instruccion: instruccionDecod,
+          instruccion_codigo: instruccionRaw.toLowerCase(),
+          profesion_ocupacion: ocupacionRaw || 'Oficio del hogar / Empleado',
+          salud: saludDecod,
+          salud_codigo: saludRaw.toLowerCase(),
           tiempo_residencia: tiempoRaw,
           calidad_tenencia: tenenciaRaw,
           telefono: telfRaw,
@@ -390,7 +442,7 @@ export async function POST(request) {
           totalFilasRecibidas: rows.length,
           filasValidas: parsedRows.length,
           errores: errors,
-          muestras: parsedRows.slice(0, 15),
+          muestras: parsedRows.slice(0, 50),
         });
       }
 
@@ -405,10 +457,18 @@ export async function POST(request) {
           const aprobadoPorNombre = autoApprove ? currentUser.nombre : null;
           const aprobadoEn = autoApprove ? now : null;
 
+          const obsDemografica = JSON.stringify({
+            fam: item.numero_familia,
+            parentesco: item.parentesco,
+            instruccion: item.instruccion,
+            ocupacion: item.profesion_ocupacion,
+            salud: item.salud,
+          });
+
           const res = await db.execute({
             sql: `INSERT OR IGNORE INTO vecinos (
               cedula, nombres, apellidos, vereda, casa, tiempo_residencia,
-              calidad_tenencia, telefono, email, sexo, fecha_nacimiento,
+              calidad_tenencia, telefono, email, sexo, observaciones,
               estado_aprobacion, aprobado_por_usuario_id, aprobado_por_nombre,
               aprobado_en, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -423,7 +483,7 @@ export async function POST(request) {
               item.telefono,
               item.email,
               item.sexo,
-              item.fecha_nacimiento,
+              obsDemografica,
               estado,
               aprobadoPorId,
               aprobadoPorNombre,

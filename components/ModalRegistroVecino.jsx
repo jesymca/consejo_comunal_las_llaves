@@ -2,7 +2,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, UserPlus, AlertCircle, CheckCircle, ShieldAlert } from 'lucide-react';
-import { VEREDAS, getCasasPorVereda, CALIDADES_TENENCIA, normalizarCedula } from '@/lib/territory';
+import { 
+  VEREDAS, 
+  getCasasPorVereda, 
+  CALIDADES_TENENCIA, 
+  normalizarCedula,
+  MAPEO_PARENTESCO,
+  MAPEO_INSTRUCCION,
+  MAPEO_SALUD
+} from '@/lib/territory';
 
 export default function ModalRegistroVecino({ initialCedula = '', onClose, onRegistroExitoso }) {
   const [cedula, setCedula] = useState(initialCedula || '');
@@ -16,6 +24,10 @@ export default function ModalRegistroVecino({ initialCedula = '', onClose, onReg
   const [telefono, setTelefono] = useState('');
   const [email, setEmail] = useState('');
   const [sexo, setSexo] = useState('M');
+  const [parentesco, setParentesco] = useState('a');
+  const [nivelInstruccion, setNivelInstruccion] = useState('c');
+  const [profesionOcupacion, setProfesionOcupacion] = useState('');
+  const [condicionSalud, setCondicionSalud] = useState('e');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [exito, setExito] = useState(false);
@@ -50,6 +62,10 @@ export default function ModalRegistroVecino({ initialCedula = '', onClose, onReg
           telefono,
           email,
           sexo,
+          parentesco,
+          nivel_instruccion: nivelInstruccion,
+          profesion_ocupacion: profesionOcupacion,
+          condicion_salud: condicionSalud,
         }),
       });
 
@@ -245,15 +261,85 @@ export default function ModalRegistroVecino({ initialCedula = '', onClose, onReg
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Sexo
+                  Sexo *
                 </label>
                 <select
                   value={sexo}
                   onChange={(e) => setSexo(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
                 >
-                  <option value="M">Masculino</option>
-                  <option value="F">Femenino</option>
+                  <option value="M">Masculino (M)</option>
+                  <option value="F">Femenino (F)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Parentesco y Nivel de Instrucción */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Parentesco (con Jefe de Hogar) *
+                </label>
+                <select
+                  value={parentesco}
+                  onChange={(e) => setParentesco(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
+                >
+                  {Object.entries(MAPEO_PARENTESCO).map(([letra, desc]) => (
+                    <option key={letra} value={letra}>
+                      ({letra.toUpperCase()}) {desc}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Nivel de Instrucción *
+                </label>
+                <select
+                  value={nivelInstruccion}
+                  onChange={(e) => setNivelInstruccion(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
+                >
+                  {Object.entries(MAPEO_INSTRUCCION).map(([letra, desc]) => (
+                    <option key={letra} value={letra}>
+                      ({letra.toUpperCase()}) {desc}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Profesión/Ocupación y Condición de Salud */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Profesión u Ocupación
+                </label>
+                <input
+                  type="text"
+                  value={profesionOcupacion}
+                  onChange={(e) => setProfesionOcupacion(e.target.value)}
+                  placeholder="Ej: Docente, Comerciante, Estudiante"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Condición de Salud *
+                </label>
+                <select
+                  value={condicionSalud}
+                  onChange={(e) => setCondicionSalud(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
+                >
+                  {Object.entries(MAPEO_SALUD).map(([letra, desc]) => (
+                    <option key={letra} value={letra}>
+                      ({letra.toUpperCase()}) {desc}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

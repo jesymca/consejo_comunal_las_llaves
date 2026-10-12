@@ -613,29 +613,29 @@ export default function Dashboard({ user, onLogout }) {
     }
   };
 
-  // Descarga de plantillas CSV (Soporta formato Censo por habitante y formato básico)
-  const descargarPlantillaCsv = (tipo = 'censo') => {
-    let cabecera = "";
-    let ejemplo = "";
-    let filename = "";
+  // Descarga de plantillas CSV con las 15 columnas homologadas y guía de códigos
+  const descargarPlantillaCsv = () => {
+    const cabecera = "CEDULA,NOMBRES,APELLIDOS,NUMERO_FAMILIA,VEREDA,CASA,TIEMPO_RESIDENCIA_ANOS,CALIDAD_TENENCIA,SEXO,PARENTESCO,NIVEL_INSTRUCCION,PROFESION_OCUPACION,CONDICION_SALUD,TELEFONO,EMAIL\n";
+    const ejemplos = 
+      "V-15432198,MARIA ELENA,RODRIGUEZ PEREZ,1,A,A-8,12,Propia,F,a,e,Docente,e,04129876543,maria@ejemplo.com\n" +
+      "V-12345678,PEDRO JOSE,PEREZ GOMEZ,1,A,A-8,12,Propia,M,b,d,Comerciante,e,04141234567,pedro@ejemplo.com\n" +
+      "V-28123456,ANA SOFIA,PEREZ RODRIGUEZ,1,A,A-8,12,Propia,F,c,c,Estudiante,e,04245551234,ana@ejemplo.com\n" +
+      "V-14555888,JOSE LUIS,PEREZ GOMEZ,2,A,A-8,4,Familia Adjunta / Agregada,M,a,c,Mecánico,e,04169998877,joseluis@ejemplo.com\n";
+    
+    // Leyenda explicativa al pie de la plantilla para el usuario
+    const guiaCodigos = 
+      "\n# GUÍA DE CÓDIGOS ADMITIDOS PARA LLENADO RÁPIDO (Letra única en mayúscula o minúscula):\n" +
+      "# PARENTESCO: a=Jefe(a) | b=Cónyuge | c=Hijo(a) | d=Madre/Padre | e=Abuelo(a) | f=Tíos/Tías\n" +
+      "# NIVEL_INSTRUCCION: a=Ninguno | b=Primaria | c=Secundaria | d=TSU | e=Universitario | f=Postgrado\n" +
+      "# CONDICION_SALUD: a=Discapacidad | b=En cama | c=Crónica | d=Silla de Ruedas | e=Ninguna\n" +
+      "# SEXO: M=Masculino | F=Femenino\n" +
+      "# TENENCIA: Propia | Alquilada | En Cuido | Familia Adjunta / Agregada | Otro\n";
 
-    if (tipo === 'censo') {
-      cabecera = "NUMERO_FAMILIA,CEDULA,NOMBRES,APELLIDOS,VEREDA,CASA,SEXO,FECHA_NAC,PARENTESCO,INSTRUCCION,PROFESION_OCUPACION,SALUD,TELEFONO_MOVIL,TIEMPO_RESIDENCIA_ANOS,CALIDAD_TENENCIA,EMAIL\n";
-      ejemplo = "1,V-15432198,MARIA ELENA,RODRIGUEZ PEREZ,A,A-8,F,14/05/1982,a,e,Docente,e,04129876543,12,Propia,maria@ejemplo.com\n" +
-                "1,V-12345678,PEDRO JOSE,PEREZ GOMEZ,A,A-8,M,10/02/1980,b,d,Comerciante,e,04141234567,12,Propia,pedro@ejemplo.com\n" +
-                "2,V-28123456,ANA SOFIA,PEREZ RODRIGUEZ,A,A-8,F,20/09/2004,c,c,Estudiante,e,04245551234,12,Propia,ana@ejemplo.com\n";
-      filename = "plantilla_censo_sociodemografico_habitantes.csv";
-    } else {
-      cabecera = "CEDULA,NOMBRES,APELLIDOS,VEREDA,CASA,TIEMPO_RESIDENCIA_ANOS,CALIDAD_TENENCIA,TELEFONO,EMAIL\n";
-      ejemplo = "V-12345678,PEDRO JOSE,PEREZ GOMEZ,A,A-8,10,Propia,04141234567,pedro@ejemplo.com\n";
-      filename = "formato_vecinos_basico.csv";
-    }
-
-    const blob = new Blob([cabecera + ejemplo], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([cabecera + ejemplos + guiaCodigos], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', filename);
+    link.setAttribute('download', 'plantilla_censo_vecinos_oficial_las_llaves.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -2578,18 +2578,60 @@ export default function Dashboard({ user, onLogout }) {
               <X className="w-5 h-5" />
             </button>
 
-            <h3 className="text-lg font-bold text-white mb-1">Carga Masiva de Vecinos (CSV)</h3>
-            <p className="text-xs text-slate-400 mb-4">
-              Importa vecinos de forma masiva. La primera fila se omitirá como cabecera.
+            <h3 className="text-lg font-bold text-white mb-1">Carga Masiva de Vecinos y Censo (CSV)</h3>
+            <p className="text-xs text-slate-400 mb-3">
+              Importa vecinos y grupos familiares de forma masiva según la estructura oficial de 15 columnas.
             </p>
 
-            <div className="mb-4 flex gap-3">
+            <div className="mb-4 flex flex-wrap gap-2">
               <button
                 onClick={descargarPlantillaCsv}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-blue-400"
+                className="px-3.5 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-xs font-bold text-blue-400 border border-blue-500/30 flex items-center gap-1.5 transition"
               >
-                Descargar Plantilla CSV en Blanco
+                <Download className="w-3.5 h-3.5" />
+                <span>Descargar Plantilla CSV Oficial (15 Columnas)</span>
               </button>
+            </div>
+
+            {/* Leyenda visible con Guía de Códigos en pantalla */}
+            <div className="mb-4 p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 text-[11px] text-slate-400 space-y-1.5">
+              <span className="font-bold text-slate-200 block text-xs">
+                Guía de códigos admitidos para llenado rápido (letra única):
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                <div>
+                  <strong className="text-blue-400">Parentesco:</strong>
+                  <ul className="pl-1 text-[10px] space-y-0.5 mt-0.5">
+                    <li><span className="font-mono text-white">a</span> = Jefe(a)</li>
+                    <li><span className="font-mono text-white">b</span> = Cónyuge</li>
+                    <li><span className="font-mono text-white">c</span> = Hijo(a)</li>
+                    <li><span className="font-mono text-white">d</span> = Madre/Padre</li>
+                    <li><span className="font-mono text-white">e</span> = Abuelo(a)</li>
+                    <li><span className="font-mono text-white">f</span> = Tíos/Tías</li>
+                  </ul>
+                </div>
+                <div>
+                  <strong className="text-emerald-400">Nivel Instrucción:</strong>
+                  <ul className="pl-1 text-[10px] space-y-0.5 mt-0.5">
+                    <li><span className="font-mono text-white">a</span> = Ninguno</li>
+                    <li><span className="font-mono text-white">b</span> = Primaria</li>
+                    <li><span className="font-mono text-white">c</span> = Secundaria</li>
+                    <li><span className="font-mono text-white">d</span> = TSU</li>
+                    <li><span className="font-mono text-white">e</span> = Universitario</li>
+                    <li><span className="font-mono text-white">f</span> = Postgrado</li>
+                  </ul>
+                </div>
+                <div>
+                  <strong className="text-amber-400">Condición Salud:</strong>
+                  <ul className="pl-1 text-[10px] space-y-0.5 mt-0.5">
+                    <li><span className="font-mono text-white">a</span> = Discapacidad</li>
+                    <li><span className="font-mono text-white">b</span> = En cama</li>
+                    <li><span className="font-mono text-white">c</span> = Crónica</li>
+                    <li><span className="font-mono text-white">d</span> = Silla de Ruedas</li>
+                    <li><span className="font-mono text-white">e</span> = Ninguna</li>
+                  </ul>
+                </div>
+              </div>
             </div>
 
             <input
@@ -2601,7 +2643,7 @@ export default function Dashboard({ user, onLogout }) {
                 const reader = new FileReader();
                 reader.onload = async (evt) => {
                   const text = evt.target.result;
-                  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'));
                   // Omitir cabecera (primera fila)
                   const dataLines = lines.slice(1);
                   const rows = dataLines.map(line => {
@@ -2652,38 +2694,44 @@ export default function Dashboard({ user, onLogout }) {
                   </div>
                 )}
 
-                {/* Tabla de Previsualización de Datos */}
+                {/* Tabla de Previsualización de Datos Homogeneizada */}
                 {csvPreviewData.muestras && csvPreviewData.muestras.length > 0 && (
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-bold text-slate-300">
-                        Previsualización de Habitantes / Vecinos ({Math.min(csvPreviewData.muestras.length, 15)} registros):
+                        Previsualización de Datos Procesados ({Math.min(csvPreviewData.muestras.length, 50)} registros):
                       </span>
-                      <span className="text-[11px] text-slate-500">Verifica los datos antes de sincronizar</span>
+                      <span className="text-[11px] text-slate-500">Mapeo automático de códigos verificado</span>
                     </div>
-                    <div className="border border-slate-800 rounded-xl overflow-hidden max-h-56 overflow-y-auto overflow-x-auto">
+                    <div className="border border-slate-800 rounded-xl overflow-hidden max-h-64 overflow-y-auto overflow-x-auto">
                       <table className="w-full text-left text-[11px]">
-                        <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 sticky top-0">
+                        <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 sticky top-0 whitespace-nowrap">
                           <tr>
                             <th className="px-3 py-2">Fam.</th>
                             <th className="px-3 py-2">Cédula</th>
                             <th className="px-3 py-2">Nombres y Apellidos</th>
-                            <th className="px-3 py-2">Ubicación</th>
+                            <th className="px-3 py-2">Ubicación (Vereda/Casa)</th>
                             <th className="px-3 py-2">Sexo</th>
                             <th className="px-3 py-2">Parentesco</th>
-                            <th className="px-3 py-2">Teléfono</th>
+                            <th className="px-3 py-2">Nivel Instrucción</th>
+                            <th className="px-3 py-2">Ocupación</th>
+                            <th className="px-3 py-2">Salud</th>
+                            <th className="px-3 py-2">Teléfono / Contacto</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-800/60 bg-slate-900/60">
+                        <tbody className="divide-y divide-slate-800/60 bg-slate-900/60 whitespace-nowrap">
                           {csvPreviewData.muestras.map((m, idx) => (
                             <tr key={idx} className="hover:bg-slate-800/40">
                               <td className="px-3 py-2 font-mono text-blue-400 font-bold">{m.numero_familia || 1}</td>
-                              <td className="px-3 py-2 font-mono font-bold text-white whitespace-nowrap">{m.cedula}</td>
-                              <td className="px-3 py-2 font-medium text-slate-200 whitespace-nowrap">{m.nombres} {m.apellidos}</td>
-                              <td className="px-3 py-2 text-slate-300 whitespace-nowrap">Vereda {m.vereda}, {m.casa}</td>
+                              <td className="px-3 py-2 font-mono font-bold text-white">{m.cedula}</td>
+                              <td className="px-3 py-2 font-medium text-slate-200">{m.nombres} {m.apellidos}</td>
+                              <td className="px-3 py-2 text-slate-300">Vereda {m.vereda}, {m.casa}</td>
                               <td className="px-3 py-2 text-slate-400">{m.sexo || 'M'}</td>
-                              <td className="px-3 py-2 text-slate-400">{m.parentesco || 'a'}</td>
-                              <td className="px-3 py-2 text-slate-400 whitespace-nowrap">{m.telefono || '—'}</td>
+                              <td className="px-3 py-2 text-blue-300 font-medium">{m.parentesco}</td>
+                              <td className="px-3 py-2 text-emerald-300">{m.instruccion}</td>
+                              <td className="px-3 py-2 text-slate-300">{m.profesion_ocupacion || '—'}</td>
+                              <td className="px-3 py-2 text-amber-300">{m.salud}</td>
+                              <td className="px-3 py-2 text-slate-400">{m.telefono || m.email || '—'}</td>
                             </tr>
                           ))}
                         </tbody>
