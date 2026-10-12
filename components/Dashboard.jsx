@@ -393,7 +393,18 @@ export default function Dashboard({ user, onLogout }) {
     }
   };
 
-  // Cargas por tab
+  // Cargas por tab y eventos de catálogos
+  useEffect(() => {
+    cargarCatalogosSistema();
+    const handleCatalogosUpdate = () => {
+      cargarCatalogosSistema();
+    };
+    window.addEventListener('catalogos_updated', handleCatalogosUpdate);
+    return () => {
+      window.removeEventListener('catalogos_updated', handleCatalogosUpdate);
+    };
+  }, []);
+
   useEffect(() => {
     if (currentTab === 'vecinos') { cargarVecinos(); cargarCatalogosSistema(); }
     if (currentTab === 'documentos') cargarDocumentos();
@@ -4458,16 +4469,31 @@ export default function Dashboard({ user, onLogout }) {
                   </div>
                 </div>
 
-                {/* Leyenda de Referencia Rápida */}
-                <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-slate-400 grid grid-cols-1 md:grid-cols-3 gap-2">
+                {/* Leyenda de Referencia Rápida Dinámica según Catálogos del Sistema */}
+                <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px] text-slate-400 grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
-                    <strong className="text-slate-200">Parentesco:</strong> a-Jefe(a), b-Cónyuge, c-Hijo(a), d-Madre/Padre, e-Abuelo(a), f-Tíos/Tías
+                    <strong className="text-blue-400 block mb-0.5">Parentesco:</strong>
+                    <div className="text-slate-300 leading-relaxed">
+                      {catalogos?.parentesco && catalogos.parentesco.length > 0
+                        ? catalogos.parentesco.map(item => `${item.codigo}-${item.descripcion}`).join(', ')
+                        : 'a-Jefe(a), b-Cónyuge, c-Hijo(a), d-Madre/Padre, e-Abuelo(a), f-Tíos/Tías'}
+                    </div>
                   </div>
                   <div>
-                    <strong className="text-slate-200">Instrucción:</strong> a-Ninguno, b-Primaria, c-Secundaria, d-TSU, e-Universitario, f-Postgrado
+                    <strong className="text-emerald-400 block mb-0.5">Instrucción:</strong>
+                    <div className="text-slate-300 leading-relaxed">
+                      {catalogos?.instruccion && catalogos.instruccion.length > 0
+                        ? catalogos.instruccion.map(item => `${item.codigo}-${item.descripcion}`).join(', ')
+                        : 'a-Ninguno, b-Primaria, c-Secundaria, d-TSU, e-Universitario, f-Postgrado'}
+                    </div>
                   </div>
                   <div>
-                    <strong className="text-slate-200">Salud:</strong> a-Discapacidad, b-En cama, c-Crónica, d-Silla de Ruedas, e-Ninguna
+                    <strong className="text-amber-400 block mb-0.5">Salud:</strong>
+                    <div className="text-slate-300 leading-relaxed">
+                      {catalogos?.salud && catalogos.salud.length > 0
+                        ? catalogos.salud.map(item => `${item.codigo}-${item.descripcion}`).join(', ')
+                        : 'a-Discapacidad, b-En cama, c-Crónica, d-Silla de Ruedas, e-Ninguna'}
+                    </div>
                   </div>
                 </div>
 
