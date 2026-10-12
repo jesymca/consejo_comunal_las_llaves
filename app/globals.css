@@ -22,8 +22,18 @@ body {
 
 /* Modo Claro General */
 html.light body {
-  background-color: #f8fafc !important;
+  background-color: #ffffff !important;
   color: #0f172a !important;
+}
+
+html.light {
+  background-color: #ffffff !important;
+}
+
+/* Forzar fondos en modo claro */
+html.light .bg-\[\#090d16\],
+html.light [class*="bg-[#090d16]"] {
+  background-color: #ffffff !important;
 }
 
 /* Fondo con cuadrícula institucional sutil */
@@ -61,15 +71,15 @@ html.light .bg-grid-pattern {
 
 /* Glassmorphism y Paneles (Modo Claro) */
 html.light .glass-panel {
-  background: rgba(255, 255, 255, 0.92) !important;
-  border-color: rgba(226, 232, 240, 0.95) !important;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0, 0, 0, 0.02) !important;
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05) !important;
 }
 
 html.light .glass-panel-hover:hover {
-  background: #ffffff !important;
+  background: #f8fafc !important;
   border-color: rgba(59, 130, 246, 0.45) !important;
-  box-shadow: 0 14px 28px -6px rgba(37, 99, 235, 0.12) !important;
+  box-shadow: 0 10px 20px -4px rgba(37, 99, 235, 0.1) !important;
 }
 
 /* Adaptación de Fondos y Paneles en Modo Claro */
@@ -77,13 +87,29 @@ html.light .bg-slate-950 {
   background-color: #ffffff !important;
 }
 
+html.light .bg-slate-950\/40,
+html.light .bg-slate-950\/80,
+html.light .bg-slate-950\/90 {
+  background-color: #ffffff !important;
+}
+
 html.light .bg-slate-900 {
   background-color: #ffffff !important;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+}
+
+html.light .bg-slate-900\/60,
+html.light .bg-slate-900\/90 {
+  background-color: #ffffff !important;
 }
 
 html.light .bg-slate-850,
 html.light .bg-slate-800 {
+  background-color: #f1f5f9 !important;
+}
+
+html.light .hover\:bg-slate-950:hover,
+html.light .hover\:bg-slate-900:hover {
   background-color: #f1f5f9 !important;
 }
 
@@ -94,8 +120,12 @@ html.light .hover\:bg-slate-700:hover {
 }
 
 /* Adaptación de Bordes en Modo Claro */
+html.light .border-slate-900,
+html.light .border-slate-900\/80,
 html.light .border-slate-850,
 html.light .border-slate-800,
+html.light .border-slate-800\/80,
+html.light .border-slate-800\/40,
 html.light .border-slate-750,
 html.light .border-slate-700 {
   border-color: #e2e8f0 !important;
@@ -119,7 +149,17 @@ html.light .text-slate-300 {
 }
 
 html.light .text-slate-400 {
+  color: #475569 !important;
+}
+
+html.light .text-slate-500 {
   color: #64748b !important;
+}
+
+/* Modales y backdrops en modo claro */
+html.light .bg-black\/80,
+html.light .bg-black\/85 {
+  background-color: rgba(15, 23, 42, 0.6) !important;
 }
 
 /* Excepciones Críticas: Botones que DEBEN mantener texto blanco y alto contraste */
@@ -129,6 +169,8 @@ html.light .bg-emerald-600,
 html.light .bg-emerald-600 *,
 html.light .bg-rose-600,
 html.light .bg-rose-600 *,
+html.light .bg-red-600,
+html.light .bg-red-600 *,
 html.light .btn-keep-white,
 html.light .btn-keep-white * {
   color: #ffffff !important;

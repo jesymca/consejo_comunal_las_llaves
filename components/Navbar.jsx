@@ -27,46 +27,61 @@ export default function Navbar({ user, onOpenLogin, onLogout, onNavigateHash }) 
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-md">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-0 sm:h-20 flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-4">
         
         {/* Identidad Institucional */}
-        <div className="flex items-center gap-3.5">
-          <a href="#" className="flex items-center gap-3 group">
+        <div className="w-full sm:w-auto flex items-center justify-between sm:justify-start gap-2.5 sm:gap-3.5">
+          <a href="#" className="flex items-center gap-2.5 sm:gap-3 group min-w-0">
             <img
               src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/logo.png"
               alt="Logo Consejo Comunal Las Llaves"
-              className="w-12 h-12 object-contain filter drop-shadow transition-transform group-hover:scale-105"
+              className="w-9 h-9 sm:w-12 sm:h-12 object-contain filter drop-shadow shrink-0 transition-transform group-hover:scale-105"
             />
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-base tracking-wide text-white group-hover:text-blue-400 transition">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                <span className="font-extrabold text-xs sm:text-base tracking-wide text-white group-hover:text-blue-400 transition truncate">
                   CONSEJO COMUNAL LAS LLAVES
                 </span>
-                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
                   SITUR: 08-11-04-001-0033
                 </span>
               </div>
-              <p className="text-xs text-slate-400 font-medium">
+              <p className="text-[10px] sm:text-xs text-slate-400 font-medium truncate">
                 Urb. Dr. Alfredo Travieso Paúl · Puerto Cabello · RIF: C299916862
               </p>
             </div>
           </a>
+
+          {/* Logo Ministerio Comunas en móvil (visible a la derecha de la identidad) */}
+          <a
+            href="https://www.comunas.gob.ve/fundacomunal/"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Ministerio del Poder Popular para las Comunas"
+            className="sm:hidden shrink-0 pl-1"
+          >
+            <img
+              src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/mppcomunas.png"
+              alt="MPP Comunas"
+              className="h-6 w-auto object-contain opacity-85"
+            />
+          </a>
         </div>
 
-        {/* Enlaces y Acciones */}
-        <div className="flex items-center gap-2 sm:gap-4">
+        {/* Enlaces y Acciones (En móvil se alinean debajo del encabezado en una fila fluida) */}
+        <div className="w-full sm:w-auto flex items-center justify-between sm:justify-end gap-1.5 sm:gap-3 pt-1 sm:pt-0 border-t border-slate-800/40 sm:border-t-0">
           <button
             onClick={() => onNavigateHash('inicio')}
-            className="hidden md:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition"
+            className="inline-flex items-center justify-center gap-1 text-[11px] sm:text-xs font-semibold px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition"
           >
             <FileText className="w-3.5 h-3.5 text-blue-400" />
-            Tramitar
+            <span>Tramitar</span>
           </button>
 
           <button
             onClick={() => onNavigateHash('validar')}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-750 text-emerald-400 hover:bg-slate-800/80 transition shadow-sm"
+            className="inline-flex items-center justify-center gap-1 text-[11px] sm:text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-750 text-emerald-400 hover:bg-slate-800/80 transition shadow-sm"
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
             <span>Validador QR</span>
@@ -77,7 +92,7 @@ export default function Navbar({ user, onOpenLogin, onLogout, onNavigateHash }) 
             onClick={toggleTheme}
             type="button"
             title={theme === 'dark' ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
-            className="p-2 rounded-xl bg-slate-900 border border-slate-750 text-amber-400 hover:text-amber-300 hover:bg-slate-800 transition flex items-center justify-center shadow-sm"
+            className="p-1.5 sm:p-2 rounded-xl bg-slate-900 border border-slate-750 text-amber-400 hover:text-amber-300 hover:bg-slate-800 transition flex items-center justify-center shadow-sm shrink-0"
           >
             {theme === 'dark' ? (
               <Sun className="w-4 h-4" />
@@ -87,13 +102,13 @@ export default function Navbar({ user, onOpenLogin, onLogout, onNavigateHash }) 
           </button>
 
           {user ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <button
                 onClick={() => onNavigateHash('dashboard')}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition shadow-lg shadow-blue-500/20"
+                className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold px-2.5 sm:px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition shadow-lg shadow-blue-500/20"
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Panel</span> {user.rol === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : user.rol}
+                <span>Panel {user.rol === 'SUPER_ADMIN' ? 'SUPER' : user.rol}</span>
               </button>
               <button
                 onClick={onLogout}
@@ -106,14 +121,14 @@ export default function Navbar({ user, onOpenLogin, onLogout, onNavigateHash }) 
           ) : (
             <button
               onClick={onOpenLogin}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-200 border border-slate-700/60 transition"
+              className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-semibold px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-200 border border-slate-700/60 transition shrink-0"
             >
               <Lock className="w-3.5 h-3.5 text-amber-400" />
               <span>Vocería / Admin</span>
             </button>
           )}
 
-          {/* Logo Ministerio Comunas */}
+          {/* Logo Ministerio Comunas (pantallas grandes) */}
           <a
             href="https://www.comunas.gob.ve/fundacomunal/"
             target="_blank"
