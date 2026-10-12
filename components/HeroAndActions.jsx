@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, Home, Award, HeartCrack, QrCode, ArrowRight, ShieldCheck, Clock, AlertTriangle, CheckCircle, Download } from 'lucide-react';
+import { Search, Home, Award, HeartCrack, Store, QrCode, ArrowRight, ShieldCheck, Clock, AlertTriangle, CheckCircle, Download } from 'lucide-react';
 
 export default function HeroAndActions({
   onSelectDocumentType,
@@ -50,8 +50,8 @@ export default function HeroAndActions({
           Plataforma modular del <strong>Consejo Comunal Las Llaves</strong> para la tramitación de constancias con certificación digital, código QR alfanumérico único y verificación en tiempo real.
         </p>
 
-        {/* Acceso Directo a los 3 Documentos Base */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl mx-auto mb-12 text-left">
+        {/* Acceso Directo a los Documentos Base */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-6xl mx-auto mb-12 text-left">
           
           {/* 1. Carta de Residencia */}
           <button
@@ -110,13 +110,36 @@ export default function HeroAndActions({
             <div>
               <span className="text-[10px] font-bold tracking-wider uppercase text-rose-400 mb-1 block">Documento 03</span>
               <h3 className="font-bold text-lg text-white group-hover:text-rose-300 transition mb-1">
-                Notificación de Fallecimiento
+                Fallecimiento
               </h3>
               <p className="text-xs text-slate-400 leading-normal">
                 Constancia comunitaria para trámites legales, Registro Civil y servicios funerarios de habitantes.
               </p>
             </div>
             <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-rose-400 group-hover:translate-x-1 transition-transform">
+              <span>Tramitar ahora</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </div>
+          </button>
+
+          {/* 4. Carta Comunal de Funcionamiento (Locales en Alquiler) */}
+          <button
+            onClick={() => onSelectDocumentType('FUNCIONAMIENTO')}
+            className="group p-5 rounded-2xl glass-panel glass-panel-hover flex flex-col justify-between text-left relative overflow-hidden"
+          >
+            <div className="w-12 h-12 rounded-xl bg-indigo-600/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mb-4 group-hover:scale-110 transition-transform">
+              <Store className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-[10px] font-bold tracking-wider uppercase text-indigo-400 mb-1 block">Documento 04</span>
+              <h3 className="font-bold text-lg text-white group-hover:text-indigo-300 transition mb-1">
+                Funcionamiento
+              </h3>
+              <p className="text-xs text-slate-400 leading-normal">
+                Aval para dueños de casa que poseen locales comerciales en alquiler en su inmueble.
+              </p>
+            </div>
+            <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-indigo-400 group-hover:translate-x-1 transition-transform">
               <span>Tramitar ahora</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </div>

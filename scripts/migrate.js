@@ -183,6 +183,37 @@ async function migrate() {
       fecha TEXT,
       detalles TEXT,
       created_at TEXT NOT NULL
+    );`,
+
+    // 12. Tabla Catálogos del Sistema (Parentesco, Instrucción, Salud)
+    `CREATE TABLE IF NOT EXISTS catalogos_sistema (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tipo TEXT NOT NULL,
+      codigo TEXT NOT NULL,
+      descripcion TEXT NOT NULL,
+      orden INTEGER NOT NULL DEFAULT 1,
+      activo INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(tipo, codigo)
+    );`,
+
+    // 13. Tabla Locales Comerciales en Viviendas (Alquiler / Carta de Funcionamiento)
+    `CREATE TABLE IF NOT EXISTS locales_comerciales_viviendas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      propietario_cedula TEXT NOT NULL,
+      propietario_nombres TEXT NOT NULL,
+      vereda TEXT NOT NULL,
+      casa TEXT NOT NULL,
+      nombre_comercio TEXT NOT NULL,
+      rif_comercio TEXT NOT NULL,
+      tamano_espacio TEXT NOT NULL,
+      rubro_establecimiento TEXT NOT NULL,
+      fecha_inicio_alquiler TEXT NOT NULL,
+      documento_solicitud_id INTEGER,
+      codigo_documento TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     );`
   ];
 
@@ -325,6 +356,12 @@ async function migrate() {
     ['logo_url', 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/logo.png', 'Logo oficial'],
     ['mppcomunas_url', 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/mppcomunas.png', 'Logo MPP Comunas'],
     ['escudo_url', 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/escudo_venezuela.svg', 'Escudo de Venezuela'],
+    ['doc_costos_json', JSON.stringify({
+      RESIDENCIA: { gratuito: false, monto_usd: 1.0 },
+      BUENA_CONDUCTA: { gratuito: false, monto_usd: 1.0 },
+      FALLECIMIENTO: { gratuito: true, monto_usd: 0.0 },
+      FUNCIONAMIENTO: { gratuito: false, monto_usd: 2.0 },
+    }), 'Configuración de costos y gratuidad por tipo de documento'],
   ];
 
   for (const [clave, valor, desc] of config) {
@@ -334,6 +371,36 @@ async function migrate() {
     });
   }
   console.log('Configuraciones generales guardadas.');
+
+  // Semilla de Catálogos (Parentesco, Instrucción, Salud)
+  const catalogosDefault = [
+    ['parentesco', 'a', 'Jefe(a)', 1],
+    ['parentesco', 'b', 'Cónyuge', 2],
+    ['parentesco', 'c', 'Hijo(a)', 3],
+    ['parentesco', 'd', 'Madre/Padre', 4],
+    ['parentesco', 'e', 'Abuelo(a)', 5],
+    ['parentesco', 'f', 'Tíos/Tías', 6],
+    ['instruccion', 'a', 'Ninguno', 1],
+    ['instruccion', 'b', 'Primaria', 2],
+    ['instruccion', 'c', 'Secundaria', 3],
+    ['instruccion', 'd', 'TSU', 4],
+    ['instruccion', 'e', 'Universitario', 5],
+    ['instruccion', 'f', 'Postgrado', 6],
+    ['salud', 'a', 'Discapacidad', 1],
+    ['salud', 'b', 'En cama', 2],
+    ['salud', 'c', 'Crónica', 3],
+    ['salud', 'd', 'Silla de Ruedas', 4],
+    ['salud', 'e', 'Ninguna', 5],
+  ];
+
+  for (const [tipo, cod, desc, ord] of catalogosDefault) {
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO catalogos_sistema (tipo, codigo, descripcion, orden, activo, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 1, ?, ?);`,
+      args: [tipo, cod, desc, ord, now, now]
+    });
+  }
+  console.log('Catálogos del sistema (Parentesco, Instrucción, Salud) inicializados.');
 
   // Semilla de las 3 Firmas Autorizadas
   const firmas = [
@@ -400,6 +467,12 @@ async function migrate() {
       titulo: 'CONSTANCIA DE NOTIFICACIÓN DE FALLECIMIENTO',
       subtitulo: 'NRO: {codigo_qr}',
       cuerpo_template: 'Quienes suscriben, voceros del Consejo Comunal de la Urbanización Dr. Alfredo Travieso Paul "LAS LLAVES", hacen constar por medio de la presente que quien en vida fue el ciudadano (a): {nombre_completo}, titular de la cédula de identidad N°: {cedula}, habitaba en esta comunidad en la Vereda {vereda}, Casa N° {casa}, y se certifica la debida notificación de su sensible fallecimiento para los fines legales y comunitarios pertinentes.\n\nConstancia que se expide a solicitud de parte interesada para trámites de ley, en la ciudad de Puerto Cabello, a los {dias} días del mes de {mes} del año {ano}.',
+    },
+    {
+      id: 'FUNCIONAMIENTO',
+      titulo: 'CARTA COMUNAL DE FUNCIONAMIENTO COMERCIAL',
+      subtitulo: 'NRO: {codigo_qr}',
+      cuerpo_template: 'Quienes suscriben, voceros del Consejo Comunal de la Urbanización Dr. Alfredo Travieso Paul "LAS LLAVES", hacen constar por medio de la presente que el ciudadano (a): {nombre_completo}, titular de la cédula de identidad N°: {cedula}, propietario(a) del inmueble ubicado en la Vereda {vereda}, Casa N° {casa}, posee en su vivienda un espacio comercial en calidad de arrendamiento.\n\nSe deja constancia comunal que en dicho inmueble funciona el establecimiento: {nombre_comercio}, RIF: {rif_comercio}, bajo el rubro: {rubro_establecimiento}, ocupando un área aproximada de {tamano_espacio}, activo en esta dirección comunitaria desde la fecha {fecha_alquiler}.\n\nConstancia que se expide a solicitud del dueño del inmueble para fines comerciales, legales y tributarios correspondientes, en la ciudad de Puerto Cabello, a los {dias} días del mes de {mes} del año {ano}.',
     }
   ];
 

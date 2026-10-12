@@ -14,24 +14,56 @@ export default function ModalSolicitud({
   onDocumentoGenerado,
 }) {
   const [tipo, setTipo] = useState(tipoDocumento || 'RESIDENCIA');
+  const [plantillasLista, setPlantillasLista] = useState([]);
+  const [docCostos, setDocCostos] = useState({});
   const [esExonerado, setEsExonerado] = useState(false);
   const [motivoExoneracion, setMotivoExoneracion] = useState('Adulto Mayor / Situación de Vulnerabilidad');
   const [bancoOrigenId, setBancoOrigenId] = useState(10); // Banco de Venezuela por defecto
   const [numeroTransferencia, setNumeroTransferencia] = useState('');
   const [fechaPago, setFechaPago] = useState(new Date().toISOString().split('T')[0]);
-  
-  // Aporte configurado en USD ($1.00)
-  const montoUsd = 1.0;
-  const montoBsCalculado = Number((montoUsd * (tasaBcv || 875.65)).toFixed(2));
+
+  // Campos específicos para Carta Comunal de Funcionamiento (Locales en Alquiler)
+  const [nombreComercio, setNombreComercio] = useState('');
+  const [rifComercio, setRifComercio] = useState('');
+  const [tamanoEspacio, setTamanoEspacio] = useState('');
+  const [rubroEstablecimiento, setRubroEstablecimiento] = useState('');
+  const [fechaInicioAlquiler, setFechaInicioAlquiler] = useState(new Date().toISOString().split('T')[0]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [docGenerado, setDocGenerado] = useState(null);
   const [descargandoPdf, setDescargandoPdf] = useState(false);
 
+  // Cargar plantillas y configuración de costos
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/modelador').then(r => r.json()).catch(() => ({ plantillas: [] })),
+      fetch('/api/configuracion').then(r => r.json()).catch(() => ({ config: {} })),
+    ]).then(([modData, cfgData]) => {
+      if (modData.plantillas && modData.plantillas.length > 0) {
+        setPlantillasLista(modData.plantillas);
+      }
+      if (cfgData.config && cfgData.config.doc_costos_json) {
+        try {
+          const parsed = JSON.parse(cfgData.config.doc_costos_json);
+          setDocCostos(parsed);
+        } catch (e) {
+          console.warn('Error parseando doc_costos_json:', e);
+        }
+      }
+    });
+  }, []);
+
   useEffect(() => {
     if (tipoDocumento) setTipo(tipoDocumento);
   }, [tipoDocumento]);
+
+  // Determinar costo o gratuidad configurada para el tipo de documento seleccionado
+  const configDocActual = docCostos[tipo] || { gratuito: false, monto_usd: 1.0 };
+  const esGratuitoPorConfiguracion = Boolean(configDocActual.gratuito);
+  const montoUsd = esGratuitoPorConfiguracion ? 0 : Number(configDocActual.monto_usd ?? 1.0);
+  const montoBsCalculado = Number((montoUsd * (tasaBcv || 875.65)).toFixed(2));
+  const noRequierePago = esGratuitoPorConfiguracion || esExonerado;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -39,25 +71,41 @@ export default function ModalSolicitud({
     setLoading(true);
 
     try {
+      if (tipo === 'FUNCIONAMIENTO') {
+        if (!nombreComercio.trim()) throw new Error('Por favor ingrese el nombre del comercio');
+        if (!rifComercio.trim()) throw new Error('Por favor ingrese el RIF del comercio');
+        if (!tamanoEspacio.trim()) throw new Error('Por favor ingrese el tamaño del espacio en alquiler');
+        if (!rubroEstablecimiento.trim()) throw new Error('Por favor ingrese el rubro del establecimiento');
+      }
+
       const bancoSeleccionado = BANCOS_VENEZUELA.find(b => b.id === Number(bancoOrigenId));
+
+      const payload = {
+        action: 'solicitar',
+        cedula: vecino.cedula,
+        tipo_documento: tipo,
+        es_exonerado: noRequierePago,
+        motivo_exoneracion: esGratuitoPorConfiguracion ? 'Trámite Comunal Gratuito' : (esExonerado ? motivoExoneracion : null),
+        banco_origen_id: noRequierePago ? null : bancoOrigenId,
+        banco_nombre: noRequierePago ? null : bancoSeleccionado?.banco,
+        numero_transferencia: noRequierePago ? null : numeroTransferencia,
+        monto_bs: noRequierePago ? 0 : montoBsCalculado,
+        monto_usd: noRequierePago ? 0 : montoUsd,
+        tasa_bcv: tasaBcv,
+        fecha_pago: fechaPago,
+        datos_extra: tipo === 'FUNCIONAMIENTO' ? {
+          nombre_comercio: nombreComercio.trim(),
+          rif_comercio: rifComercio.trim().toUpperCase(),
+          tamano_espacio: tamanoEspacio.trim(),
+          rubro_establecimiento: rubroEstablecimiento.trim(),
+          fecha_inicio_alquiler: fechaInicioAlquiler,
+        } : null
+      };
 
       const res = await fetch('/api/documentos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'solicitar',
-          cedula: vecino.cedula,
-          tipo_documento: tipo,
-          es_exonerado: esExonerado,
-          motivo_exoneracion: esExonerado ? motivoExoneracion : null,
-          banco_origen_id: esExonerado ? null : bancoOrigenId,
-          banco_nombre: esExonerado ? null : bancoSeleccionado?.banco,
-          numero_transferencia: esExonerado ? null : numeroTransferencia,
-          monto_bs: esExonerado ? 0 : montoBsCalculado,
-          monto_usd: esExonerado ? 0 : montoUsd,
-          tasa_bcv: tasaBcv,
-          fecha_pago: fechaPago,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -217,61 +265,178 @@ export default function ModalSolicitud({
                 onChange={(e) => setTipo(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
               >
-                <option value="RESIDENCIA">1. Carta de Residencia</option>
-                <option value="BUENA_CONDUCTA">2. Constancia de Buena Conducta</option>
-                <option value="FALLECIMIENTO">3. Constancia de Notificación de Fallecimiento</option>
+                {plantillasLista && plantillasLista.length > 0 ? (
+                  plantillasLista.map((p) => {
+                    const cfg = docCostos[p.id];
+                    const labelCosto = cfg?.gratuito ? '· Gratuito' : (cfg ? `· $${Number(cfg.monto_usd).toFixed(2)}` : '');
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {p.titulo} {labelCosto}
+                      </option>
+                    );
+                  })
+                ) : (
+                  <>
+                    <option value="RESIDENCIA">1. Carta de Residencia</option>
+                    <option value="BUENA_CONDUCTA">2. Constancia de Buena Conducta</option>
+                    <option value="FALLECIMIENTO">3. Constancia de Notificación de Fallecimiento (Gratuito)</option>
+                    <option value="FUNCIONAMIENTO">4. Carta Comunal de Funcionamiento Comercial</option>
+                  </>
+                )}
               </select>
             </div>
 
-            {/* Aporte Comunitario y Cálculo de Bolívares */}
-            <div className="p-3.5 rounded-2xl bg-blue-950/40 border border-blue-800/40">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-blue-200">Aporte de Corresponsabilidad y Sostenimiento:</span>
-                <span className="text-xs font-extrabold text-white">${montoUsd.toFixed(2)} USD</span>
-              </div>
-              
-              <div className="flex items-center justify-between text-xs text-slate-300 border-t border-blue-900/40 pt-2">
-                <span>Tasa Oficial BCV: <strong>Bs. {Number(tasaBcv).toFixed(2)}</strong></span>
-                <span className="font-extrabold text-emerald-400 text-sm">
-                  Total a Transferir: Bs. {montoBsCalculado.toFixed(2)}
-                </span>
-              </div>
-            </div>
-
-            {/* Select de Exoneración Social por Vulnerabilidad */}
-            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={esExonerado}
-                  onChange={(e) => setEsExonerado(e.target.checked)}
-                  className="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-700 focus:ring-0"
-                />
-                <span className="text-xs font-semibold text-slate-300">
-                  Solicitar exoneración social por caso de vulnerabilidad
-                </span>
-              </label>
-
-              {esExonerado && (
-                <div className="mt-2.5 pt-2.5 border-t border-slate-850">
-                  <label className="block text-[11px] text-slate-400 mb-1">Motivo de la exoneración:</label>
-                  <select
-                    value={motivoExoneracion}
-                    onChange={(e) => setMotivoExoneracion(e.target.value)}
-                    className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-750 text-white text-xs"
-                  >
-                    <option value="Adulto Mayor / Jubilado">Adulto Mayor / Jubilado</option>
-                    <option value="Condición de Discapacidad / Salud">Condición de Discapacidad / Salud</option>
-                    <option value="Caso Social de Vulnerabilidad Económica">Caso Social de Vulnerabilidad Económica</option>
-                    <option value="Trámite Escolar o Estudiantil">Trámite Escolar o Estudiantil</option>
-                  </select>
-                  <p className="text-[10px] text-emerald-400 mt-1">Este trámite se gestionará de forma 100% gratuita.</p>
+            {/* SECCIÓN ESPECÍFICA: CARTA COMUNAL DE FUNCIONAMIENTO (LOCALES COMERCIALES EN ALQUILER) */}
+            {tipo === 'FUNCIONAMIENTO' && (
+              <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 space-y-3">
+                <div className="flex items-center gap-2 border-b border-indigo-500/20 pb-2">
+                  <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                    Datos del Local Comercial en Alquiler
+                  </h4>
                 </div>
-              )}
-            </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Como propietario(a) de la vivienda (Vereda {vecino?.vereda}, Casa {vecino?.casa}), ingresa los datos del comercio que opera en alquiler dentro de tu inmueble:
+                </p>
 
-            {/* Datos de Pago (Si no es exonerado) */}
-            {!esExonerado && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Nombre del Comercio / Razón Social *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={nombreComercio}
+                      onChange={(e) => setNombreComercio(e.target.value)}
+                      placeholder="Ej: Inversiones El Progreso C.A."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white text-xs focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      RIF del Comercio *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={rifComercio}
+                      onChange={(e) => setRifComercio(e.target.value)}
+                      placeholder="Ej: J-12345678-0"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white text-xs font-mono uppercase focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Tamaño del Espacio en Alquiler *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={tamanoEspacio}
+                      onChange={(e) => setTamanoEspacio(e.target.value)}
+                      placeholder="Ej: 35 m² / Local frontal"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white text-xs focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Rubro del Establecimiento *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={rubroEstablecimiento}
+                      onChange={(e) => setRubroEstablecimiento(e.target.value)}
+                      placeholder="Ej: Víveres, Bodega, Peluquería"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white text-xs focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    ¿Desde qué Fecha está Alquilado en ese lugar? *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={fechaInicioAlquiler}
+                    onChange={(e) => setFechaInicioAlquiler(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white text-xs focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Aporte Comunitario y Cálculo de Bolívares */}
+            {esGratuitoPorConfiguracion ? (
+              <div className="p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-emerald-300 block">Trámite Comunal Gratuito</span>
+                  <span className="text-[11px] text-slate-300">Este documento está configurado sin cobro de colaboración comunal.</span>
+                </div>
+                <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  $0.00 USD (Bs. 0.00)
+                </span>
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-2xl bg-blue-950/40 border border-blue-800/40">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-blue-200">Aporte de Corresponsabilidad y Sostenimiento:</span>
+                  <span className="text-xs font-extrabold text-white">${montoUsd.toFixed(2)} USD</span>
+                </div>
+                
+                <div className="flex items-center justify-between text-xs text-slate-300 border-t border-blue-900/40 pt-2">
+                  <span>Tasa Oficial BCV: <strong>Bs. {Number(tasaBcv).toFixed(2)}</strong></span>
+                  <span className="font-extrabold text-emerald-400 text-sm">
+                    Total a Transferir: Bs. {montoBsCalculado.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Select de Exoneración Social por Vulnerabilidad (solo si no es gratuito por configuración) */}
+            {!esGratuitoPorConfiguracion && (
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={esExonerado}
+                    onChange={(e) => setEsExonerado(e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-700 focus:ring-0"
+                  />
+                  <span className="text-xs font-semibold text-slate-300">
+                    Solicitar exoneración social por caso de vulnerabilidad
+                  </span>
+                </label>
+
+                {esExonerado && (
+                  <div className="mt-2.5 pt-2.5 border-t border-slate-850">
+                    <label className="block text-[11px] text-slate-400 mb-1">Motivo de la exoneración:</label>
+                    <select
+                      value={motivoExoneracion}
+                      onChange={(e) => setMotivoExoneracion(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-750 text-white text-xs"
+                    >
+                      <option value="Adulto Mayor / Jubilado">Adulto Mayor / Jubilado</option>
+                      <option value="Condición de Discapacidad / Salud">Condición de Discapacidad / Salud</option>
+                      <option value="Caso Social de Vulnerabilidad Económica">Caso Social de Vulnerabilidad Económica</option>
+                      <option value="Trámite Escolar o Estudiantil">Trámite Escolar o Estudiantil</option>
+                    </select>
+                    <p className="text-[10px] text-emerald-400 mt-1">Este trámite se gestionará de forma 100% gratuita.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Datos de Pago (Si requiere pago) */}
+            {!noRequierePago && (
               <div className="space-y-3 p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800">
                 <span className="text-xs font-bold text-slate-200 block">Datos del Pago Comunitario</span>
                 

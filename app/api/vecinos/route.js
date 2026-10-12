@@ -6,8 +6,27 @@ import {
 } from '@/lib/territory';
 import { extractUserFromRequest, hasPermission } from '@/lib/auth';
 import { registrarAuditoria } from '@/lib/audit';
+import { asegurarTablaCatalogos } from '@/app/api/catalogos/route';
 
 export const dynamic = 'force-dynamic';
+
+async function obtenerMapasCatalogos() {
+  const mapas = { parentesco: {}, instruccion: {}, salud: {} };
+  try {
+    await asegurarTablaCatalogos();
+    const res = await db.execute('SELECT tipo, codigo, descripcion FROM catalogos_sistema WHERE activo = 1');
+    res.rows.forEach(r => {
+      const t = String(r.tipo).toLowerCase();
+      const c = String(r.codigo).toLowerCase();
+      if (mapas[t]) {
+        mapas[t][c] = String(r.descripcion);
+      }
+    });
+  } catch (e) {
+    console.warn('Error cargando catalogos dinámicos en vecinos/route.js:', e);
+  }
+  return mapas;
+}
 
 export async function GET(request) {
   try {
@@ -125,9 +144,10 @@ export async function POST(request) {
       }
 
       // Decodificar campos demográficos si vienen con códigos o abreviaturas
-      const finalParentesco = decodificarParentesco(parentesco || 'a');
-      const finalInstruccion = decodificarInstruccion(nivel_instruccion || instruccion || 'c');
-      const finalSalud = decodificarSalud(condicion_salud || salud || 'e');
+      const mapasCatalogos = await obtenerMapasCatalogos();
+      const finalParentesco = decodificarParentesco(parentesco || 'a', mapasCatalogos.parentesco);
+      const finalInstruccion = decodificarInstruccion(nivel_instruccion || instruccion || 'c', mapasCatalogos.instruccion);
+      const finalSalud = decodificarSalud(condicion_salud || salud || 'e', mapasCatalogos.salud);
       const finalOcupacion = (profesion_ocupacion || '').trim();
 
       const demographicData = {
@@ -315,6 +335,7 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Filas de datos requeridas' }, { status: 400 });
       }
 
+      const mapasCatalogos = await obtenerMapasCatalogos();
       const parsedRows = [];
       const errors = [];
 
@@ -409,10 +430,10 @@ export async function POST(request) {
           return;
         }
 
-        // Mapeo automático de códigos por letra a valores completos legibles
-        const parentescoDecod = decodificarParentesco(parentescoRaw);
-        const instruccionDecod = decodificarInstruccion(instruccionRaw);
-        const saludDecod = decodificarSalud(saludRaw);
+        // Mapeo automático de códigos por letra a valores completos legibles (catálogos dinámicos)
+        const parentescoDecod = decodificarParentesco(parentescoRaw, mapasCatalogos.parentesco);
+        const instruccionDecod = decodificarInstruccion(instruccionRaw, mapasCatalogos.instruccion);
+        const saludDecod = decodificarSalud(saludRaw, mapasCatalogos.salud);
 
         parsedRows.push({
           fila: index + 2,

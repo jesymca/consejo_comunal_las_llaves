@@ -11,6 +11,23 @@ export async function GET(request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const fechaInicio = searchParams.get('fechaInicio');
+    const fechaFin = searchParams.get('fechaFin');
+
+    let docsFilter = '';
+    const docsArgs = [];
+    if (fechaInicio && fechaFin) {
+      docsFilter = ' WHERE fecha_emision >= ? AND fecha_emision <= ?';
+      docsArgs.push(fechaInicio, fechaFin);
+    } else if (fechaInicio) {
+      docsFilter = ' WHERE fecha_emision >= ?';
+      docsArgs.push(fechaInicio);
+    } else if (fechaFin) {
+      docsFilter = ' WHERE fecha_emision <= ?';
+      docsArgs.push(fechaFin);
+    }
+
     // 1. Resumen de totales
     const vecinosCountRes = await db.execute(`
       SELECT
@@ -20,8 +37,8 @@ export async function GET(request) {
       FROM vecinos
     `);
 
-    const docsCountRes = await db.execute(`
-      SELECT
+    const docsCountRes = await db.execute({
+      sql: `SELECT
         COUNT(*) as total,
         SUM(CASE WHEN estado = 'VIGENTE' THEN 1 ELSE 0 END) as vigentes,
         SUM(CASE WHEN estado = 'VENCIDO' THEN 1 ELSE 0 END) as vencidos,
@@ -29,10 +46,20 @@ export async function GET(request) {
         SUM(CASE WHEN es_exonerado = 1 THEN 1 ELSE 0 END) as exonerados,
         SUM(monto_bs) as total_bs,
         SUM(monto_usd) as total_usd
-      FROM documentos_solicitudes
-    `);
+      FROM documentos_solicitudes ${docsFilter}`,
+      args: docsArgs
+    });
 
     const censoCountRes = await db.execute('SELECT COUNT(*) as total_planillas, SUM(total_habitantes) as total_habitantes FROM censo_planillas');
+
+    // Total de locales comerciales registrados
+    let totalLocales = 0;
+    try {
+      const locRes = await db.execute('SELECT COUNT(*) as total FROM locales_comerciales_viviendas');
+      totalLocales = Number(locRes.rows[0]?.total || 0);
+    } catch {
+      totalLocales = 0;
+    }
 
     // 2. Gráfico: Horas a las que más descargan / solicitan documentos (0 a 23)
     const horasRes = await db.execute(`
@@ -127,12 +154,53 @@ export async function GET(request) {
       vecinos: Number(r.total),
     }));
 
-    // 6. Documentos por Tipo
-    const tiposDocsRes = await db.execute(`
-      SELECT tipo_documento, COUNT(*) as total
-      FROM documentos_solicitudes
+    // 6. Documentos por Tipo con Recaudación asociada
+    const tiposDocsRes = await db.execute({
+      sql: `SELECT
+        tipo_documento,
+        COUNT(*) as total,
+        SUM(monto_bs) as total_bs,
+        SUM(monto_usd) as total_usd,
+        SUM(CASE WHEN es_exonerado = 1 THEN 1 ELSE 0 END) as exonerados
+      FROM documentos_solicitudes ${docsFilter}
       GROUP BY tipo_documento
-    `);
+      ORDER BY total DESC`,
+      args: docsArgs
+    });
+
+    const coloresTipos = {
+      RESIDENCIA: '#3b82f6',
+      BUENA_CONDUCTA: '#f59e0b',
+      FALLECIMIENTO: '#ef4444',
+      FUNCIONAMIENTO: '#6366f1',
+    };
+
+    const tiposDocsData = tiposDocsRes.rows.map((r, idx) => {
+      const code = String(r.tipo_documento).toUpperCase();
+      let nombreLimpio = code;
+      if (code === 'RESIDENCIA') nombreLimpio = 'Residencia';
+      else if (code === 'BUENA_CONDUCTA') nombreLimpio = 'Buena Conducta';
+      else if (code === 'FALLECIMIENTO') nombreLimpio = 'Fallecimiento';
+      else if (code === 'FUNCIONAMIENTO') nombreLimpio = 'Funcionamiento';
+
+      return {
+        tipo: nombreLimpio,
+        tipo_documento: code,
+        total: Number(r.total),
+        total_bs: Number(r.total_bs || 0),
+        total_usd: Number(r.total_usd || 0),
+        exonerados: Number(r.exonerados || 0),
+        color: coloresTipos[code] || ['#10b981', '#8b5cf6', '#06b6d4', '#ec4899'][idx % 4]
+      };
+    });
+
+    // 7. Gráfico: Estados de Documentos
+    const estadosData = [
+      { name: 'Vigentes', value: Number(docsCountRes.rows[0]?.vigentes || 0), color: '#10b981' },
+      { name: 'Vencidos', value: Number(docsCountRes.rows[0]?.vencidos || 0), color: '#f59e0b' },
+      { name: 'Revocados', value: Number(docsCountRes.rows[0]?.revocados || 0), color: '#ef4444' },
+      { name: 'Exonerados', value: Number(docsCountRes.rows[0]?.exonerados || 0), color: '#8b5cf6' },
+    ].filter(e => e.value > 0);
 
     return NextResponse.json({
       resumen: {
@@ -148,13 +216,15 @@ export async function GET(request) {
         recaudado_usd: Number(docsCountRes.rows[0]?.total_usd || 0),
         total_planillas_censo: Number(censoCountRes.rows[0]?.total_planillas || 0),
         total_habitantes_censo: Number(censoCountRes.rows[0]?.total_habitantes || 0),
+        total_locales_comerciales: totalLocales,
       },
       graficos: {
         horasDescargas,
         generoData,
         edadesData,
         veredasData,
-        tiposDocs: tiposDocsRes.rows,
+        tiposDocs: tiposDocsData,
+        estadosDocs: estadosData,
       }
     });
   } catch (err) {

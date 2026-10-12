@@ -6,10 +6,14 @@ import {
   PenTool, Sliders, ShieldCheck, History, BarChart3, Settings,
   LogOut, Plus, Search, Filter, Download, Upload, Check, X,
   AlertTriangle, RefreshCw, Eye, EyeOff, Edit, Trash2, Key, CheckCircle2,
-  Calendar, Clock, UserCheck, ShieldAlert, Sun, Moon, Image as ImageIcon
+  Calendar, Clock, UserCheck, ShieldAlert, Sun, Moon, Image as ImageIcon,
+  ListPlus, Store, FileCheck, Printer
 } from 'lucide-react';
-import { VEREDAS, CASAS_POR_VEREDA, getCasasPorVereda, BANCOS_VENEZUELA, CALIDADES_TENENCIA } from '@/lib/territory';
-import { generarDocumentoPdf } from '@/lib/pdfGenerator';
+import { 
+  VEREDAS, CASAS_POR_VEREDA, getCasasPorVereda, BANCOS_VENEZUELA, CALIDADES_TENENCIA,
+  MAPEO_PARENTESCO, MAPEO_INSTRUCCION, MAPEO_SALUD
+} from '@/lib/territory';
+import { generarDocumentoPdf, generarReporteGestionPdf } from '@/lib/pdfGenerator';
 import SvgCanvasEditor from '@/components/SvgCanvasEditor';
 import { toast } from '@/lib/toast';
 import {
@@ -43,6 +47,23 @@ export default function Dashboard({ user, onLogout }) {
   const [stats, setStats] = useState(null);
   const [loadingStats, setLoadingStats] = useState(false);
   const [tasaBcv, setTasaBcv] = useState(875.65);
+
+  // Estados de Reporte de Gestión en PDF por Rango de Fechas
+  const [fechaInicioReporte, setFechaInicioReporte] = useState('');
+  const [fechaFinReporte, setFechaFinReporte] = useState('');
+  const [generandoReportePdf, setGenerandoReportePdf] = useState(false);
+
+  // Estados para Crear Nuevo Documento en Modelador
+  const [modalNuevaPlantilla, setModalNuevaPlantilla] = useState(false);
+  const [nuevaPlantillaForm, setNuevaPlantillaForm] = useState({
+    id: '',
+    titulo: '',
+    subtitulo: 'NRO: {codigo_qr}',
+    cuerpo_template: '',
+  });
+
+  // Estados para Costos y Gratuidad por Tipo de Documento
+  const [docCostos, setDocCostos] = useState({});
 
   // Estados de módulo Vecinos
   const [vecinos, setVecinos] = useState([]);
@@ -121,6 +142,22 @@ export default function Dashboard({ user, onLogout }) {
   });
   const [subiendoImagenPreset, setSubiendoImagenPreset] = useState(false);
   const presetFileInputRef = useRef(null);
+
+  // Estados de módulo Catálogos Oficiales (Parentesco, Instrucción, Salud)
+  const [catalogos, setCatalogos] = useState({
+    parentesco: Object.entries(MAPEO_PARENTESCO).map(([codigo, descripcion], i) => ({ id: `p_${codigo}`, tipo: 'parentesco', codigo, descripcion, orden: i + 1 })),
+    instruccion: Object.entries(MAPEO_INSTRUCCION).map(([codigo, descripcion], i) => ({ id: `i_${codigo}`, tipo: 'instruccion', codigo, descripcion, orden: i + 1 })),
+    salud: Object.entries(MAPEO_SALUD).map(([codigo, descripcion], i) => ({ id: `s_${codigo}`, tipo: 'salud', codigo, descripcion, orden: i + 1 })),
+  });
+  const [loadingCatalogos, setLoadingCatalogos] = useState(false);
+  const [modalCatalogo, setModalCatalogo] = useState(false);
+  const [catalogoEditando, setCatalogoEditando] = useState(null);
+  const [catalogoForm, setCatalogoForm] = useState({
+    tipo: 'parentesco',
+    codigo: '',
+    descripcion: '',
+    orden: 1,
+  });
 
   // Estados de módulo Modelador
   const [plantillas, setPlantillas] = useState([]);
@@ -304,10 +341,14 @@ export default function Dashboard({ user, onLogout }) {
     } catch (e) {}
   };
 
-  const cargarEstadisticas = async () => {
+  const cargarEstadisticas = async (fIni = fechaInicioReporte, fFin = fechaFinReporte) => {
     setLoadingStats(true);
     try {
-      const res = await fetch('/api/estadisticas');
+      const p = new URLSearchParams();
+      if (fIni) p.append('fechaInicio', fIni);
+      if (fFin) p.append('fechaFin', fFin);
+      const url = p.toString() ? `/api/estadisticas?${p.toString()}` : '/api/estadisticas';
+      const res = await fetch(url);
       const data = await res.json();
       setStats(data);
     } catch (e) {
@@ -317,11 +358,46 @@ export default function Dashboard({ user, onLogout }) {
     }
   };
 
+  const handleGenerarReportePdf = async () => {
+    setGenerandoReportePdf(true);
+    try {
+      // 1. Obtener datos actualizados para el rango seleccionado
+      const p = new URLSearchParams();
+      if (fechaInicioReporte) p.append('fechaInicio', fechaInicioReporte);
+      if (fechaFinReporte) p.append('fechaFin', fechaFinReporte);
+      const url = p.toString() ? `/api/estadisticas?${p.toString()}` : '/api/estadisticas';
+      
+      const [statsRes, firmasRes] = await Promise.all([
+        fetch(url).then(r => r.json()).catch(() => ({})),
+        fetch('/api/firmas').then(r => r.json()).catch(() => ({ firmas: [] })),
+      ]);
+
+      const statData = statsRes.resumen ? statsRes : stats;
+
+      await generarReporteGestionPdf({
+        rango: { fechaInicio: fechaInicioReporte, fechaFin: fechaFinReporte },
+        resumen: statData?.resumen || {},
+        tiposDocs: statData?.graficos?.tiposDocs || [],
+        veredasData: statData?.graficos?.veredasData || [],
+        firmas: firmasRes.firmas || firmas || [],
+        config: config || {},
+        usuarioGenerador: user?.nombre || user?.username || 'Vocería Ejecutiva'
+      });
+
+      toast.success('Informe de gestión y auditoría descargado exitosamente');
+    } catch (err) {
+      console.error('Error generando reporte PDF:', err);
+      toast.error('Error al generar reporte: ' + err.message);
+    } finally {
+      setGenerandoReportePdf(false);
+    }
+  };
+
   // Cargas por tab
   useEffect(() => {
-    if (currentTab === 'vecinos') cargarVecinos();
+    if (currentTab === 'vecinos') { cargarVecinos(); cargarCatalogosSistema(); }
     if (currentTab === 'documentos') cargarDocumentos();
-    if (currentTab === 'censo') cargarCenso();
+    if (currentTab === 'censo') { cargarCenso(); cargarCatalogosSistema(); }
     if (currentTab === 'firmas') cargarFirmas();
     if (currentTab === 'modelador') cargarModelador();
     if (currentTab === 'usuarios' && user?.rol === 'SUPER_ADMIN') cargarUsuarios();
@@ -624,9 +700,208 @@ export default function Dashboard({ user, onLogout }) {
       if (cfg.sello_forma) setSelloForma(cfg.sello_forma);
       if (cfg.sello_ancho_mm) setSelloAnchoMm(parseFloat(cfg.sello_ancho_mm) || 48);
       if (cfg.sello_alto_mm) setSelloAltoMm(parseFloat(cfg.sello_alto_mm) || 26);
+      if (cfg.doc_costos_json) {
+        try {
+          const parsed = JSON.parse(cfg.doc_costos_json);
+          setDocCostos(parsed);
+        } catch (e) {
+          console.warn('Error parsing doc_costos_json:', e);
+        }
+      }
+      cargarModelador();
       cargarPresetsImagenes();
+      cargarCatalogosSistema();
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const guardarCostosDocumentos = async (nuevosCostos) => {
+    try {
+      const updatedStr = JSON.stringify(nuevosCostos);
+      const res = await fetch('/api/configuracion', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: {
+            doc_costos_json: updatedStr
+          }
+        })
+      });
+      if (res.ok) {
+        setDocCostos(nuevosCostos);
+        toast.success('Costos y gratuidades por documento actualizados exitosamente');
+        window.dispatchEvent(new CustomEvent('config_updated', { detail: { doc_costos_json: updatedStr } }));
+      } else {
+        const d = await res.json();
+        toast.error(d.error || 'Error al guardar costos');
+      }
+    } catch (e) {
+      toast.error('Error de conexión: ' + e.message);
+    }
+  };
+
+  const crearNuevaPlantilla = async (e) => {
+    e.preventDefault();
+    if (!nuevaPlantillaForm.id || !nuevaPlantillaForm.titulo) {
+      toast.error('Identificador único y Título son requeridos');
+      return;
+    }
+    try {
+      const res = await fetch('/api/modelador', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nuevaPlantillaForm),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success('¡Nueva plantilla documental creada!');
+        setModalNuevaPlantilla(false);
+        setNuevaPlantillaForm({
+          id: '',
+          titulo: '',
+          subtitulo: 'NRO: {codigo_qr}',
+          cuerpo_template: '',
+        });
+        await cargarModelador();
+        if (data.plantilla) setPlantillaSeleccionada(data.plantilla);
+      } else {
+        toast.error(data.error || 'Error al crear plantilla');
+      }
+    } catch (err) {
+      toast.error('Error de conexión: ' + err.message);
+    }
+  };
+
+  const eliminarPlantillaDocumental = async (plantilla) => {
+    if (!confirm(`¿Estás seguro de eliminar permanentemente la plantilla "${plantilla.titulo}" (${plantilla.id})?`)) return;
+    try {
+      const res = await fetch(`/api/modelador?id=${encodeURIComponent(plantilla.id)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success('Plantilla eliminada exitosamente');
+        setPlantillaSeleccionada(null);
+        cargarModelador();
+      } else {
+        toast.error(data.error || 'Error al eliminar plantilla');
+      }
+    } catch (err) {
+      toast.error('Error de conexión: ' + err.message);
+    }
+  };
+
+  const cargarCatalogosSistema = async () => {
+    setLoadingCatalogos(true);
+    try {
+      const res = await fetch('/api/catalogos');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.catalogos) {
+          setCatalogos({
+            parentesco: data.catalogos.parentesco || [],
+            instruccion: data.catalogos.instruccion || [],
+            salud: data.catalogos.salud || [],
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Error cargando catálogos:', e);
+    } finally {
+      setLoadingCatalogos(false);
+    }
+  };
+
+  const abrirModalCrearCatalogo = (tipoDefecto = 'parentesco') => {
+    setCatalogoEditando(null);
+    const lista = catalogos[tipoDefecto] || [];
+    const maxOrden = lista.reduce((max, it) => Math.max(max, Number(it.orden) || 0), 0);
+    // Sugerir la siguiente letra del alfabeto si es posible
+    const letrasUsadas = lista.map(it => (it.codigo || '').toLowerCase());
+    let sigLetra = 'g';
+    for (const l of 'abcdefghijklmnopqrstuvwxyz'.split('')) {
+      if (!letrasUsadas.includes(l)) {
+        sigLetra = l;
+        break;
+      }
+    }
+
+    setCatalogoForm({
+      tipo: tipoDefecto,
+      codigo: sigLetra,
+      descripcion: '',
+      orden: maxOrden + 1,
+    });
+    setModalCatalogo(true);
+  };
+
+  const abrirModalEditarCatalogo = (item) => {
+    setCatalogoEditando(item);
+    setCatalogoForm({
+      tipo: item.tipo,
+      codigo: item.codigo,
+      descripcion: item.descripcion,
+      orden: item.orden || 1,
+    });
+    setModalCatalogo(true);
+  };
+
+  const guardarCatalogoItem = async (e) => {
+    e.preventDefault();
+    if (!catalogoForm.codigo || !catalogoForm.descripcion) {
+      toast.error('Código / Literal y Descripción son obligatorios');
+      return;
+    }
+
+    try {
+      const method = catalogoEditando?.id && !String(catalogoEditando.id).includes('_') ? 'PUT' : 'POST';
+      const payload = {
+        ...catalogoForm,
+        ...(catalogoEditando?.id && !String(catalogoEditando.id).includes('_') ? { id: catalogoEditando.id } : {}),
+      };
+
+      const res = await fetch('/api/catalogos', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || 'Ítem guardado con éxito');
+        setModalCatalogo(false);
+        setCatalogoEditando(null);
+        await cargarCatalogosSistema();
+        try {
+          window.dispatchEvent(new CustomEvent('catalogos_updated'));
+        } catch (err) {}
+      } else {
+        toast.error(data.error || 'Error al guardar ítem de catálogo');
+      }
+    } catch (err) {
+      toast.error('Error de red al guardar ítem de catálogo');
+    }
+  };
+
+  const eliminarCatalogoItem = async (item) => {
+    if (!confirm(`¿Eliminar la opción "${item.codigo.toUpperCase()} = ${item.descripcion}" del catálogo ${item.tipo}?`)) return;
+    try {
+      if (String(item.id).includes('_')) {
+        // En caso de que no haya sido persistido en DB, llamar DELETE por tipo y codigo
+        toast.info('Sincronizando catálogo con base de datos...');
+      }
+      const res = await fetch(`/api/catalogos?id=${item.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || 'Ítem eliminado con éxito');
+        await cargarCatalogosSistema();
+        try {
+          window.dispatchEvent(new CustomEvent('catalogos_updated'));
+        } catch (err) {}
+      } else {
+        toast.error(data.error || 'Error al eliminar ítem');
+      }
+    } catch (err) {
+      toast.error('Error de conexión al eliminar ítem');
     }
   };
 
@@ -1921,21 +2196,56 @@ export default function Dashboard({ user, onLogout }) {
             </div>
 
             {/* Selector de Plantilla */}
-            <div className="flex flex-wrap gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
               {plantillas.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setPlantillaSeleccionada(p)}
-                  className={`px-4 py-2.5 rounded-2xl text-left transition border ${
-                    plantillaSeleccionada?.id === p.id
-                      ? 'bg-blue-600/20 border-blue-500 text-white font-bold shadow-md shadow-blue-600/20'
-                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <span className="text-xs block">{p.titulo}</span>
-                  <span className="text-[10px] text-slate-500 font-mono">ID: {p.id}</span>
-                </button>
+                <div key={p.id} className="relative group">
+                  <button
+                    onClick={() => setPlantillaSeleccionada(p)}
+                    className={`px-4 py-2.5 rounded-2xl text-left transition border ${
+                      plantillaSeleccionada?.id === p.id
+                        ? 'bg-blue-600/20 border-blue-500 text-white font-bold shadow-md shadow-blue-600/20'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="text-xs block">{p.titulo}</span>
+                    <span className="text-[10px] text-slate-500 font-mono">ID: {p.id}</span>
+                  </button>
+                  {/* Botón de eliminar si no es una de las plantillas base */}
+                  {!['RESIDENCIA', 'BUENA_CONDUCTA', 'FALLECIMIENTO', 'FUNCIONAMIENTO'].includes(p.id) && user?.rol === 'SUPER_ADMIN' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        eliminarPlantillaDocumental(p);
+                      }}
+                      className="absolute -top-1.5 -right-1.5 p-1 rounded-full bg-rose-600 hover:bg-rose-500 text-white shadow opacity-0 group-hover:opacity-100 transition"
+                      title="Eliminar plantilla"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
               ))}
+
+              {/* Botón para Crear Nuevo Documento */}
+              {(user?.rol === 'SUPER_ADMIN' || user?.rol === 'ADMIN') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNuevaPlantillaForm({
+                      id: '',
+                      titulo: '',
+                      subtitulo: 'NRO: {codigo_qr}',
+                      cuerpo_template: 'Quien suscribe, voceros del Consejo Comunal de la Urbanización Dr. Alfredo Travieso Paul "LAS LLAVES", por medio de la presente hacemos constar que el ciudadano (a): {nombre_completo}, portador (a) de la cédula de identidad N°: {cedula}, habitante de la Vereda {vereda}, Casa N° {casa}.\n\nConstancia que se expide a solicitud de parte interesada, en la ciudad de Puerto Cabello, a los {dias} días del mes de {mes} del año {ano}.',
+                    });
+                    setModalNuevaPlantilla(true);
+                  }}
+                  className="px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition shadow-md shadow-indigo-600/20 flex items-center gap-1.5 shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Nuevo Documento</span>
+                </button>
+              )}
             </div>
 
             {plantillaSeleccionada && (
@@ -2168,13 +2478,170 @@ export default function Dashboard({ user, onLogout }) {
         {/* TAB: ESTADÍSTICAS VISUALES */}
         {currentTab === 'estadisticas' && checkPermiso('estadisticas') && (
           <div className="space-y-6 animate-in fade-in">
-            <div>
-              <h1 className="text-2xl font-extrabold text-white">Estadísticas y Reportes de Gestión</h1>
-              <p className="text-xs text-slate-400">Análisis demográfico, horas de descarga y métricas comunales</p>
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+              <div>
+                <h1 className="text-2xl font-extrabold text-white">Estadísticas y Reportes de Gestión</h1>
+                <p className="text-xs text-slate-400">Análisis demográfico, horas de descarga, emisión de documentos y auditoría contralora</p>
+              </div>
+
+              {/* Botón y Rango para Generación de Reporte PDF */}
+              <div className="flex flex-wrap items-center gap-2.5 p-2 rounded-2xl bg-slate-900 border border-slate-800 text-xs">
+                <div className="flex items-center gap-1.5 text-slate-400">
+                  <Calendar className="w-3.5 h-3.5 text-blue-400" />
+                  <span className="font-semibold text-[11px]">Desde:</span>
+                  <input
+                    type="date"
+                    value={fechaInicioReporte}
+                    onChange={(e) => {
+                      setFechaInicioReporte(e.target.value);
+                      cargarEstadisticas(e.target.value, fechaFinReporte);
+                    }}
+                    className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-750 text-white text-[11px] focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 text-slate-400">
+                  <span className="font-semibold text-[11px]">Hasta:</span>
+                  <input
+                    type="date"
+                    value={fechaFinReporte}
+                    onChange={(e) => {
+                      setFechaFinReporte(e.target.value);
+                      cargarEstadisticas(fechaInicioReporte, e.target.value);
+                    }}
+                    className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-750 text-white text-[11px] focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                {(fechaInicioReporte || fechaFinReporte) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFechaInicioReporte('');
+                      setFechaFinReporte('');
+                      cargarEstadisticas('', '');
+                    }}
+                    className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition"
+                  >
+                    Limpiar
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleGenerarReportePdf}
+                  disabled={generandoReportePdf}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs transition shadow-md shadow-emerald-600/20"
+                >
+                  {generandoReportePdf ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Generando PDF...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Generar Reporte de Gestión (PDF)</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Tarjetas Resumen */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Total Vecinos</span>
+                <span className="text-xl font-extrabold text-white block">{stats?.resumen?.vecinos_total || 0}</span>
+                <span className="text-[10px] text-emerald-400">{stats?.resumen?.vecinos_aprobados || 0} aprobados</span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Censo Familias</span>
+                <span className="text-xl font-extrabold text-white block">{stats?.resumen?.total_planillas_censo || 0}</span>
+                <span className="text-[10px] text-blue-400">{stats?.resumen?.total_habitantes_censo || 0} habitantes</span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Locales en Alquiler</span>
+                <span className="text-xl font-extrabold text-indigo-400 block">{stats?.resumen?.total_locales_comerciales || 0}</span>
+                <span className="text-[10px] text-slate-400">En viviendas</span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Documentos</span>
+                <span className="text-xl font-extrabold text-white block">{stats?.resumen?.documentos_total || 0}</span>
+                <span className="text-[10px] text-emerald-400">{stats?.resumen?.documentos_vigentes || 0} vigentes</span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Aporte en Bs.</span>
+                <span className="text-lg font-extrabold text-emerald-400 block truncate">Bs. {Number(stats?.resumen?.recaudado_bs || 0).toFixed(2)}</span>
+                <span className="text-[10px] text-slate-400">Total recaudado</span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Aporte en USD</span>
+                <span className="text-lg font-extrabold text-blue-400 block truncate">${Number(stats?.resumen?.recaudado_usd || 0).toFixed(2)}</span>
+                <span className="text-[10px] text-purple-400">{stats?.resumen?.documentos_exonerados || 0} exonerados</span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               
+              {/* Gráfico NUEVO: Trámites por Tipo de Documento */}
+              <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800">
+                <h3 className="text-sm font-bold text-white mb-1 flex items-center justify-between">
+                  <span>Trámites Emitidos por Tipo de Documento</span>
+                  <span className="text-[11px] font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                    Total: {stats?.resumen?.documentos_total || 0}
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400 mb-4">Volumen comparativo de constancias y cartas tramitadas</p>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={stats?.graficos?.tiposDocs || []}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                      <XAxis dataKey="tipo" stroke="#64748b" fontSize={10} />
+                      <YAxis stroke="#64748b" fontSize={10} />
+                      <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }} />
+                      <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                        {stats?.graficos?.tiposDocs?.map((entry, index) => (
+                          <Cell key={`cell-doc-${index}`} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Gráfico NUEVO: Estados y Tipología de Documentos */}
+              <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800">
+                <h3 className="text-sm font-bold text-white mb-1">Estatus Legal de las Constancias Emitidas</h3>
+                <p className="text-xs text-slate-400 mb-4">Relación entre vigentes, vencidos, revocados y exonerados</p>
+                <div className="h-64 flex items-center justify-center">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={stats?.graficos?.estadosDocs || []}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={80}
+                        label
+                      >
+                        {stats?.graficos?.estadosDocs?.map((entry, index) => (
+                          <Cell key={`cell-est-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
               {/* Gráfico 1: Horas a las que más descargan */}
               <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800">
                 <h3 className="text-sm font-bold text-white mb-1">Horas con Mayor Afluencia de Descargas</h3>
@@ -2186,7 +2653,7 @@ export default function Dashboard({ user, onLogout }) {
                       <XAxis dataKey="hora" stroke="#64748b" fontSize={10} />
                       <YAxis stroke="#64748b" fontSize={10} />
                       <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }} />
-                      <Bar dataKey="cantidad" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="cantidad" fill="#6366f1" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -2613,6 +3080,131 @@ export default function Dashboard({ user, onLogout }) {
               </button>
             </div>
 
+            {/* SECCIÓN: VALORES Y GRATUIDAD POR TIPO DE DOCUMENTO */}
+            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-amber-600/20 text-amber-400">
+                    <DollarSign className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <span>Tarifas y Gratuidad por Documento Oficial</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                        {plantillas.length} Documentos
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Establece el valor en dólares ($ USD) por trámite o márcalo como <strong>100% Gratuito</strong> para eximir de pago y pasarela bancaria.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {plantillas.map((p) => {
+                  const cfgActual = docCostos[p.id] || { gratuito: false, monto_usd: 1.0 };
+                  const esGratuito = Boolean(cfgActual.gratuito);
+                  const monto = cfgActual.monto_usd !== undefined ? cfgActual.monto_usd : 1.0;
+
+                  return (
+                    <div
+                      key={p.id}
+                      className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-slate-750 transition flex flex-col md:flex-row md:items-center justify-between gap-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2.5 rounded-xl border ${
+                          esGratuito
+                            ? 'bg-emerald-550/10 border-emerald-500/30 text-emerald-400'
+                            : 'bg-blue-600/10 border-blue-500/30 text-blue-400'
+                        }`}>
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-xs font-bold text-white">{p.titulo}</h4>
+                            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800">
+                              {p.id}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            {esGratuito ? (
+                              <span className="text-emerald-400 font-semibold">Exonerado de aporte solidario (Trámite Gratuito)</span>
+                            ) : (
+                              <span className="text-slate-300 font-medium">Aporte sugerido: <strong className="text-amber-400 font-mono">${Number(monto).toFixed(2)} USD</strong></span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4 shrink-0">
+                        <label className="flex items-center gap-2 cursor-pointer select-none px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition">
+                          <input
+                            type="checkbox"
+                            checked={esGratuito}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              const updated = {
+                                ...docCostos,
+                                [p.id]: {
+                                  gratuito: checked,
+                                  monto_usd: checked ? 0 : (monto > 0 ? monto : 1.0),
+                                },
+                              };
+                              setDocCostos(updated);
+                            }}
+                            className="rounded border-slate-700 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-slate-950 w-4 h-4"
+                          />
+                          <span className={`text-xs font-bold ${esGratuito ? 'text-emerald-400' : 'text-slate-400'}`}>
+                            Gratuito
+                          </span>
+                        </label>
+
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-500 text-xs font-mono font-bold">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            disabled={esGratuito}
+                            value={esGratuito ? '0.00' : monto}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              const updated = {
+                                ...docCostos,
+                                [p.id]: {
+                                  gratuito: false,
+                                  monto_usd: val,
+                                },
+                              };
+                              setDocCostos(updated);
+                            }}
+                            className={`w-24 px-3 py-1.5 rounded-xl bg-slate-950 border text-white font-mono text-xs focus:outline-none transition ${
+                              esGratuito
+                                ? 'opacity-40 cursor-not-allowed border-slate-800 text-slate-500'
+                                : 'border-slate-750 focus:border-amber-500 text-amber-300 font-bold'
+                            }`}
+                          />
+                          <span className="text-slate-400 text-[10px] font-mono">USD</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => guardarCostosDocumentos(docCostos)}
+                  className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition shadow-lg shadow-amber-600/30 flex items-center gap-2"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Guardar Tarifas de Documentos</span>
+                </button>
+              </div>
+            </div>
+
             {/* SECCIÓN: PRESETS OFICIALES (LOGOS E IMÁGENES DEL SISTEMA & MODELADOR) */}
             <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
@@ -2701,6 +3293,205 @@ export default function Dashboard({ user, onLogout }) {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+
+            {/* SECCIÓN: CATÁLOGOS OFICIALES Y SISTEMA DE SELECCIONES (PARENTESCO, INSTRUCCIÓN, SALUD) */}
+            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-indigo-600/20 text-indigo-400">
+                    <ListPlus className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <span>Catálogos Oficiales y Sistema de Selecciones</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                        {catalogos.parentesco.length + catalogos.instruccion.length + catalogos.salud.length} Ítems Activos
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Configura los literales y descripciones de <strong>Parentesco</strong>, <strong>Nivel de Instrucción</strong> y <strong>Condición de Salud</strong> para el Censo y Carga Masiva (CSV).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => abrirModalCrearCatalogo('parentesco')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Parentesco</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => abrirModalCrearCatalogo('instruccion')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Instrucción</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => abrirModalCrearCatalogo('salud')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition shadow shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Salud</span>
+                  </button>
+                </div>
+              </div>
+
+              {loadingCatalogos ? (
+                <div className="p-8 text-center text-xs text-slate-400">
+                  <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-indigo-400" />
+                  <span>Cargando catálogos del sistema...</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  {/* Columna 1: Parentesco */}
+                  <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Parentesco</h4>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                        {catalogos.parentesco.length} opciones
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                      {catalogos.parentesco.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between p-2 rounded-xl bg-slate-900/90 border border-slate-800/80 hover:border-blue-500/30 transition text-xs group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="w-6 h-6 rounded-lg bg-blue-500/10 text-blue-400 font-mono font-bold flex items-center justify-center text-xs shrink-0 border border-blue-500/20">
+                              {item.codigo}
+                            </span>
+                            <span className="text-slate-200 font-medium truncate">{item.descripcion}</span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100">
+                            <button
+                              type="button"
+                              onClick={() => abrirModalEditarCatalogo(item)}
+                              className="p-1 rounded-md text-slate-400 hover:text-blue-400 hover:bg-slate-800 transition"
+                              title="Editar opción"
+                            >
+                              <Edit className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => eliminarCatalogoItem(item)}
+                              className="p-1 rounded-md text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+                              title="Eliminar opción"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Columna 2: Nivel Instrucción */}
+                  <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Nivel Instrucción</h4>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                        {catalogos.instruccion.length} opciones
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                      {catalogos.instruccion.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between p-2 rounded-xl bg-slate-900/90 border border-slate-800/80 hover:border-emerald-500/30 transition text-xs group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-400 font-mono font-bold flex items-center justify-center text-xs shrink-0 border border-emerald-500/20">
+                              {item.codigo}
+                            </span>
+                            <span className="text-slate-200 font-medium truncate">{item.descripcion}</span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100">
+                            <button
+                              type="button"
+                              onClick={() => abrirModalEditarCatalogo(item)}
+                              className="p-1 rounded-md text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition"
+                              title="Editar opción"
+                            >
+                              <Edit className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => eliminarCatalogoItem(item)}
+                              className="p-1 rounded-md text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+                              title="Eliminar opción"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Columna 3: Condición Salud */}
+                  <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Condición Salud</h4>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                        {catalogos.salud.length} opciones
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                      {catalogos.salud.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between p-2 rounded-xl bg-slate-900/90 border border-slate-800/80 hover:border-amber-500/30 transition text-xs group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="w-6 h-6 rounded-lg bg-amber-500/10 text-amber-400 font-mono font-bold flex items-center justify-center text-xs shrink-0 border border-amber-500/20">
+                              {item.codigo}
+                            </span>
+                            <span className="text-slate-200 font-medium truncate">{item.descripcion}</span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100">
+                            <button
+                              type="button"
+                              onClick={() => abrirModalEditarCatalogo(item)}
+                              className="p-1 rounded-md text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition"
+                              title="Editar opción"
+                            >
+                              <Edit className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => eliminarCatalogoItem(item)}
+                              className="p-1 rounded-md text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+                              title="Eliminar opción"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -2908,6 +3699,211 @@ export default function Dashboard({ user, onLogout }) {
         </div>
       )}
 
+      {/* Modal para Crear / Editar Ítem de Catálogo Oficial */}
+      {modalCatalogo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative">
+            <button
+              onClick={() => { setModalCatalogo(false); setCatalogoEditando(null); }}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center">
+                <ListPlus className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  {catalogoEditando ? 'Editar Opción de Selección' : 'Nueva Opción de Selección'}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Catálogo: <strong className="text-indigo-400 uppercase">{catalogoForm.tipo}</strong>
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={guardarCatalogoItem} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Catálogo Destino *</label>
+                <select
+                  disabled={Boolean(catalogoEditando)}
+                  value={catalogoForm.tipo}
+                  onChange={(e) => setCatalogoForm({ ...catalogoForm, tipo: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-medium focus:outline-none focus:border-indigo-500 disabled:opacity-70"
+                >
+                  <option value="parentesco">Parentesco (con Jefe de Hogar)</option>
+                  <option value="instruccion">Nivel de Instrucción Educativa</option>
+                  <option value="salud">Condición de Salud</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-1">
+                  <label className="block text-slate-300 font-semibold mb-1">Literal / Código *</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={3}
+                    value={catalogoForm.codigo}
+                    onChange={(e) => setCatalogoForm({ ...catalogoForm, codigo: e.target.value.toLowerCase() })}
+                    placeholder="Ej: g"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono text-center text-sm font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">Letra para CSV</span>
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-slate-300 font-semibold mb-1">Descripción Completa *</label>
+                  <input
+                    type="text"
+                    required
+                    value={catalogoForm.descripcion}
+                    onChange={(e) => setCatalogoForm({ ...catalogoForm, descripcion: e.target.value })}
+                    placeholder="Ej: Sobrino(a), Diplomado..."
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:outline-none focus:border-indigo-500"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">Texto mostrado en el sistema</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Orden de Presentación</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="99"
+                  value={catalogoForm.orden}
+                  onChange={(e) => setCatalogoForm({ ...catalogoForm, orden: parseInt(e.target.value, 10) || 1 })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setModalCatalogo(false); setCatalogoEditando(null); }}
+                  className="w-1/3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="w-2/3 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{catalogoEditando ? 'Actualizar Opción' : 'Guardar Opción'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Crear Nueva Plantilla Documental */}
+      {modalNuevaPlantilla && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative">
+            <button
+              type="button"
+              onClick={() => setModalNuevaPlantilla(false)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 rounded-2xl bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                <FileText className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Nueva Plantilla Documental</h3>
+                <p className="text-xs text-slate-400">
+                  Crea una nueva constancia o documento oficial para el modelador SVG y trámites
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={crearNuevaPlantilla} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Identificador Único (Código del Documento) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={nuevaPlantillaForm.id}
+                  onChange={(e) => setNuevaPlantillaForm({ ...nuevaPlantillaForm, id: e.target.value.toUpperCase() })}
+                  placeholder="Ej: CARTA_AVAL, AVAL_COMUNAL, TRABAJO"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono uppercase focus:outline-none focus:border-blue-500"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  Sin espacios ni caracteres especiales. Solo letras y guiones bajos.
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Título Oficial del Documento *</label>
+                <input
+                  type="text"
+                  required
+                  value={nuevaPlantillaForm.titulo}
+                  onChange={(e) => setNuevaPlantillaForm({ ...nuevaPlantillaForm, titulo: e.target.value })}
+                  placeholder="Ej: Carta Comunal de Aval Ciudadano"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Subtítulo / Referencia</label>
+                <input
+                  type="text"
+                  value={nuevaPlantillaForm.subtitulo}
+                  onChange={(e) => setNuevaPlantillaForm({ ...nuevaPlantillaForm, subtitulo: e.target.value })}
+                  placeholder="Ej: NRO: {codigo_qr} / AVAL COMUNITARIO"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono focus:outline-none focus:border-blue-500"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  Puedes incluir etiquetas dinámicas como <code>{'{codigo_qr}'}</code>
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Cuerpo / Redacción Legal Inicial</label>
+                <textarea
+                  rows={4}
+                  value={nuevaPlantillaForm.cuerpo_template}
+                  onChange={(e) => setNuevaPlantillaForm({ ...nuevaPlantillaForm, cuerpo_template: e.target.value })}
+                  placeholder="Quien suscribe, Vocería Ejecutiva del Consejo Comunal... hace constar que el ciudadano(a) {nombre_completo}, C.I. {cedula}..."
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono text-[11px] focus:outline-none focus:border-blue-500"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  Variables admitidas: <code>{'{nombre_completo}'}</code>, <code>{'{cedula}'}</code>, <code>{'{vereda}'}</code>, <code>{'{casa}'}</code>, <code>{'{fecha_emision}'}</code>
+                </span>
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalNuevaPlantilla(false)}
+                  className="w-1/3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="w-2/3 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Crear Plantilla</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal de Importación Masiva CSV con Previsualización */}
       {modalImportarCsv && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -2943,33 +3939,25 @@ export default function Dashboard({ user, onLogout }) {
                 <div>
                   <strong className="text-blue-400">Parentesco:</strong>
                   <ul className="pl-1 text-[10px] space-y-0.5 mt-0.5">
-                    <li><span className="font-mono text-white">a</span> = Jefe(a)</li>
-                    <li><span className="font-mono text-white">b</span> = Cónyuge</li>
-                    <li><span className="font-mono text-white">c</span> = Hijo(a)</li>
-                    <li><span className="font-mono text-white">d</span> = Madre/Padre</li>
-                    <li><span className="font-mono text-white">e</span> = Abuelo(a)</li>
-                    <li><span className="font-mono text-white">f</span> = Tíos/Tías</li>
+                    {catalogos.parentesco.map(item => (
+                      <li key={item.id}><span className="font-mono text-white font-bold">{item.codigo}</span> = {item.descripcion}</li>
+                    ))}
                   </ul>
                 </div>
                 <div>
                   <strong className="text-emerald-400">Nivel Instrucción:</strong>
                   <ul className="pl-1 text-[10px] space-y-0.5 mt-0.5">
-                    <li><span className="font-mono text-white">a</span> = Ninguno</li>
-                    <li><span className="font-mono text-white">b</span> = Primaria</li>
-                    <li><span className="font-mono text-white">c</span> = Secundaria</li>
-                    <li><span className="font-mono text-white">d</span> = TSU</li>
-                    <li><span className="font-mono text-white">e</span> = Universitario</li>
-                    <li><span className="font-mono text-white">f</span> = Postgrado</li>
+                    {catalogos.instruccion.map(item => (
+                      <li key={item.id}><span className="font-mono text-white font-bold">{item.codigo}</span> = {item.descripcion}</li>
+                    ))}
                   </ul>
                 </div>
                 <div>
                   <strong className="text-amber-400">Condición Salud:</strong>
                   <ul className="pl-1 text-[10px] space-y-0.5 mt-0.5">
-                    <li><span className="font-mono text-white">a</span> = Discapacidad</li>
-                    <li><span className="font-mono text-white">b</span> = En cama</li>
-                    <li><span className="font-mono text-white">c</span> = Crónica</li>
-                    <li><span className="font-mono text-white">d</span> = Silla de Ruedas</li>
-                    <li><span className="font-mono text-white">e</span> = Ninguna</li>
+                    {catalogos.salud.map(item => (
+                      <li key={item.id}><span className="font-mono text-white font-bold">{item.codigo}</span> = {item.descripcion}</li>
+                    ))}
                   </ul>
                 </div>
               </div>
@@ -3579,7 +4567,7 @@ export default function Dashboard({ user, onLogout }) {
                           />
                         </div>
 
-                        {/* Parentesco (a-f) */}
+                        {/* Parentesco */}
                         <div className="col-span-1 sm:col-span-2 lg:col-span-2">
                           <label className="block text-[10px] text-slate-400 mb-0.5">Parentesco</label>
                           <select
@@ -3587,16 +4575,15 @@ export default function Dashboard({ user, onLogout }) {
                             defaultValue={hab.parentesco || (idx === 0 ? 'a' : 'c')}
                             className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white text-[11px]"
                           >
-                            <option value="a">a - Jefe(a)</option>
-                            <option value="b">b - Cónyuge</option>
-                            <option value="c">c - Hijo(a)</option>
-                            <option value="d">d - Madre/Padre</option>
-                            <option value="e">e - Abuela/Abuelo</option>
-                            <option value="f">f - Tíos/Tías</option>
+                            {catalogos.parentesco.map((item) => (
+                              <option key={item.id} value={item.codigo}>
+                                {item.codigo} - {item.descripcion}
+                              </option>
+                            ))}
                           </select>
                         </div>
 
-                        {/* Instrucción (a-f) */}
+                        {/* Instrucción */}
                         <div className="col-span-1 sm:col-span-2 lg:col-span-2">
                           <label className="block text-[10px] text-slate-400 mb-0.5">Instrucción</label>
                           <select
@@ -3604,12 +4591,11 @@ export default function Dashboard({ user, onLogout }) {
                             defaultValue={hab.instruccion || 'c'}
                             className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white text-[11px]"
                           >
-                            <option value="a">a - Ninguno</option>
-                            <option value="b">b - Primaria</option>
-                            <option value="c">c - Secundaria</option>
-                            <option value="d">d - TSU</option>
-                            <option value="e">e - Universitario</option>
-                            <option value="f">f - Postgrado</option>
+                            {catalogos.instruccion.map((item) => (
+                              <option key={item.id} value={item.codigo}>
+                                {item.codigo} - {item.descripcion}
+                              </option>
+                            ))}
                           </select>
                         </div>
 
@@ -3625,7 +4611,7 @@ export default function Dashboard({ user, onLogout }) {
                           />
                         </div>
 
-                        {/* Salud (a-e) */}
+                        {/* Salud */}
                         <div className="col-span-1 sm:col-span-2 lg:col-span-2">
                           <label className="block text-[10px] text-slate-400 mb-0.5">Salud</label>
                           <select
@@ -3633,11 +4619,11 @@ export default function Dashboard({ user, onLogout }) {
                             defaultValue={hab.salud || 'e'}
                             className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white text-[11px]"
                           >
-                            <option value="a">a - Discapacidad</option>
-                            <option value="b">b - En cama</option>
-                            <option value="c">c - Crónica</option>
-                            <option value="d">d - Silla Ruedas</option>
-                            <option value="e">e - Ninguna</option>
+                            {catalogos.salud.map((item) => (
+                              <option key={item.id} value={item.codigo}>
+                                {item.codigo} - {item.descripcion}
+                              </option>
+                            ))}
                           </select>
                         </div>
 

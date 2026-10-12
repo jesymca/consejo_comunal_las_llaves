@@ -32,6 +32,36 @@ export default function ModalRegistroVecino({ initialCedula = '', onClose, onReg
   const [error, setError] = useState(null);
   const [exito, setExito] = useState(false);
 
+  // Catálogos dinámicos
+  const [catalogoParentesco, setCatalogoParentesco] = useState(
+    Object.entries(MAPEO_PARENTESCO).map(([codigo, descripcion]) => ({ codigo, descripcion }))
+  );
+  const [catalogoInstruccion, setCatalogoInstruccion] = useState(
+    Object.entries(MAPEO_INSTRUCCION).map(([codigo, descripcion]) => ({ codigo, descripcion }))
+  );
+  const [catalogoSalud, setCatalogoSalud] = useState(
+    Object.entries(MAPEO_SALUD).map(([codigo, descripcion]) => ({ codigo, descripcion }))
+  );
+
+  useEffect(() => {
+    let montado = true;
+    async function cargarCatalogos() {
+      try {
+        const res = await fetch('/api/catalogos');
+        if (res.ok) {
+          const data = await res.json();
+          if (montado && data.catalogos) {
+            if (data.catalogos.parentesco?.length > 0) setCatalogoParentesco(data.catalogos.parentesco);
+            if (data.catalogos.instruccion?.length > 0) setCatalogoInstruccion(data.catalogos.instruccion);
+            if (data.catalogos.salud?.length > 0) setCatalogoSalud(data.catalogos.salud);
+          }
+        }
+      } catch (e) {}
+    }
+    cargarCatalogos();
+    return () => { montado = false; };
+  }, []);
+
   // Actualizar casas disponibles cuando cambia la vereda
   useEffect(() => {
     if (vereda) {
@@ -285,9 +315,9 @@ export default function ModalRegistroVecino({ initialCedula = '', onClose, onReg
                   onChange={(e) => setParentesco(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
                 >
-                  {Object.entries(MAPEO_PARENTESCO).map(([letra, desc]) => (
-                    <option key={letra} value={letra}>
-                      ({letra.toUpperCase()}) {desc}
+                  {catalogoParentesco.map((item) => (
+                    <option key={item.codigo} value={item.codigo}>
+                      ({item.codigo.toUpperCase()}) {item.descripcion}
                     </option>
                   ))}
                 </select>
@@ -302,9 +332,9 @@ export default function ModalRegistroVecino({ initialCedula = '', onClose, onReg
                   onChange={(e) => setNivelInstruccion(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
                 >
-                  {Object.entries(MAPEO_INSTRUCCION).map(([letra, desc]) => (
-                    <option key={letra} value={letra}>
-                      ({letra.toUpperCase()}) {desc}
+                  {catalogoInstruccion.map((item) => (
+                    <option key={item.codigo} value={item.codigo}>
+                      ({item.codigo.toUpperCase()}) {item.descripcion}
                     </option>
                   ))}
                 </select>
@@ -335,9 +365,9 @@ export default function ModalRegistroVecino({ initialCedula = '', onClose, onReg
                   onChange={(e) => setCondicionSalud(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500"
                 >
-                  {Object.entries(MAPEO_SALUD).map(([letra, desc]) => (
-                    <option key={letra} value={letra}>
-                      ({letra.toUpperCase()}) {desc}
+                  {catalogoSalud.map((item) => (
+                    <option key={item.codigo} value={item.codigo}>
+                      ({item.codigo.toUpperCase()}) {item.descripcion}
                     </option>
                   ))}
                 </select>

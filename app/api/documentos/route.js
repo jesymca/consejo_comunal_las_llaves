@@ -192,6 +192,37 @@ export async function POST(request) {
         ]
       });
 
+      // Si es FUNCIONAMIENTO y se proporcionaron datos del comercio, registrar en locales_comerciales_viviendas
+      if (tipo_documento.toUpperCase() === 'FUNCIONAMIENTO' && datos_extra) {
+        try {
+          await db.execute({
+            sql: `INSERT INTO locales_comerciales_viviendas (
+              propietario_cedula, propietario_nombres, vereda, casa,
+              nombre_comercio, rif_comercio, tamano_espacio,
+              rubro_establecimiento, fecha_inicio_alquiler,
+              documento_solicitud_id, codigo_documento, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            args: [
+              vecino.cedula,
+              `${vecino.nombres} ${vecino.apellidos}`.trim(),
+              vecino.vereda,
+              vecino.casa,
+              datos_extra.nombre_comercio || 'Sin especificar',
+              datos_extra.rif_comercio || 'Sin RIF',
+              datos_extra.tamano_espacio || 'No especificado',
+              datos_extra.rubro_establecimiento || 'General',
+              datos_extra.fecha_inicio_alquiler || fechaEmision,
+              Number(res.lastInsertRowid || 0),
+              codigoQr,
+              nowIso,
+              nowIso,
+            ]
+          });
+        } catch (errLocal) {
+          console.warn('Error guardando en locales_comerciales_viviendas:', errLocal);
+        }
+      }
+
       // Registrar en auditoría
       await registrarAuditoria({
         tipo_evento: 'SOLICITUD_DOCUMENTO',
@@ -204,7 +235,8 @@ export async function POST(request) {
           exonerado: Boolean(es_exonerado),
           monto_bs,
           banco: banco_nombre,
-          referencia: numero_transferencia
+          referencia: numero_transferencia,
+          comercio: datos_extra?.nombre_comercio || null
         }
       });
 
