@@ -14,12 +14,13 @@ const CANVAS_WIDTH = 750; // Proporcional al ancho de hoja Carta con márgenes
 const DEFAULT_HEADER_HEIGHT = 180;
 const DEFAULT_FOOTER_HEIGHT = 150;
 
-// Presets de imágenes institucionales (todos con proporciones simétricas nativas y formato PNG de alta resolución)
-const PRESET_IMAGES = [
-  { name: 'Escudo Venezuela', url: '/img/escudo_venezuela.png', defaultW: 55, defaultH: 55, lockRatio: true },
-  { name: 'Logo Comunas', url: '/img/mppcomunas.png', defaultW: 90, defaultH: 45, lockRatio: false },
-  { name: 'Logo Consejo Comunal', url: '/img/logo.png', defaultW: 70, defaultH: 70, lockRatio: true },
-  { name: 'Sello Húmedo CC', url: '/img/sello.png', defaultW: 75, defaultH: 75, lockRatio: true },
+// Presets de imágenes institucionales por defecto
+const DEFAULT_PRESET_IMAGES = [
+  { id: 1, name: 'Escudo Venezuela', url: 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/escudo_venezuela.svg', defaultW: 55, defaultH: 55, lockRatio: true },
+  { id: 2, name: 'Logo Comunas', url: 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/mppcomunas.png', defaultW: 90, defaultH: 45, lockRatio: false },
+  { id: 3, name: 'Logo Consejo Comunal', url: 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/logo.png', defaultW: 70, defaultH: 70, lockRatio: true },
+  { id: 4, name: 'Sello Húmedo CC', url: 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/sello.png', defaultW: 75, defaultH: 75, lockRatio: true },
+  { id: 5, name: 'Comisión de Tecnología (TEI)', url: 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/tei.png', defaultW: 65, defaultH: 65, lockRatio: true },
 ];
 
 export default function SvgCanvasEditor({
@@ -104,6 +105,80 @@ export default function SvgCanvasEditor({
   const [activeTab, setActiveTab] = useState('elementos'); // 'elementos' | 'textos' | 'propiedades' | 'lienzo'
   const [zoom, setZoom] = useState(1);
   const [mensajeGuardado, setMensajeGuardado] = useState('');
+  const [presetsDisponibles, setPresetsDisponibles] = useState(DEFAULT_PRESET_IMAGES);
+
+  // Cargar presets oficiales dinámicos y configuración del sistema desde la base de datos
+  useEffect(() => {
+    let montado = true;
+    async function cargarPresetsDinamicos() {
+      try {
+        const res = await fetch('/api/presets');
+        if (res.ok) {
+          const data = await res.json();
+          if (montado && data.presets && Array.isArray(data.presets) && data.presets.length > 0) {
+            setPresetsDisponibles(data.presets);
+          }
+        }
+      } catch (err) {
+        console.warn('Error al cargar presets dinámicos, usando predeterminados:', err);
+      }
+    }
+
+    async function sincronizarConfiguracionInstitucional() {
+      try {
+        const res = await fetch('/api/configuracion');
+        if (res.ok) {
+          const data = await res.json();
+          const situr = data.config?.situr_codigo;
+          if (montado && situr && mode === 'header') {
+            setEditorState((prev) => {
+              if (!prev || !prev.textos) return prev;
+              const nuevosTextos = prev.textos.map((t) => {
+                if (t.texto && t.texto.includes('SITUR:') && !t.texto.includes(situr)) {
+                  return {
+                    ...t,
+                    texto: t.texto.replace(/SITUR:\s*[^|,\n]+/, `SITUR: ${situr}`)
+                  };
+                }
+                return t;
+              });
+              return { ...prev, textos: nuevosTextos };
+            });
+          }
+        }
+      } catch (err) {
+        // Silencioso
+      }
+    }
+
+    cargarPresetsDinamicos();
+    sincronizarConfiguracionInstitucional();
+
+    const handleConfigUpdate = (e) => {
+      const situr = e.detail?.situr_codigo;
+      if (situr && mode === 'header') {
+        setEditorState((prev) => {
+          if (!prev || !prev.textos) return prev;
+          const nuevosTextos = prev.textos.map((t) => {
+            if (t.texto && t.texto.includes('SITUR:')) {
+              return {
+                ...t,
+                texto: t.texto.replace(/SITUR:\s*[^|,\n]+/, `SITUR: ${situr}`)
+              };
+            }
+            return t;
+          });
+          return { ...prev, textos: nuevosTextos };
+        });
+      }
+    };
+    window.addEventListener('config_updated', handleConfigUpdate);
+
+    return () => {
+      montado = false;
+      window.removeEventListener('config_updated', handleConfigUpdate);
+    };
+  }, [mode]);
 
   // Dragging y Resizing refs
   const svgRef = useRef(null);
@@ -788,14 +863,16 @@ export default function SvgCanvasEditor({
             </div>
 
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[11px] text-slate-400">Presets oficiales:</span>
-              {PRESET_IMAGES.map((preset) => (
+              <span className="text-[11px] text-slate-400 font-semibold">Presets oficiales:</span>
+              {presetsDisponibles.map((preset) => (
                 <button
-                  key={preset.name}
+                  key={preset.id || preset.name}
                   onClick={() => handleAddPresetImage(preset)}
-                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold border border-slate-700 transition"
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold border border-slate-700 transition flex items-center gap-1.5 shadow-sm"
+                  title={`Insertar ${preset.name} (${preset.defaultW}x${preset.defaultH})`}
                 >
-                  + {preset.name}
+                  <img src={preset.url} alt="" className="w-3.5 h-3.5 object-contain rounded" />
+                  <span>+ {preset.name}</span>
                 </button>
               ))}
             </div>

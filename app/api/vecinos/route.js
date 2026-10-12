@@ -415,6 +415,7 @@ export async function POST(request) {
         const saludDecod = decodificarSalud(saludRaw);
 
         parsedRows.push({
+          fila: index + 2,
           numero_familia: numFamRaw,
           cedula: normCed,
           nombres: nombresRaw.toString().trim().toUpperCase(),
@@ -436,21 +437,75 @@ export async function POST(request) {
         });
       });
 
+      // Consultar en la base de datos todas las cédulas que ya existan para clasificarlas
+      const cedulasToCheck = parsedRows.map(r => r.cedula);
+      let cedulasExistentes = new Set();
+      if (cedulasToCheck.length > 0) {
+        // En SQLite / Turso podemos consultar en lotes
+        const placeholders = cedulasToCheck.map(() => '?').join(',');
+        const existRes = await db.execute({
+          sql: `SELECT cedula, nombres, apellidos, vereda, casa, estado_aprobacion FROM vecinos WHERE cedula IN (${placeholders})`,
+          args: cedulasToCheck,
+        });
+        existRes.rows.forEach(r => {
+          cedulasExistentes.add(r.cedula);
+        });
+      }
+
+      // Detectar duplicados dentro del mismo CSV o ya existentes en la BD
+      const cedulasVistasEnCsv = new Set();
+      const filasNuevas = [];
+      const filasDuplicadas = [];
+
+      for (const item of parsedRows) {
+        if (cedulasExistentes.has(item.cedula)) {
+          filasDuplicadas.push({
+            fila: item.fila,
+            cedula: item.cedula,
+            nombres: `${item.nombres} ${item.apellidos}`,
+            ubicacion: `Vereda ${item.vereda}, ${item.casa}`,
+            motivo: 'Ya registrado previamente en la base de datos del padrón',
+          });
+        } else if (cedulasVistasEnCsv.has(item.cedula)) {
+          filasDuplicadas.push({
+            fila: item.fila,
+            cedula: item.cedula,
+            nombres: `${item.nombres} ${item.apellidos}`,
+            ubicacion: `Vereda ${item.vereda}, ${item.casa}`,
+            motivo: 'Cédula repetida múltiples veces dentro del mismo archivo CSV',
+          });
+        } else {
+          cedulasVistasEnCsv.add(item.cedula);
+          filasNuevas.push(item);
+        }
+      }
+
+      // Marcar en las muestras si ya existe para resaltarlo visualmente en la tabla
+      const muestrasConEstado = parsedRows.map(r => ({
+        ...r,
+        yaExiste: cedulasExistentes.has(r.cedula),
+      }));
+
       if (previewOnly) {
         return NextResponse.json({
           preview: true,
           totalFilasRecibidas: rows.length,
-          filasValidas: parsedRows.length,
+          totalNuevos: filasNuevas.length,
+          totalExistentes: filasDuplicadas.length,
+          totalErrores: errors.length,
+          totalProcesables: filasNuevas.length,
+          filasValidas: filasNuevas.length,
+          duplicados: filasDuplicadas,
           errores: errors,
-          muestras: parsedRows.slice(0, 50),
+          muestras: muestrasConEstado.slice(0, 100),
         });
       }
 
-      // Inserción real en base de datos
+      // Inserción real en base de datos: solo se procesan las filas nuevas
       let insertados = 0;
-      let duplicados = 0;
+      let erroresInsercion = [];
 
-      for (const item of parsedRows) {
+      for (const item of filasNuevas) {
         try {
           const estado = autoApprove ? 'APROBADO' : 'PENDIENTE';
           const aprobadoPorId = autoApprove ? currentUser.id : null;
@@ -495,11 +550,9 @@ export async function POST(request) {
 
           if (res.rowsAffected > 0) {
             insertados++;
-          } else {
-            duplicados++;
           }
         } catch (e) {
-          errors.push({ cedula: item.cedula, error: e.message });
+          erroresInsercion.push({ cedula: item.cedula, error: e.message });
         }
       }
 
@@ -507,15 +560,20 @@ export async function POST(request) {
         tipo_evento: 'IMPORTACION_CSV_VECINOS',
         usuario_id: currentUser.id,
         usuario_nombre: currentUser.nombre,
-        detalles: { insertados, duplicados, totalErrores: errors.length }
+        detalles: { 
+          insertados, 
+          duplicadosOmitidos: filasDuplicadas.length, 
+          erroresFormato: errors.length,
+          erroresInsercion: erroresInsercion.length 
+        }
       });
 
       return NextResponse.json({
         success: true,
-        message: `Importación finalizada: ${insertados} insertados, ${duplicados} omitidos por cédula duplicada.`,
+        message: `Importación finalizada: ${insertados} vecinos nuevos incorporados al padrón. ${filasDuplicadas.length} cédulas ya existentes fueron omitidas.`,
         insertados,
-        duplicados,
-        errores: errors,
+        duplicados: filasDuplicadas,
+        errores: [...errors, ...erroresInsercion],
       });
     }
 

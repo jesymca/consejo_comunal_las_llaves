@@ -6,7 +6,7 @@ import {
   PenTool, Sliders, ShieldCheck, History, BarChart3, Settings,
   LogOut, Plus, Search, Filter, Download, Upload, Check, X,
   AlertTriangle, RefreshCw, Eye, EyeOff, Edit, Trash2, Key, CheckCircle2,
-  Calendar, Clock, UserCheck, ShieldAlert, Sun, Moon
+  Calendar, Clock, UserCheck, ShieldAlert, Sun, Moon, Image as ImageIcon
 } from 'lucide-react';
 import { VEREDAS, CASAS_POR_VEREDA, getCasasPorVereda, BANCOS_VENEZUELA, CALIDADES_TENENCIA } from '@/lib/territory';
 import { generarDocumentoPdf } from '@/lib/pdfGenerator';
@@ -105,6 +105,22 @@ export default function Dashboard({ user, onLogout }) {
   const [guardandoSello, setGuardandoSello] = useState(false);
   const [mensajeSello, setMensajeSello] = useState('');
   const selloFileInputRef = useRef(null);
+
+  // Estados de módulo Presets Oficiales (Logos e Imágenes Institucionales)
+  const [presetsImagenes, setPresetsImagenes] = useState([]);
+  const [loadingPresets, setLoadingPresets] = useState(false);
+  const [modalPreset, setModalPreset] = useState(false);
+  const [presetEditando, setPresetEditando] = useState(null);
+  const [presetForm, setPresetForm] = useState({
+    nombre: '',
+    url: '',
+    ancho: 60,
+    alto: 60,
+    bloquear_proporcion: true,
+    categoria: 'OFICIAL',
+  });
+  const [subiendoImagenPreset, setSubiendoImagenPreset] = useState(false);
+  const presetFileInputRef = useRef(null);
 
   // Estados de módulo Modelador
   const [plantillas, setPlantillas] = useState([]);
@@ -608,12 +624,104 @@ export default function Dashboard({ user, onLogout }) {
       if (cfg.sello_forma) setSelloForma(cfg.sello_forma);
       if (cfg.sello_ancho_mm) setSelloAnchoMm(parseFloat(cfg.sello_ancho_mm) || 48);
       if (cfg.sello_alto_mm) setSelloAltoMm(parseFloat(cfg.sello_alto_mm) || 26);
+      cargarPresetsImagenes();
     } catch (e) {
       console.error(e);
     }
   };
 
-  // Descarga de plantillas CSV con las 15 columnas homologadas y guía de códigos
+  const cargarPresetsImagenes = async () => {
+    setLoadingPresets(true);
+    try {
+      const res = await fetch('/api/presets');
+      if (res.ok) {
+        const data = await res.json();
+        setPresetsImagenes(data.presets || []);
+      }
+    } catch (e) {
+      console.error('Error cargando presets:', e);
+    } finally {
+      setLoadingPresets(false);
+    }
+  };
+
+  const abrirModalCrearPreset = () => {
+    setPresetEditando(null);
+    setPresetForm({
+      nombre: '',
+      url: '',
+      ancho: 60,
+      alto: 60,
+      bloquear_proporcion: true,
+      categoria: 'OFICIAL',
+    });
+    setModalPreset(true);
+  };
+
+  const abrirModalEditarPreset = (p) => {
+    setPresetEditando(p);
+    setPresetForm({
+      nombre: p.name || p.nombre || '',
+      url: p.url || '',
+      ancho: p.defaultW || p.ancho || 60,
+      alto: p.defaultH || p.alto || 60,
+      bloquear_proporcion: p.lockRatio !== undefined ? Boolean(p.lockRatio) : true,
+      categoria: p.categoria || 'OFICIAL',
+    });
+    setModalPreset(true);
+  };
+
+  const guardarPresetOficial = async (e) => {
+    e.preventDefault();
+    if (!presetForm.nombre || !presetForm.url) {
+      toast.error('Nombre y URL de la imagen son obligatorios');
+      return;
+    }
+
+    try {
+      const method = presetEditando?.id ? 'PUT' : 'POST';
+      const bodyPayload = {
+        ...presetForm,
+        ...(presetEditando?.id ? { id: presetEditando.id } : {}),
+      };
+
+      const res = await fetch('/api/presets', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyPayload),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || 'Preset guardado con éxito');
+        setModalPreset(false);
+        setPresetEditando(null);
+        cargarPresetsImagenes();
+      } else {
+        toast.error(data.error || 'Error al guardar preset');
+      }
+    } catch (err) {
+      toast.error('Error de conexión al guardar preset');
+    }
+  };
+
+  const eliminarPresetOficial = async (preset) => {
+    if (!confirm(`¿Estás seguro de eliminar el preset "${preset.name || preset.nombre}"?`)) return;
+    try {
+      const res = await fetch(`/api/presets?id=${preset.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success('Preset eliminado exitosamente');
+        cargarPresetsImagenes();
+      } else {
+        toast.error(data.error || 'Error al eliminar preset');
+      }
+    } catch (err) {
+      toast.error('Error de red al eliminar preset');
+    }
+  };
+
+  // Descarga de plantillas CSV con las 15 columnas homologadas (únicamente cabecera y datos)
   const descargarPlantillaCsv = () => {
     const cabecera = "CEDULA,NOMBRES,APELLIDOS,NUMERO_FAMILIA,VEREDA,CASA,TIEMPO_RESIDENCIA_ANOS,CALIDAD_TENENCIA,SEXO,PARENTESCO,NIVEL_INSTRUCCION,PROFESION_OCUPACION,CONDICION_SALUD,TELEFONO,EMAIL\n";
     const ejemplos = 
@@ -621,17 +729,8 @@ export default function Dashboard({ user, onLogout }) {
       "V-12345678,PEDRO JOSE,PEREZ GOMEZ,1,A,A-8,12,Propia,M,b,d,Comerciante,e,04141234567,pedro@ejemplo.com\n" +
       "V-28123456,ANA SOFIA,PEREZ RODRIGUEZ,1,A,A-8,12,Propia,F,c,c,Estudiante,e,04245551234,ana@ejemplo.com\n" +
       "V-14555888,JOSE LUIS,PEREZ GOMEZ,2,A,A-8,4,Familia Adjunta / Agregada,M,a,c,Mecánico,e,04169998877,joseluis@ejemplo.com\n";
-    
-    // Leyenda explicativa al pie de la plantilla para el usuario
-    const guiaCodigos = 
-      "\n# GUÍA DE CÓDIGOS ADMITIDOS PARA LLENADO RÁPIDO (Letra única en mayúscula o minúscula):\n" +
-      "# PARENTESCO: a=Jefe(a) | b=Cónyuge | c=Hijo(a) | d=Madre/Padre | e=Abuelo(a) | f=Tíos/Tías\n" +
-      "# NIVEL_INSTRUCCION: a=Ninguno | b=Primaria | c=Secundaria | d=TSU | e=Universitario | f=Postgrado\n" +
-      "# CONDICION_SALUD: a=Discapacidad | b=En cama | c=Crónica | d=Silla de Ruedas | e=Ninguna\n" +
-      "# SEXO: M=Masculino | F=Femenino\n" +
-      "# TENENCIA: Propia | Alquilada | En Cuido | Familia Adjunta / Agregada | Otro\n";
 
-    const blob = new Blob([cabecera + ejemplos + guiaCodigos], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([cabecera + ejemplos], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
@@ -895,23 +994,13 @@ export default function Dashboard({ user, onLogout }) {
 
               <div className="flex flex-wrap gap-2">
                 {checkPermiso("censo_masivo") && (
-                  <>
-                    <button
-                      onClick={descargarPlantillaCsv}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-xs font-semibold text-slate-300 hover:text-white transition"
-                    >
-                      <Download className="w-3.5 h-3.5 text-blue-400" />
-                      <span>Formato CSV</span>
-                    </button>
-
-                    <button
-                      onClick={() => setModalImportarCsv(true)}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-xs font-semibold text-emerald-400 hover:bg-slate-800 transition"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Carga Masiva (CSV)</span>
-                    </button>
-                  </>
+                  <button
+                    onClick={() => setModalImportarCsv(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-xs font-semibold text-emerald-400 hover:bg-slate-800 transition"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Carga Masiva (CSV)</span>
+                  </button>
                 )}
 
                 {checkPermiso("vecinos_crear") && (
@@ -2012,8 +2101,8 @@ export default function Dashboard({ user, onLogout }) {
                             <h4 className="text-xs font-bold text-slate-900 tracking-wider">REPÚBLICA BOLIVARIANA DE VENEZUELA</h4>
                             <p className="text-[10px] text-slate-700">MINISTERIO DEL PODER POPULAR PARA LAS COMUNAS</p>
                             <p className="text-[10px] font-bold text-slate-800">CONSEJO COMUNAL &quot;LAS LLAVES&quot;</p>
-                            <p className="text-[9px] text-slate-600">Urbanización Dr. Alfredo Travieso Paúl - Parroquia Goaigoaza</p>
-                            <p className="text-[9px] text-slate-500">Municipio Puerto Cabello, Estado Carabobo | RIF: C299916862 | SITUR: 08-11-04-001-0033</p>
+                            <p className="text-[9px] text-slate-600">Urbanización {config?.urbanizacion || 'Dr. Alfredo Travieso Paúl'} - Parroquia {config?.parroquia || 'Goaigoaza'}</p>
+                            <p className="text-[9px] text-slate-500">Municipio {config?.municipio || 'Puerto Cabello'}, Estado {config?.estado || 'Carabobo'} | RIF: {config?.rif || 'C299916862'} | SITUR: {config?.situr_codigo || '08-11-04-001-0033'}</p>
                           </div>
 
                           <div className="text-right text-[11px] font-mono font-bold text-slate-700 mb-4">
@@ -2510,6 +2599,9 @@ export default function Dashboard({ user, onLogout }) {
                   });
                   if (res.ok) {
                     setConfig(updatedConfig);
+                    try {
+                      window.dispatchEvent(new CustomEvent('config_updated', { detail: updatedConfig }));
+                    } catch (e) {}
                     toast.success('Configuraciones guardadas');
                   } else {
                     toast.error('Error guardando configuraciones');
@@ -2519,6 +2611,98 @@ export default function Dashboard({ user, onLogout }) {
               >
                 Guardar Parámetros
               </button>
+            </div>
+
+            {/* SECCIÓN: PRESETS OFICIALES (LOGOS E IMÁGENES DEL SISTEMA & MODELADOR) */}
+            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-blue-600/20 text-blue-400">
+                    <ImageIcon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <span>Presets Oficiales de Imágenes y Logos</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                        {presetsImagenes.length} Registrados
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Catálogo centralizado de logos, escudos y sellos vinculados automáticamente al <strong>Modelador SVG</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={abrirModalCrearPreset}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-600/30 transition shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Nuevo Preset</span>
+                </button>
+              </div>
+
+              {loadingPresets ? (
+                <div className="p-8 text-center text-xs text-slate-400">
+                  <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-blue-400" />
+                  <span>Cargando catálogo de presets...</span>
+                </div>
+              ) : presetsImagenes.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-400 bg-slate-950/60 rounded-2xl border border-slate-800">
+                  No hay presets registrados en la base de datos.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {presetsImagenes.map((preset) => (
+                    <div
+                      key={preset.id}
+                      className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-blue-500/30 transition flex flex-col justify-between group"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-750 flex items-center justify-center p-1.5 shrink-0 overflow-hidden">
+                          <img
+                            src={preset.url}
+                            alt={preset.name}
+                            className="w-full h-full object-contain"
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-xs font-bold text-white truncate" title={preset.name}>
+                            {preset.name}
+                          </h4>
+                          <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
+                            Dim: {preset.defaultW}x{preset.defaultH} px
+                          </span>
+                          <span className="inline-block mt-1 text-[9px] font-semibold px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                            {preset.lockRatio ? 'Proporción 1:1' : 'Libre'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 pt-3 mt-3 border-t border-slate-850">
+                        <button
+                          type="button"
+                          onClick={() => abrirModalEditarPreset(preset)}
+                          className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 hover:bg-slate-850 text-blue-400 text-[11px] font-semibold border border-slate-800 transition flex items-center justify-center gap-1"
+                        >
+                          <Edit className="w-3 h-3" />
+                          <span>Editar</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => eliminarPresetOficial(preset)}
+                          className="py-1.5 px-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-semibold border border-rose-500/20 transition flex items-center justify-center"
+                          title="Eliminar preset"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* ZONA DE PELIGRO / PASE A PRODUCCIÓN */}
@@ -2566,6 +2750,163 @@ export default function Dashboard({ user, onLogout }) {
         )}
 
       </main>
+
+      {/* Modal para Crear / Editar Preset Oficial de Imagen */}
+      {modalPreset && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative">
+            <button
+              onClick={() => { setModalPreset(false); setPresetEditando(null); }}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center">
+                <ImageIcon className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  {presetEditando?.id ? 'Editar Preset Oficial' : 'Nuevo Preset de Imagen'}
+                </h3>
+                <p className="text-xs text-slate-400">Disponible inmediatamente en el Modelador SVG</p>
+              </div>
+            </div>
+
+            <form onSubmit={guardarPresetOficial} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Nombre Descriptivo *</label>
+                <input
+                  type="text"
+                  required
+                  value={presetForm.nombre}
+                  onChange={(e) => setPresetForm({ ...presetForm, nombre: e.target.value })}
+                  placeholder="Ej: Sello de Finanzas, Logo Alcaldía, etc."
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">URL de la Imagen o Logo *</label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    required
+                    value={presetForm.url}
+                    onChange={(e) => setPresetForm({ ...presetForm, url: e.target.value })}
+                    placeholder="https://... o /img/..."
+                    className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono text-[11px] focus:outline-none focus:border-blue-500"
+                  />
+                  <input
+                    ref={presetFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setSubiendoImagenPreset(true);
+                      const urlSubida = await subirArchivoAStorage(file, 'presets', presetForm.nombre || 'preset_oficial');
+                      if (urlSubida) {
+                        setPresetForm((prev) => ({
+                          ...prev,
+                          url: urlSubida,
+                          nombre: prev.nombre || file.name.replace(/\.[^/.]+$/, ''),
+                        }));
+                      }
+                      setSubiendoImagenPreset(false);
+                      e.target.value = '';
+                    }}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    disabled={subiendoImagenPreset}
+                    onClick={() => presetFileInputRef.current?.click()}
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 font-semibold flex items-center gap-1.5 shrink-0 transition"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-blue-400" />
+                    <span>{subiendoImagenPreset ? 'Subiendo...' : 'Subir'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Vista previa de imagen */}
+              {presetForm.url && (
+                <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-xl bg-slate-900 border border-slate-750 p-1 flex items-center justify-center shrink-0 overflow-hidden">
+                    <img
+                      src={presetForm.url}
+                      alt="Vista previa"
+                      className="max-w-full max-h-full object-contain"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
+                  </div>
+                  <div className="text-[11px] text-slate-400 overflow-hidden">
+                    <span className="font-bold text-white block">Vista previa activa</span>
+                    <span className="truncate block font-mono text-[10px] text-slate-500">{presetForm.url}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Ancho por defecto (px)</label>
+                  <input
+                    type="number"
+                    min="20"
+                    max="400"
+                    value={presetForm.ancho}
+                    onChange={(e) => setPresetForm({ ...presetForm, ancho: parseInt(e.target.value, 10) || 60 })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Alto por defecto (px)</label>
+                  <input
+                    type="number"
+                    min="20"
+                    max="400"
+                    value={presetForm.alto}
+                    onChange={(e) => setPresetForm({ ...presetForm, alto: parseInt(e.target.value, 10) || 60 })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="chkBloquearProporcion"
+                  checked={presetForm.bloquear_proporcion}
+                  onChange={(e) => setPresetForm({ ...presetForm, bloquear_proporcion: e.target.checked })}
+                  className="rounded border-slate-750 bg-slate-950 text-blue-600 focus:ring-0"
+                />
+                <label htmlFor="chkBloquearProporcion" className="text-slate-300 cursor-pointer select-none">
+                  Bloquear proporción de aspecto al redimensionar (simétrico 1:1)
+                </label>
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setModalPreset(false); setPresetEditando(null); }}
+                  className="w-1/3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="w-2/3 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{presetEditando?.id ? 'Actualizar Preset' : 'Guardar Preset'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal de Importación Masiva CSV con Previsualización */}
       {modalImportarCsv && (
@@ -2671,24 +3012,67 @@ export default function Dashboard({ user, onLogout }) {
 
             {csvPreviewData && (
               <div className="space-y-4">
-                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs flex flex-wrap gap-4 items-center justify-between">
-                  <span>Total filas detectadas: <strong className="text-white">{csvPreviewData.totalFilasRecibidas}</strong></span>
-                  <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
-                    Válidas para importar: {csvPreviewData.filasValidas}
-                  </span>
-                  {csvPreviewData.errores?.length > 0 && (
-                    <span className="text-rose-400 font-bold bg-rose-500/10 px-2.5 py-1 rounded-lg border border-rose-500/20">
-                      Con inconsistencias: {csvPreviewData.errores.length}
-                    </span>
-                  )}
+                {/* Resumen con Badges de Estado */}
+                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex flex-col">
+                    <span className="text-[10px] text-slate-400 font-semibold uppercase">Total Leídos</span>
+                    <span className="text-xl font-black text-white">{csvPreviewData.totalFilasRecibidas || 0}</span>
+                    <span className="text-[10px] text-slate-500">Filas en archivo</span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex flex-col">
+                    <span className="text-[10px] text-emerald-400 font-semibold uppercase">Nuevos a Ingresar</span>
+                    <span className="text-xl font-black text-emerald-400">{csvPreviewData.totalNuevos || 0}</span>
+                    <span className="text-[10px] text-emerald-300/80">Serán procesados</span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex flex-col">
+                    <span className="text-[10px] text-amber-400 font-semibold uppercase">Ya Registrados</span>
+                    <span className="text-xl font-black text-amber-400">{csvPreviewData.totalExistentes || 0}</span>
+                    <span className="text-[10px] text-amber-300/80">Se omitirán (duplicados)</span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 flex flex-col">
+                    <span className="text-[10px] text-rose-400 font-semibold uppercase">Errores de Formato</span>
+                    <span className="text-xl font-black text-rose-400">{csvPreviewData.totalErrores || 0}</span>
+                    <span className="text-[10px] text-rose-300/80">Inconsistencias</span>
+                  </div>
                 </div>
 
+                {/* Notificación si hay cédulas existentes */}
+                {csvPreviewData.duplicados?.length > 0 && (
+                  <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs space-y-2">
+                    <div className="flex items-center gap-2 font-bold text-amber-400">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{csvPreviewData.duplicados.length} vecinos ya existen en el sistema y no serán procesados:</span>
+                    </div>
+                    <div className="max-h-28 overflow-y-auto space-y-1 pl-6 text-[11px]">
+                      {csvPreviewData.duplicados.map((dup, idx) => (
+                        <div key={idx} className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-mono font-bold text-white bg-slate-900 px-1.5 py-0.5 rounded border border-amber-500/30">
+                            {dup.cedula}
+                          </span>
+                          <span className="text-slate-200">{dup.nombres}</span>
+                          <span className="text-slate-400">({dup.ubicacion})</span>
+                          <span className="text-amber-400/90 italic">— {dup.motivo}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Notificación si hay errores de sintaxis o casa inválida */}
                 {csvPreviewData.errores?.length > 0 && (
-                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs max-h-36 overflow-y-auto">
-                    <strong className="block mb-1 font-bold">Errores que serán omitidos:</strong>
-                    <ul className="list-disc pl-4 space-y-1 text-[11px]">
+                  <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs space-y-2">
+                    <div className="flex items-center gap-2 font-bold text-rose-400">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{csvPreviewData.errores.length} inconsistencias detectadas (serán omitidas):</span>
+                    </div>
+                    <ul className="list-disc pl-6 space-y-1 text-[11px] max-h-28 overflow-y-auto">
                       {csvPreviewData.errores.map((err, idx) => (
-                        <li key={idx}>Fila {err.fila} ({err.cedula || 'Sin cédula'}): {err.error}</li>
+                        <li key={idx}>
+                          Fila {err.fila} {err.cedula ? `[${err.cedula}]` : ''}: {err.error}
+                        </li>
                       ))}
                     </ul>
                   </div>
@@ -2699,14 +3083,22 @@ export default function Dashboard({ user, onLogout }) {
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-bold text-slate-300">
-                        Previsualización de Datos Procesados ({Math.min(csvPreviewData.muestras.length, 50)} registros):
+                        Previsualización de Datos ({Math.min(csvPreviewData.muestras.length, 100)} registros analizados):
                       </span>
-                      <span className="text-[11px] text-slate-500">Mapeo automático de códigos verificado</span>
+                      <div className="flex items-center gap-3 text-[11px]">
+                        <span className="inline-flex items-center gap-1 text-emerald-400">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400"></span> Nuevo
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-amber-400">
+                          <span className="w-2 h-2 rounded-full bg-amber-400"></span> Ya Existe (Omitir)
+                        </span>
+                      </div>
                     </div>
                     <div className="border border-slate-800 rounded-xl overflow-hidden max-h-64 overflow-y-auto overflow-x-auto">
                       <table className="w-full text-left text-[11px]">
                         <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 sticky top-0 whitespace-nowrap">
                           <tr>
+                            <th className="px-3 py-2">Estado</th>
                             <th className="px-3 py-2">Fam.</th>
                             <th className="px-3 py-2">Cédula</th>
                             <th className="px-3 py-2">Nombres y Apellidos</th>
@@ -2721,7 +3113,18 @@ export default function Dashboard({ user, onLogout }) {
                         </thead>
                         <tbody className="divide-y divide-slate-800/60 bg-slate-900/60 whitespace-nowrap">
                           {csvPreviewData.muestras.map((m, idx) => (
-                            <tr key={idx} className="hover:bg-slate-800/40">
+                            <tr key={idx} className={m.yaExiste ? "bg-amber-500/5 hover:bg-amber-500/10" : "hover:bg-slate-800/40"}>
+                              <td className="px-3 py-2 font-bold">
+                                {m.yaExiste ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                    Ya Existe
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                    Nuevo
+                                  </span>
+                                )}
+                              </td>
                               <td className="px-3 py-2 font-mono text-blue-400 font-bold">{m.numero_familia || 1}</td>
                               <td className="px-3 py-2 font-mono font-bold text-white">{m.cedula}</td>
                               <td className="px-3 py-2 font-medium text-slate-200">{m.nombres} {m.apellidos}</td>
@@ -2750,6 +3153,10 @@ export default function Dashboard({ user, onLogout }) {
                   </button>
                   <button
                     onClick={async () => {
+                      if ((csvPreviewData.totalNuevos || 0) === 0) {
+                        toast.error('No hay vecinos nuevos para procesar en este archivo.');
+                        return;
+                      }
                       try {
                         const res = await fetch('/api/vecinos', {
                           method: 'POST',
@@ -2763,7 +3170,7 @@ export default function Dashboard({ user, onLogout }) {
                         });
                         const resData = await res.json();
                         if (res.ok) {
-                          toast.success(resData.message || 'Importación completada');
+                          toast.success(resData.message || 'Importación completada con éxito');
                           setModalImportarCsv(false);
                           setCsvPreviewData(null);
                           cargarVecinos();
@@ -2775,10 +3182,15 @@ export default function Dashboard({ user, onLogout }) {
                         toast.error('Error de red al importar');
                       }
                     }}
-                    className="w-full sm:w-2/3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2"
+                    disabled={(csvPreviewData.totalNuevos || 0) === 0}
+                    className="w-full sm:w-2/3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2"
                   >
                     <Check className="w-4 h-4" />
-                    <span>Confirmar e Importar {csvPreviewData.filasValidas} Vecinos Validados</span>
+                    <span>
+                      {(csvPreviewData.totalNuevos || 0) > 0 
+                        ? `Confirmar y Procesar ${csvPreviewData.totalNuevos} Vecinos Nuevos`
+                        : 'Sin Vecinos Nuevos por Procesar'}
+                    </span>
                   </button>
                 </div>
               </div>

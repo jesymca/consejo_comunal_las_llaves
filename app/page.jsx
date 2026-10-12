@@ -30,6 +30,7 @@ export default function HomePage() {
 
   // Validador query
   const [validadorCodigo, setValidadorCodigo] = useState('');
+  const [config, setConfig] = useState(null);
 
   // 1. Escuchar cambios de hash (#dashboard, #validar, #inicio, #vecinos, etc.)
   useEffect(() => {
@@ -53,13 +54,26 @@ export default function HomePage() {
     return () => window.removeEventListener('hashchange', handleHash);
   }, []);
 
-  // 2. Verificar sesión activa al cargar
+  // 2. Verificar sesión activa y configuración al cargar
   useEffect(() => {
     checkSession();
     fetch('/api/dolar')
       .then(r => r.json())
       .then(d => { if (d.promedio) setTasaBcv(d.promedio); })
       .catch(() => {});
+
+    fetch('/api/configuracion')
+      .then(r => r.json())
+      .then(d => { if (d.config) setConfig(d.config); })
+      .catch(() => {});
+
+    const handleConfigUpdate = (e) => {
+      if (e.detail) {
+        setConfig(prev => ({ ...(prev || {}), ...e.detail }));
+      }
+    };
+    window.addEventListener('config_updated', handleConfigUpdate);
+    return () => window.removeEventListener('config_updated', handleConfigUpdate);
   }, []);
 
   const checkSession = async () => {
@@ -140,6 +154,7 @@ export default function HomePage() {
       {/* Navbar Superior */}
       <Navbar
         user={user}
+        config={config}
         onOpenLogin={() => setModalLoginOpen(true)}
         onLogout={handleLogout}
         onNavigateHash={handleNavigateHash}
@@ -193,7 +208,7 @@ export default function HomePage() {
               </p>
               <p className="font-semibold text-slate-400">© 2026 Consejo Comunal "Las Llaves"</p>
               <p className="text-[11px] text-slate-500">
-                Urb. Dr. Alfredo Travieso Paúl · SITUR: 08-11-04-001-0033 · RIF: C299916862
+                Urb. Dr. Alfredo Travieso Paúl · SITUR: {config?.situr_codigo || '08-11-04-001-0033'} · RIF: {config?.rif || 'C299916862'}
               </p>
             </div>
           </div>

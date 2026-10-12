@@ -3,8 +3,47 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, FileText, CheckCircle2, UserCheck, Lock, LogOut, Sun, Moon } from 'lucide-react';
 
-export default function Navbar({ user, onOpenLogin, onLogout, onNavigateHash }) {
+export default function Navbar({ user, config: initialConfig, onOpenLogin, onLogout, onNavigateHash }) {
   const [theme, setTheme] = useState('dark');
+  const [siturCodigo, setSiturCodigo] = useState(initialConfig?.situr_codigo || '08-11-04-001-0033');
+
+  useEffect(() => {
+    if (initialConfig?.situr_codigo) {
+      setSiturCodigo(initialConfig.situr_codigo);
+    }
+  }, [initialConfig?.situr_codigo]);
+
+  useEffect(() => {
+    // Cargar configuración si no vino provista
+    let montado = true;
+    async function fetchConfig() {
+      try {
+        const res = await fetch('/api/configuracion');
+        if (res.ok) {
+          const data = await res.json();
+          if (montado && data.config?.situr_codigo) {
+            setSiturCodigo(data.config.situr_codigo);
+          }
+        }
+      } catch (e) {
+        // Fallback silencioso
+      }
+    }
+    fetchConfig();
+
+    // Escuchar actualizaciones dinámicas desde el Dashboard
+    const handleConfigUpdate = (e) => {
+      if (e.detail?.situr_codigo) {
+        setSiturCodigo(e.detail.situr_codigo);
+      }
+    };
+    window.addEventListener('config_updated', handleConfigUpdate);
+
+    return () => {
+      montado = false;
+      window.removeEventListener('config_updated', handleConfigUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     const isLight = document.documentElement.classList.contains('light');
@@ -44,7 +83,7 @@ export default function Navbar({ user, onOpenLogin, onLogout, onNavigateHash }) 
                   CONSEJO COMUNAL LAS LLAVES
                 </span>
                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
-                  SITUR: 08-11-04-001-0033
+                  SITUR: {siturCodigo}
                 </span>
               </div>
               <p className="text-[10px] sm:text-xs text-slate-400 font-medium truncate">
