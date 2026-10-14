@@ -11,6 +11,7 @@ import {
   MAPEO_INSTRUCCION,
   MAPEO_SALUD
 } from '@/lib/territory';
+import { useTerritorio } from '@/lib/useTerritorio';
 
 export default function ModalRegistroVecino({ initialCedula = '', onClose, onRegistroExitoso }) {
   const [cedula, setCedula] = useState(initialCedula || '');
@@ -62,14 +63,15 @@ export default function ModalRegistroVecino({ initialCedula = '', onClose, onReg
     return () => { montado = false; };
   }, []);
 
-  // Actualizar casas disponibles cuando cambia la vereda
+  // Actualizar casas disponibles cuando cambia la vereda o el territorio configurado
+  const { casasPorVereda } = useTerritorio();
   useEffect(() => {
     if (vereda) {
       const casas = getCasasPorVereda(vereda);
       setCasasDisponibles(casas);
-      setCasa(casas[0] || '');
+      setCasa(prev => (casas.includes(prev) ? prev : casas[0] || ''));
     }
-  }, [vereda]);
+  }, [vereda, casasPorVereda]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

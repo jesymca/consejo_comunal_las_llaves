@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import db from '@/lib/turso';
 import { extractUserFromRequest } from '@/lib/auth';
 import { esCasaValida } from '@/lib/territory';
+import { cargarTerritorio } from '@/lib/territoryServer';
 
 export async function GET(request) {
   try {
@@ -210,6 +211,7 @@ export async function POST(request) {
     const vUpper = calle_vereda_av.trim().toUpperCase();
     const cUpper = numero_casa.trim().toUpperCase();
 
+    await cargarTerritorio();
     if (!esCasaValida(vUpper, cUpper)) {
       return NextResponse.json({
         error: `La casa ${cUpper} no es válida para la Vereda ${vUpper}`

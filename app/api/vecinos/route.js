@@ -7,6 +7,7 @@ import {
 import { extractUserFromRequest, hasPermission } from '@/lib/auth';
 import { registrarAuditoria } from '@/lib/audit';
 import { asegurarTablaCatalogos } from '@/app/api/catalogos/route';
+import { cargarTerritorio } from '@/lib/territoryServer';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,6 +105,7 @@ export async function POST(request) {
     const body = await request.json();
     const { action } = body;
     const now = new Date().toISOString();
+    await cargarTerritorio();
 
     // A. REGISTRO PÚBLICO O DESDE DASHBOARD DE UN VECINO
     if (!action || action === 'register' || action === 'create') {

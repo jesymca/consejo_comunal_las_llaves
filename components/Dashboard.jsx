@@ -16,6 +16,9 @@ import {
 import { generarDocumentoPdf, generarReporteGestionPdf } from '@/lib/pdfGenerator';
 import SvgCanvasEditor from '@/components/SvgCanvasEditor';
 import { toast } from '@/lib/toast';
+import ConfiguradorTerritorio from '@/components/ConfiguradorTerritorio';
+import SelectorVeredaCasa from '@/components/SelectorVeredaCasa';
+import { useTerritorio } from '@/lib/useTerritorio';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend
@@ -24,6 +27,8 @@ import {
 export default function Dashboard({ user, onLogout }) {
   // Hash routing
   const [currentTab, setCurrentTab] = useState('dashboard');
+  // Territorio dinámico (veredas/casas desde BD); re-renderiza al actualizarse
+  useTerritorio();
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -3507,6 +3512,9 @@ export default function Dashboard({ user, onLogout }) {
               )}
             </div>
 
+            {/* SECCIÓN: CONFIGURADOR TERRITORIAL (VEREDAS A–O Y CASAS) */}
+            <ConfiguradorTerritorio />
+
             {/* ZONA DE PELIGRO / PASE A PRODUCCIÓN */}
             <div className="p-6 rounded-3xl bg-red-950/20 border border-red-500/30 space-y-3">
               <div className="flex items-start gap-3">
@@ -4339,28 +4347,14 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-slate-400 mb-1">Calle / Vereda / Av *</label>
-                    <select
-                      name="calle_vereda_av"
-                      defaultValue={planillaActiva?.planilla?.calle_vereda_av || 'A'}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white font-semibold focus:border-blue-500 outline-none"
-                    >
-                      {VEREDAS.map(v => <option key={v} value={v}>Vereda {v}</option>)}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1">N° Casa *</label>
-                    <input
-                      type="text"
-                      name="numero_casa"
-                      required
-                      defaultValue={planillaActiva?.planilla?.numero_casa || ''}
-                      placeholder="Ej: A-8"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white uppercase font-bold focus:border-blue-500 outline-none"
-                    />
-                  </div>
+                  <SelectorVeredaCasa
+                    idPrefix="censo"
+                    nameVereda="calle_vereda_av"
+                    nameCasa="numero_casa"
+                    labelVereda="Calle / Vereda / Av *"
+                    defaultVereda={planillaActiva?.planilla?.calle_vereda_av || 'A'}
+                    defaultCasa={planillaActiva?.planilla?.numero_casa || ''}
+                  />
 
                   <div>
                     <label className="block text-slate-400 mb-1">Teléfono Principal de Contacto</label>
@@ -4793,26 +4787,12 @@ export default function Dashboard({ user, onLogout }) {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-400 mb-1">Vereda *</label>
-                  <select
-                    name="vereda"
-                    defaultValue="A"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
-                  >
-                    {VEREDAS.map(v => <option key={v} value={v}>Vereda {v}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 mb-1">N° Casa *</label>
-                  <input
-                    type="text"
-                    name="casa"
-                    required
-                    placeholder="Ej: A-8"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white uppercase font-bold focus:border-blue-500 outline-none"
-                  />
-                </div>
+                <SelectorVeredaCasa
+                  idPrefix="vecino"
+                  nameVereda="vereda"
+                  nameCasa="casa"
+                  selectClassName="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
