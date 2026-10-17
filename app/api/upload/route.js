@@ -4,6 +4,62 @@ import { extractUserFromRequest } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * GET /api/upload?url=https://pub-...r2.dev/web/img/logo.png
+ * Obtiene una imagen remota desde el servidor (evitando bloqueos CORS del navegador al generar PDFs)
+ * y la devuelve en formato base64 Data URL lista para jsPDF.
+ */
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const targetUrl = searchParams.get('url');
+
+    if (!targetUrl || (!targetUrl.startsWith('https://') && !targetUrl.startsWith('http://'))) {
+      return NextResponse.json({ error: 'URL de imagen externa inválida' }, { status: 400 });
+    }
+
+    const response = await fetch(targetUrl, {
+      headers: {
+        Accept: 'image/*,*/*;q=0.8',
+      },
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: `No se pudo descargar la imagen remota (HTTP ${response.status})` },
+        { status: response.status }
+      );
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    let contentType = response.headers.get('content-type') || '';
+    const lowerUrl = targetUrl.toLowerCase();
+    if (!contentType || contentType === 'application/octet-stream') {
+      if (lowerUrl.endsWith('.svg')) contentType = 'image/svg+xml';
+      else if (lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg')) contentType = 'image/jpeg';
+      else if (lowerUrl.endsWith('.webp')) contentType = 'image/webp';
+      else contentType = 'image/png';
+    }
+
+    const dataUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
+    return NextResponse.json({
+      success: true,
+      url: targetUrl,
+      contentType,
+      dataUrl,
+    });
+  } catch (err) {
+    console.error('Error en GET /api/upload (image proxy):', err);
+    return NextResponse.json(
+      { error: err.message || 'Error al obtener imagen remota desde R2' },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request) {
   try {
     // 1. Validar autenticación básica

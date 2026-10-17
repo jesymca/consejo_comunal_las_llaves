@@ -14,6 +14,33 @@ const CANVAS_WIDTH = 750; // Proporcional al ancho de hoja Carta con márgenes
 const DEFAULT_HEADER_HEIGHT = 180;
 const DEFAULT_FOOTER_HEIGHT = 150;
 
+const R2_IMG_BASE = 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img';
+
+function normalizeUrlToR2(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return rawUrl;
+  const u = rawUrl.trim();
+  if (u.startsWith('data:')) return u;
+  if (u === '/img/logo.png' || (u.endsWith('/img/logo.png') && !u.includes('r2.dev'))) {
+    return `${R2_IMG_BASE}/logo.png`;
+  }
+  if (u === '/img/mppcomunas.png' || (u.endsWith('/img/mppcomunas.png') && !u.includes('r2.dev'))) {
+    return `${R2_IMG_BASE}/mppcomunas.png`;
+  }
+  if (u === '/img/sello.png' || (u.endsWith('/img/sello.png') && !u.includes('r2.dev'))) {
+    return `${R2_IMG_BASE}/sello.png`;
+  }
+  if (u === '/img/tei.png' || (u.endsWith('/img/tei.png') && !u.includes('r2.dev'))) {
+    return `${R2_IMG_BASE}/tei.png`;
+  }
+  if (u === '/img/escudo_venezuela.png' || u === '/img/escudo_venezuela.svg') {
+    return `${R2_IMG_BASE}/escudo_venezuela.svg`;
+  }
+  if (u.startsWith('/img/')) {
+    return `${R2_IMG_BASE}/${u.replace(/^\/img\//, '')}`;
+  }
+  return u;
+}
+
 // Presets de imágenes institucionales por defecto
 const DEFAULT_PRESET_IMAGES = [
   { id: 1, name: 'Escudo Venezuela', url: 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/escudo_venezuela.svg', defaultW: 55, defaultH: 55, lockRatio: true },
@@ -29,7 +56,7 @@ export default function SvgCanvasEditor({
   onSave = () => {},
   title = 'Editor SVG',
 }) {
-  // Estructura por defecto para Cabecera con formato enriquecido
+  // Estructura por defecto para Cabecera con formato enriquecido y logos R2
   const getDefaultHeaderState = () => ({
     height: DEFAULT_HEADER_HEIGHT,
     mostrarLineaDivisoria: true,
@@ -42,12 +69,12 @@ export default function SvgCanvasEditor({
       { id: 't5', texto: 'Municipio Puerto Cabello, Estado Carabobo | RIF: C299916862 | SITUR: 08-11-04-001-0033', x: CANVAS_WIDTH / 2, y: 110, fontSize: 9.5, fontWeight: 'normal', fontStyle: 'normal', textDecoration: 'none', textTransform: 'none', color: '#64748B', align: 'middle' },
     ],
     imagenes: [
-      { id: 'img-comunas', nombre: 'Logo Comunas', url: '/img/mppcomunas.png', x: 25, y: 18, width: 100, height: 50, opacity: 1, lockRatio: false },
-      { id: 'img-ccll', nombre: 'Logo CC', url: '/img/logo.png', x: CANVAS_WIDTH - 95, y: 15, width: 70, height: 70, opacity: 1, lockRatio: true },
+      { id: 'img-comunas', nombre: 'Logo Comunas', url: 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/mppcomunas.png', x: 25, y: 18, width: 100, height: 50, opacity: 1, lockRatio: false },
+      { id: 'img-ccll', nombre: 'Logo CC', url: 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/logo.png', x: CANVAS_WIDTH - 95, y: 15, width: 70, height: 70, opacity: 1, lockRatio: true },
     ],
   });
 
-  // Estructura por defecto para Footer con formato enriquecido
+  // Estructura por defecto para Footer con formato enriquecido y logo R2
   const getDefaultFooterState = () => ({
     height: DEFAULT_FOOTER_HEIGHT,
     mostrarRecuadroValidacion: true,
@@ -60,15 +87,14 @@ export default function SvgCanvasEditor({
       { id: 'ft4', texto: 'Escanee el código QR o verifique la autenticidad en la plataforma comunitaria oficial.', x: 140, y: 98, fontSize: 8.5, fontWeight: 'normal', fontStyle: 'normal', textDecoration: 'none', textTransform: 'none', color: '#64748B', align: 'start' },
     ],
     imagenes: [
-      { id: 'img-qr-placeholder', nombre: 'Simulación QR', url: '/img/logo.png', x: 25, y: 22, width: 85, height: 85, opacity: 1, lockRatio: true },
+      { id: 'img-qr-placeholder', nombre: 'Simulación QR', url: 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/logo.png', x: 25, y: 22, width: 85, height: 85, opacity: 1, lockRatio: true },
     ],
   });
 
-  // Inicializar estado parseando initialData
-  const [editorState, setEditorState] = useState(() => {
-    if (initialData) {
+  const parseSvgConfigState = (raw) => {
+    if (raw) {
       try {
-        const parsed = typeof initialData === 'string' ? JSON.parse(initialData) : initialData;
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
         if (parsed && (parsed.imagenes || parsed.textos)) {
           const fallbackHeight = mode === 'header' ? DEFAULT_HEADER_HEIGHT : DEFAULT_FOOTER_HEIGHT;
           return {
@@ -76,8 +102,8 @@ export default function SvgCanvasEditor({
             height: parsed.height ? Math.max(100, parseInt(parsed.height, 10)) : fallbackHeight,
             imagenes: (parsed.imagenes || []).map((img) => ({
               ...img,
-              url: img.url && img.url.includes('escudo_venezuela') ? '/img/escudo_venezuela.png' : img.url,
-              lockRatio: img.lockRatio ?? (img.width === img.height), // Preservar o inferir simetría 1:1
+              url: normalizeUrlToR2(img.url),
+              lockRatio: img.lockRatio ?? (img.width === img.height),
             })),
             textos: (parsed.textos || []).map((t) => ({
               ...t,
@@ -95,7 +121,17 @@ export default function SvgCanvasEditor({
       }
     }
     return mode === 'header' ? getDefaultHeaderState() : getDefaultFooterState();
-  });
+  };
+
+  // Inicializar estado parseando initialData
+  const [editorState, setEditorState] = useState(() => parseSvgConfigState(initialData));
+
+  // Sincronizar si initialData se carga de forma asíncrona desde la base de datos
+  useEffect(() => {
+    if (initialData) {
+      setEditorState(parseSvgConfigState(initialData));
+    }
+  }, [initialData, mode]);
 
   const canvasHeight = editorState.height || (mode === 'header' ? DEFAULT_HEADER_HEIGHT : DEFAULT_FOOTER_HEIGHT);
 

@@ -4,6 +4,18 @@ import { extractUserFromRequest, hasPermission } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+const R2_IMG_BASE = 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img';
+
+function normalizarSvgJsonR2(rawStr) {
+  if (!rawStr || typeof rawStr !== 'string') return rawStr || '';
+  return rawStr
+    .replace(/"\/img\/logo\.png"/g, `"${R2_IMG_BASE}/logo.png"`)
+    .replace(/"\/img\/mppcomunas\.png"/g, `"${R2_IMG_BASE}/mppcomunas.png"`)
+    .replace(/"\/img\/sello\.png"/g, `"${R2_IMG_BASE}/sello.png"`)
+    .replace(/"\/img\/tei\.png"/g, `"${R2_IMG_BASE}/tei.png"`)
+    .replace(/"\/img\/escudo_venezuela\.(png|svg)"/g, `"${R2_IMG_BASE}/escudo_venezuela.svg"`);
+}
+
 async function obtenerCabeceraYFooterUnicos() {
   let cabeceraGlobal = '';
   let footerGlobal = '';
@@ -14,18 +26,18 @@ async function obtenerCabeceraYFooterUnicos() {
       args: [],
     });
     for (const row of cfgRes.rows) {
-      if (row.clave === 'encabezado_svg_global' && row.valor) cabeceraGlobal = row.valor;
-      if (row.clave === 'pie_svg_global' && row.valor) footerGlobal = row.valor;
+      if (row.clave === 'encabezado_svg_global' && row.valor) cabeceraGlobal = normalizarSvgJsonR2(row.valor);
+      if (row.clave === 'pie_svg_global' && row.valor) footerGlobal = normalizarSvgJsonR2(row.valor);
     }
 
     if (!cabeceraGlobal || !footerGlobal) {
       const tplRes = await db.execute('SELECT encabezado_svg, pie_svg FROM documentos_plantillas ORDER BY updated_at DESC');
       for (const row of tplRes.rows) {
         if (!cabeceraGlobal && row.encabezado_svg && String(row.encabezado_svg).trim().length > 2) {
-          cabeceraGlobal = row.encabezado_svg;
+          cabeceraGlobal = normalizarSvgJsonR2(row.encabezado_svg);
         }
         if (!footerGlobal && row.pie_svg && String(row.pie_svg).trim().length > 2) {
-          footerGlobal = row.pie_svg;
+          footerGlobal = normalizarSvgJsonR2(row.pie_svg);
         }
       }
     }
@@ -50,8 +62,8 @@ export async function GET(request) {
       if (res.rows.length === 0) return NextResponse.json({ error: 'Plantilla no encontrada' }, { status: 404 });
       const plantilla = {
         ...res.rows[0],
-        encabezado_svg: cabeceraGlobal || res.rows[0].encabezado_svg || '',
-        pie_svg: footerGlobal || res.rows[0].pie_svg || '',
+        encabezado_svg: cabeceraGlobal || normalizarSvgJsonR2(res.rows[0].encabezado_svg) || '',
+        pie_svg: footerGlobal || normalizarSvgJsonR2(res.rows[0].pie_svg) || '',
       };
       return NextResponse.json({
         plantilla,
@@ -63,8 +75,8 @@ export async function GET(request) {
     const res = await db.execute('SELECT * FROM documentos_plantillas ORDER BY id ASC');
     const plantillasUnificadas = res.rows.map((p) => ({
       ...p,
-      encabezado_svg: cabeceraGlobal || p.encabezado_svg || '',
-      pie_svg: footerGlobal || p.pie_svg || '',
+      encabezado_svg: cabeceraGlobal || normalizarSvgJsonR2(p.encabezado_svg) || '',
+      pie_svg: footerGlobal || normalizarSvgJsonR2(p.pie_svg) || '',
     }));
 
     return NextResponse.json({
@@ -91,27 +103,29 @@ export async function PUT(request) {
 
     // 1. Si se envía actualización de la Cabecera Única de Documentos, aplicarla globalmente a TODOS los documentos
     if (encabezado_svg !== undefined) {
+      const cabLimpiada = normalizarSvgJsonR2(encabezado_svg);
       await db.execute({
         sql: `INSERT OR REPLACE INTO configuracion_sistema (clave, valor, descripcion, updated_at)
               VALUES ('encabezado_svg_global', ?, 'Cabecera única de documentos comunales (SVG JSON)', ?)`,
-        args: [encabezado_svg || '', now]
+        args: [cabLimpiada, now]
       });
       await db.execute({
         sql: `UPDATE documentos_plantillas SET encabezado_svg = ?, updated_at = ?`,
-        args: [encabezado_svg || '', now]
+        args: [cabLimpiada, now]
       });
     }
 
     // 2. Si se envía actualización del Footer Único de Documentos, aplicarlo globalmente a TODOS los documentos
     if (pie_svg !== undefined) {
+      const pieLimpiado = normalizarSvgJsonR2(pie_svg);
       await db.execute({
         sql: `INSERT OR REPLACE INTO configuracion_sistema (clave, valor, descripcion, updated_at)
               VALUES ('pie_svg_global', ?, 'Footer único de documentos comunales (SVG JSON)', ?)`,
-        args: [pie_svg || '', now]
+        args: [pieLimpiado, now]
       });
       await db.execute({
         sql: `UPDATE documentos_plantillas SET pie_svg = ?, updated_at = ?`,
-        args: [pie_svg || '', now]
+        args: [pieLimpiado, now]
       });
     }
 
