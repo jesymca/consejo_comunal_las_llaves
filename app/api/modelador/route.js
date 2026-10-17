@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/turso';
 import { extractUserFromRequest, hasPermission } from '@/lib/auth';
+import { registrarAuditoria } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -131,6 +132,15 @@ export async function PUT(request) {
 
     // Si la acción es exclusivamente guardar la cabecera o el footer global
     if (action === 'guardar_cabecera_global' || action === 'guardar_footer_global') {
+      await registrarAuditoria({
+        tipo_evento: 'EDICION_MODELADOR_PLANTILLA',
+        usuario_id: currentUser.id,
+        usuario_nombre: currentUser.nombre,
+        request,
+        detalles: {
+          accion: action === 'guardar_cabecera_global' ? 'Actualización de Cabecera Única Documental (SVG)' : 'Actualización de Footer Único Documental (SVG)',
+        }
+      });
       return NextResponse.json({
         success: true,
         message: action === 'guardar_cabecera_global'
@@ -157,6 +167,20 @@ export async function PUT(request) {
         now,
         id.toUpperCase(),
       ]
+    });
+
+    await registrarAuditoria({
+      tipo_evento: 'EDICION_MODELADOR_PLANTILLA',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      tipo_documento: id.toUpperCase(),
+      request,
+      detalles: {
+        accion: `Actualización de plantilla documental (${id.toUpperCase()})`,
+        titulo,
+        incluyo_cabecera_svg: encabezado_svg !== undefined,
+        incluyo_footer_svg: pie_svg !== undefined,
+      }
     });
 
     return NextResponse.json({
@@ -215,6 +239,15 @@ export async function POST(request) {
       ]
     });
 
+    await registrarAuditoria({
+      tipo_evento: 'EDICION_MODELADOR_PLANTILLA',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      tipo_documento: cleanId,
+      request,
+      detalles: { accion: 'Creación de nueva plantilla documental', id: cleanId, titulo: String(titulo).trim() }
+    });
+
     return NextResponse.json({
       success: true,
       message: 'Nueva plantilla documental creada exitosamente (vinculada a la Cabecera y Footer únicos)',
@@ -258,6 +291,15 @@ export async function DELETE(request) {
     await db.execute({
       sql: 'DELETE FROM documentos_plantillas WHERE id = ?',
       args: [cleanId]
+    });
+
+    await registrarAuditoria({
+      tipo_evento: 'EDICION_MODELADOR_PLANTILLA',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      tipo_documento: cleanId,
+      request,
+      detalles: { accion: 'Eliminación de plantilla documental', id: cleanId }
     });
 
     return NextResponse.json({ success: true, message: 'Plantilla eliminada correctamente' });

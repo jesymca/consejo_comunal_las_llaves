@@ -32,6 +32,14 @@ export async function GET(request) {
     const res = await db.execute({ sql: querySql, args: queryArgs });
 
     if (res.rows.length === 0) {
+      await registrarAuditoria({
+        tipo_evento: 'CONSULTA_VALIDADOR',
+        usuario_nombre: 'Visitante / Verificador Externo',
+        cedula: cedula ? normalizarCedula(cedula) : null,
+        codigo_documento: codigo ? codigo.toUpperCase() : null,
+        request,
+        detalles: { encontrado: false, resultado: 'NO_ENCONTRADO', criterio: codigo || cedula }
+      });
       return NextResponse.json({
         valido: false,
         encontrado: false,
@@ -61,15 +69,15 @@ export async function GET(request) {
       estadoCalculado = 'VIGENTE';
     }
 
-    // Registrar consulta en bitácora
-    const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '127.0.0.1';
+    // Registrar consulta en bitácora con IP pública
     await registrarAuditoria({
       tipo_evento: 'CONSULTA_VALIDADOR',
+      usuario_nombre: doc.nombres_apellidos || 'Verificador Público',
       cedula: doc.cedula,
       codigo_documento: doc.codigo_qr,
       tipo_documento: doc.tipo_documento,
-      ip,
-      detalles: { estado: estadoCalculado, diasRestantes }
+      request,
+      detalles: { encontrado: true, estado: estadoCalculado, diasRestantes, titular: doc.nombres_apellidos }
     });
 
     return NextResponse.json({

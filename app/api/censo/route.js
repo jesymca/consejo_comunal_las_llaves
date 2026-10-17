@@ -3,6 +3,7 @@ import db from '@/lib/turso';
 import { extractUserFromRequest } from '@/lib/auth';
 import { esCasaValida } from '@/lib/territory';
 import { cargarTerritorio } from '@/lib/territoryServer';
+import { registrarAuditoria } from '@/lib/audit';
 
 export async function GET(request) {
   try {
@@ -115,6 +116,9 @@ export async function DELETE(request) {
       return NextResponse.json({ error: 'ID de planilla requerido' }, { status: 400 });
     }
 
+    const planInfoRes = await db.execute({ sql: 'SELECT numero_planilla, calle_vereda_av, numero_casa FROM censo_planillas WHERE id = ? LIMIT 1', args: [id] });
+    const planInfo = planInfoRes.rows[0] || {};
+
     // Eliminar habitantes asociados
     await db.execute({
       sql: 'DELETE FROM censo_habitantes WHERE planilla_id = ?',
@@ -130,6 +134,19 @@ export async function DELETE(request) {
     if (delRes.rowsAffected === 0) {
       return NextResponse.json({ error: 'No se encontró la planilla especificada' }, { status: 404 });
     }
+
+    await registrarAuditoria({
+      tipo_evento: 'ELIMINACION_PLANILLA_CENSO',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      codigo_documento: planInfo.numero_planilla || `ID-${id}`,
+      request,
+      detalles: {
+        numero_planilla: planInfo.numero_planilla,
+        vereda: planInfo.calle_vereda_av,
+        casa: planInfo.numero_casa,
+      }
+    });
 
     return NextResponse.json({
       success: true,
@@ -302,6 +319,24 @@ export async function POST(request) {
         });
       }
     }
+
+    const jefeFamiliar = Array.isArray(habitantes) && habitantes[0] ? habitantes[0] : null;
+    await registrarAuditoria({
+      tipo_evento: 'REGISTRO_PLANILLA_CENSO',
+      usuario_id: currentUser?.id || null,
+      usuario_nombre: currentUser?.nombre || empadronador_nombre || 'Empadronador Comunal',
+      cedula: jefeFamiliar?.cedula || null,
+      codigo_documento: numPlanillaFinal,
+      request,
+      detalles: {
+        numero_planilla: numPlanillaFinal,
+        vereda: vUpper,
+        casa: cUpper,
+        total_familias: Number(total_familias) || 1,
+        total_habitantes: Number(total_habitantes) || (habitantes?.length || 1),
+        jefe_familia: jefeFamiliar?.nombres_apellidos || null,
+      }
+    });
 
     return NextResponse.json({
       success: true,

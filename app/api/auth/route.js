@@ -21,27 +21,37 @@ export async function POST(request) {
       });
 
       if (res.rows.length === 0) {
+        await registrarAuditoria({
+          tipo_evento: 'INTENTO_ACCESO_FALLIDO',
+          usuario_nombre: username.trim().toUpperCase(),
+          request,
+          detalles: { motivo: 'Usuario inexistente o cuenta deshabilitada', username: username.trim().toUpperCase() }
+        });
         return NextResponse.json({ error: 'Credenciales inválidas o cuenta deshabilitada' }, { status: 401 });
       }
 
       const user = res.rows[0];
       const valid = await verifyPassword(password, user.password_hash);
       if (!valid) {
+        await registrarAuditoria({
+          tipo_evento: 'INTENTO_ACCESO_FALLIDO',
+          usuario_id: user.id,
+          usuario_nombre: user.nombre,
+          request,
+          detalles: { motivo: 'Contraseña incorrecta', username: user.username, rol: user.rol }
+        });
         return NextResponse.json({ error: 'Credenciales inválidas' }, { status: 401 });
       }
 
       const token = createSessionToken(user);
 
-      // Registrar auditoría
-      const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '127.0.0.1';
-      const userAgent = request.headers.get('user-agent') || 'Browser';
+      // Registrar auditoría con IP pública
       await registrarAuditoria({
         tipo_evento: 'ACCESO_DASHBOARD',
         usuario_id: user.id,
         usuario_nombre: user.nombre,
-        ip,
-        user_agent: userAgent,
-        detalles: { username: user.username, rol: user.rol }
+        request,
+        detalles: { username: user.username, rol: user.rol, comision: user.comision || 'General', accion: 'Inicio de sesión en Panel Administrativo' }
       });
 
       const response = NextResponse.json({
@@ -65,6 +75,23 @@ export async function POST(request) {
         sameSite: 'lax',
       });
 
+      return response;
+    }
+
+    // 1.B CERRAR SESIÓN
+    if (action === 'logout') {
+      const currentUser = extractUserFromRequest(request);
+      if (currentUser) {
+        await registrarAuditoria({
+          tipo_evento: 'CIERRE_SESION',
+          usuario_id: currentUser.id,
+          usuario_nombre: currentUser.nombre || currentUser.username,
+          request,
+          detalles: { username: currentUser.username, rol: currentUser.rol, accion: 'Cierre de sesión voluntario' }
+        });
+      }
+      const response = NextResponse.json({ success: true, message: 'Sesión cerrada' });
+      response.cookies.delete('cc_session');
       return response;
     }
 
@@ -109,6 +136,20 @@ export async function POST(request) {
           now,
           now
         ]
+      });
+
+      await registrarAuditoria({
+        tipo_evento: 'CREACION_USUARIO',
+        usuario_id: currentUser.id,
+        usuario_nombre: currentUser.nombre,
+        request,
+        detalles: {
+          nuevo_usuario_id: Number(result.lastInsertRowid),
+          nuevo_username: cleanUsername,
+          nuevo_nombre: nombre.trim(),
+          rol_asignado: rol,
+          comision: comision || 'General'
+        }
       });
 
       return NextResponse.json({
@@ -215,6 +256,14 @@ export async function PUT(request) {
         args: [newHash, now, currentUser.id]
       });
 
+      await registrarAuditoria({
+        tipo_evento: 'CAMBIO_CLAVE',
+        usuario_id: currentUser.id,
+        usuario_nombre: currentUser.nombre || currentUser.username,
+        request,
+        detalles: { username: currentUser.username, accion: 'Actualización de contraseña personal' }
+      });
+
       return NextResponse.json({ success: true, message: 'Contraseña actualizada con éxito' });
     }
 
@@ -266,6 +315,22 @@ export async function PUT(request) {
         args
       });
 
+      await registrarAuditoria({
+        tipo_evento: 'MODIFICACION_USUARIO',
+        usuario_id: currentUser.id,
+        usuario_nombre: currentUser.nombre,
+        request,
+        detalles: {
+          usuario_modificado_id: userId,
+          username_modificado: prevUser.username,
+          nombre_modificado: nuevoNombre,
+          rol: nuevoRol,
+          comision: nuevaComision,
+          activo: Boolean(nuevoActivo),
+          cambio_clave: Boolean(newPassword && newPassword.trim().length > 0),
+        }
+      });
+
       return NextResponse.json({ success: true, message: 'Usuario y permisos modificados correctamente' });
     }
 
@@ -290,7 +355,7 @@ export async function DELETE(request) {
     }
 
     const check = await db.execute({
-      sql: 'SELECT username FROM usuarios WHERE id = ?',
+      sql: 'SELECT username, nombre FROM usuarios WHERE id = ?',
       args: [userId]
     });
 
@@ -305,6 +370,18 @@ export async function DELETE(request) {
     await db.execute({
       sql: 'DELETE FROM usuarios WHERE id = ?',
       args: [userId]
+    });
+
+    await registrarAuditoria({
+      tipo_evento: 'ELIMINACION_USUARIO',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      request,
+      detalles: {
+        usuario_eliminado_id: userId,
+        username_eliminado: check.rows[0].username,
+        nombre_eliminado: check.rows[0].nombre,
+      }
     });
 
     return NextResponse.json({ success: true, message: 'Usuario eliminado exitosamente' });

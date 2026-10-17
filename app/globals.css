@@ -269,3 +269,12 @@ html.light ::-webkit-scrollbar-thumb:hover {
   margin: 10mm;
 }
 
+/* Ocultar scrollbar preservando desplazamiento táctil */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+

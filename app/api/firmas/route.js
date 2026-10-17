@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/turso';
 import { extractUserFromRequest, hasPermission } from '@/lib/auth';
+import { registrarAuditoria } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,6 +78,15 @@ export async function POST(request) {
       ]
     });
 
+    await registrarAuditoria({
+      tipo_evento: 'GESTION_FIRMAS_SELLOS',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      cedula: (cedula || '').trim() || null,
+      request,
+      detalles: { accion: 'Nueva firma autorizada agregada', vocero: nombre.trim(), comision: comision.trim() }
+    });
+
     return NextResponse.json({
       success: true,
       id: Number(insertRes.lastInsertRowid),
@@ -132,6 +142,15 @@ export async function PUT(request) {
       ]
     });
 
+    await registrarAuditoria({
+      tipo_evento: 'GESTION_FIRMAS_SELLOS',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      cedula: (cedula || '').trim() || null,
+      request,
+      detalles: { accion: 'Firma autorizada modificada', id, vocero: nombre.trim(), comision: comision.trim(), activo: Boolean(activo) }
+    });
+
     return NextResponse.json({ success: true, message: 'Firma autorizada actualizada correctamente' });
   } catch (err) {
     console.error('Error en /api/firmas PUT:', err);
@@ -156,6 +175,14 @@ export async function DELETE(request) {
     await db.execute({
       sql: 'DELETE FROM firmas_sellos WHERE id = ?',
       args: [id]
+    });
+
+    await registrarAuditoria({
+      tipo_evento: 'GESTION_FIRMAS_SELLOS',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      request,
+      detalles: { accion: 'Firma autorizada eliminada', id }
     });
 
     return NextResponse.json({ success: true, message: 'Firma eliminada exitosamente' });

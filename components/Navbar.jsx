@@ -108,22 +108,23 @@ export default function Navbar({ user, config: initialConfig, onOpenLogin, onLog
           </a>
         </div>
 
-        {/* Enlaces y Acciones (En móvil se alinean debajo del encabezado en una fila fluida) */}
-        <div className="w-full sm:w-auto flex items-center justify-between sm:justify-end gap-1.5 sm:gap-2.5 pt-1 sm:pt-0 border-t border-slate-800/40 sm:border-t-0">
+        {/* Enlaces y Acciones (En móvil se alinean en una barra de botones compacta con scroll horizontal fluido) */}
+        <div className="w-full sm:w-auto flex items-center justify-start sm:justify-end gap-1.5 sm:gap-2.5 pt-1.5 sm:pt-0 border-t border-slate-800/60 sm:border-t-0 overflow-x-auto no-scrollbar scroll-smooth pb-0.5">
           <button
             onClick={() => onNavigateHash('inicio')}
-            className="inline-flex items-center justify-center gap-1 text-[11px] sm:text-xs font-semibold px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition"
+            className="inline-flex items-center justify-center gap-1 text-[10.5px] sm:text-xs font-semibold px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition shrink-0 whitespace-nowrap"
           >
-            <FileText className="w-3.5 h-3.5 text-blue-400" />
+            <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
             <span>Tramitar</span>
           </button>
 
           <button
             onClick={() => onNavigateHash('validar')}
-            className="inline-flex items-center justify-center gap-1 text-[11px] sm:text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-750 text-emerald-400 hover:bg-slate-800/80 transition shadow-sm"
+            className="inline-flex items-center justify-center gap-1 text-[10.5px] sm:text-xs font-semibold px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-slate-900 border border-slate-750 text-emerald-400 hover:bg-slate-800/80 transition shadow-sm shrink-0 whitespace-nowrap"
           >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Validador QR</span>
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden xs:inline">Validador QR</span>
+            <span className="xs:hidden">Validador</span>
           </button>
 
           <a
@@ -132,9 +133,9 @@ export default function Navbar({ user, config: initialConfig, onOpenLogin, onLog
             rel="noopener noreferrer"
             download="Ley_Organica_Consejos_Comunales_2023.pdf"
             title="Descargar Ley Orgánica de los Consejos Comunales (Reforma 2023)"
-            className="inline-flex items-center justify-center gap-1 text-[11px] sm:text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 transition shadow-sm shrink-0"
+            className="inline-flex items-center justify-center gap-1 text-[10.5px] sm:text-xs font-semibold px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 transition shadow-sm shrink-0 whitespace-nowrap"
           >
-            <Download className="w-3.5 h-3.5 text-amber-400" />
+            <Download className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <span className="hidden md:inline">Ley Orgánica C.C.</span>
             <span className="md:hidden">Ley C.C.</span>
           </a>
@@ -144,39 +145,40 @@ export default function Navbar({ user, config: initialConfig, onOpenLogin, onLog
             onClick={toggleTheme}
             type="button"
             title={theme === 'dark' ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
-            className="p-1.5 sm:p-2 rounded-xl bg-slate-900 border border-slate-750 text-amber-400 hover:text-amber-300 hover:bg-slate-800 transition flex items-center justify-center shadow-sm shrink-0"
+            className="p-1 sm:p-1.5 rounded-lg sm:rounded-xl bg-slate-900 border border-slate-750 text-amber-400 hover:text-amber-300 hover:bg-slate-800 transition flex items-center justify-center shadow-sm shrink-0"
           >
             {theme === 'dark' ? (
-              <Sun className="w-4 h-4" />
+              <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
             ) : (
-              <Moon className="w-4 h-4 text-blue-500" />
+              <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500 shrink-0" />
             )}
           </button>
 
           {user ? (
-            <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               <button
                 onClick={() => onNavigateHash('dashboard')}
-                className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold px-2.5 sm:px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition shadow-lg shadow-blue-500/20"
+                className="inline-flex items-center gap-1 text-[10.5px] sm:text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition shadow-lg shadow-blue-500/20 whitespace-nowrap"
               >
-                <ShieldCheck className="w-3.5 h-3.5" />
+                <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
                 <span>Panel {user.rol === 'SUPER_ADMIN' ? 'SUPER' : user.rol}</span>
               </button>
               <button
                 onClick={onLogout}
                 title="Cerrar sesión"
-                className="p-1.5 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-800/60 transition"
+                className="p-1 sm:p-1.5 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-800/60 transition shrink-0"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
               </button>
             </div>
           ) : (
             <button
               onClick={onOpenLogin}
-              className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-semibold px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-200 border border-slate-700/60 transition shrink-0"
+              className="inline-flex items-center gap-1 text-[10.5px] sm:text-xs font-semibold px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-200 border border-slate-700/60 transition shrink-0 whitespace-nowrap"
             >
-              <Lock className="w-3.5 h-3.5 text-amber-400" />
-              <span>Vocería / Admin</span>
+              <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="hidden xs:inline">Vocería / Admin</span>
+              <span className="xs:hidden">Admin</span>
             </button>
           )}
 
@@ -186,7 +188,7 @@ export default function Navbar({ user, config: initialConfig, onOpenLogin, onLog
             target="_blank"
             rel="noopener noreferrer"
             title="Ministerio del Poder Popular para las Comunas"
-            className="hidden lg:block pl-2 border-l border-slate-800"
+            className="hidden lg:block pl-2 border-l border-slate-800 shrink-0"
           >
             <img
               src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/mppcomunas.png"

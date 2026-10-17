@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/turso';
 import { extractUserFromRequest } from '@/lib/auth';
+import { registrarAuditoria } from '@/lib/audit';
 
 export async function GET() {
   try {
@@ -45,6 +46,17 @@ export async function PUT(request) {
         args: [clave, String(valor), now]
       });
     }
+
+    await registrarAuditoria({
+      tipo_evento: 'ACTUALIZACION_CONFIGURACION',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      request,
+      detalles: {
+        claves_actualizadas: Object.keys(settings),
+        accion: 'Modificación de parámetros del sistema comunal'
+      }
+    });
 
     return NextResponse.json({ success: true, message: 'Configuración guardada correctamente' });
   } catch (err) {
@@ -103,25 +115,17 @@ export async function POST(request) {
       resultados.push('Bitácora de auditoría reiniciada');
     }
 
-    // Registrar evento de inicialización limpia de producción
-    const now = new Date().toISOString();
-    try {
-      await db.execute({
-        sql: `INSERT INTO bitacora_auditoria (tipo_evento, usuario_id, usuario_nombre, hora, fecha, detalles, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        args: [
-          'SISTEMA_REINICIADO_A_PRODUCCION',
-          currentUser.id,
-          currentUser.nombre || currentUser.username,
-          new Date().getHours(),
-          now.split('T')[0],
-          `Reinicio total ejecutado por SUPER_ADMIN: ${resultados.join(', ')}`,
-          now
-        ]
-      });
-    } catch (e) {
-      console.warn('No se pudo registrar bitacora de reinicio:', e);
-    }
+    // Registrar evento de inicialización limpia de producción con IP pública
+    await registrarAuditoria({
+      tipo_evento: 'SISTEMA_REINICIADO_A_PRODUCCION',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre || currentUser.username,
+      request,
+      detalles: {
+        accion: 'Reinicio total ejecutado por SUPER_ADMIN',
+        resultados
+      }
+    });
 
     return NextResponse.json({
       success: true,

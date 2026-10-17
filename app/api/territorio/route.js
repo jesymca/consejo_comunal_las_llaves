@@ -3,6 +3,7 @@ import db from '@/lib/turso';
 import { extractUserFromRequest } from '@/lib/auth';
 import { VEREDAS, esCasaValida, getCasasPermitidasPorVereda, normalizarCasaVereda } from '@/lib/territory';
 import { asegurarTablaTerritorio, cargarTerritorio } from '@/lib/territoryServer';
+import { registrarAuditoria } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,8 @@ export async function GET() {
 // POST: crear una o varias casas. Body: { vereda, casa } | { vereda, casas: [] } | { vereda, desde, hasta, paso }
 export async function POST(request) {
   try {
-    if (!esAdmin(request)) {
+    const currentUser = extractUserFromRequest(request);
+    if (!currentUser || (currentUser.rol !== 'SUPER_ADMIN' && currentUser.rol !== 'ADMIN')) {
       return NextResponse.json({ error: 'Solo administradores pueden gestionar casas' }, { status: 403 });
     }
     await asegurarTablaTerritorio();
@@ -73,6 +75,14 @@ export async function POST(request) {
       creadas += Number(r.rowsAffected || 0) > 0 ? 1 : 0;
     }
 
+    await registrarAuditoria({
+      tipo_evento: 'GESTION_TERRITORIO',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      request,
+      detalles: { accion: 'Creación/habilitación de casas en territorio', vereda, cantidad: creadas, casas: lista.slice(0, 10) }
+    });
+
     return NextResponse.json({ success: true, message: `${creadas} casa(s) registradas en Vereda ${vereda}` });
   } catch (err) {
     return NextResponse.json({ error: err.message || 'Error al crear casa' }, { status: 500 });
@@ -82,7 +92,8 @@ export async function POST(request) {
 // PUT: renombrar casa. Body: { id, casa }. Actualiza también referencias en vecinos y censo.
 export async function PUT(request) {
   try {
-    if (!esAdmin(request)) {
+    const currentUser = extractUserFromRequest(request);
+    if (!currentUser || (currentUser.rol !== 'SUPER_ADMIN' && currentUser.rol !== 'ADMIN')) {
       return NextResponse.json({ error: 'Solo administradores pueden gestionar casas' }, { status: 403 });
     }
     await asegurarTablaTerritorio();
@@ -125,6 +136,14 @@ export async function PUT(request) {
       }
     }
 
+    await registrarAuditoria({
+      tipo_evento: 'GESTION_TERRITORIO',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      request,
+      detalles: { accion: 'Renombramiento de casa', vereda: row.vereda, casa_anterior: row.casa, casa_nueva: nueva }
+    });
+
     return NextResponse.json({ success: true, message: `Casa ${row.casa} renombrada a ${nueva}` });
   } catch (err) {
     return NextResponse.json({ error: err.message || 'Error al actualizar casa' }, { status: 500 });
@@ -134,13 +153,24 @@ export async function PUT(request) {
 // DELETE: eliminar casa ?id=
 export async function DELETE(request) {
   try {
-    if (!esAdmin(request)) {
+    const currentUser = extractUserFromRequest(request);
+    if (!currentUser || (currentUser.rol !== 'SUPER_ADMIN' && currentUser.rol !== 'ADMIN')) {
       return NextResponse.json({ error: 'Solo administradores pueden gestionar casas' }, { status: 403 });
     }
     await asegurarTablaTerritorio();
     const id = new URL(request.url).searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
+    const prev = await db.execute({ sql: 'SELECT vereda, casa FROM territorio_casas WHERE id = ?', args: [Number(id)] });
     await db.execute({ sql: 'DELETE FROM territorio_casas WHERE id = ?', args: [Number(id)] });
+
+    await registrarAuditoria({
+      tipo_evento: 'GESTION_TERRITORIO',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      request,
+      detalles: { accion: 'Eliminación de casa del territorio', vereda: prev.rows[0]?.vereda, casa: prev.rows[0]?.casa }
+    });
+
     return NextResponse.json({ success: true, message: 'Casa eliminada del territorio' });
   } catch (err) {
     return NextResponse.json({ error: err.message || 'Error al eliminar casa' }, { status: 500 });

@@ -222,23 +222,31 @@ export async function POST(request) {
         ]
       });
 
-      // Si fue aprobado por admin en la creación, registrar auditoría
-      if (aprobadoPorId) {
-        await registrarAuditoria({
-          tipo_evento: 'APROBACION_VECINO',
-          usuario_id: currentUser.id,
-          usuario_nombre: currentUser.nombre,
-          cedula: normCedula,
-          detalles: { motivo: 'Registro directo aprobado por administración', vereda: vUpper, casa: cUpper }
-        });
-      }
+      const nuevoVecinoId = Number(res.lastInsertRowid);
+
+      // Registrar en bitácora el alta/solicitud de registro del vecino
+      await registrarAuditoria({
+        tipo_evento: aprobadoPorId ? 'APROBACION_VECINO' : 'REGISTRO_VECINO',
+        usuario_id: currentUser?.id || null,
+        usuario_nombre: currentUser?.nombre || `${nombres.trim().toUpperCase()} ${(apellidos || '').trim().toUpperCase()}`.trim() || 'Ciudadano (Portal Público)',
+        vecino_id: nuevoVecinoId,
+        cedula: normCedula,
+        request,
+        detalles: {
+          motivo: aprobadoPorId ? 'Registro directo y aprobación en Padrón Comunal' : 'Solicitud de inscripción desde Portal Público',
+          nombres: `${nombres.trim().toUpperCase()} ${(apellidos || '').trim().toUpperCase()}`.trim(),
+          vereda: vUpper,
+          casa: cUpper,
+          estado_inicial: estadoInicial,
+        }
+      });
 
       return NextResponse.json({
         success: true,
         message: estadoInicial === 'APROBADO'
           ? 'Vecino registrado y aprobado satisfactoriamente'
           : 'Vecino registrado en espera de aprobación por la vocería comunal',
-        vecinoId: Number(res.lastInsertRowid),
+        vecinoId: nuevoVecinoId,
         estado: estadoInicial,
       });
     }
@@ -286,13 +294,14 @@ export async function POST(request) {
         args: [currentUser.id, currentUser.nombre, now, now, targetId]
       });
 
-      // Registro estricto en bitácora auditable
+      // Registro estricto en bitácora auditable con IP pública
       await registrarAuditoria({
         tipo_evento: 'APROBACION_VECINO',
         usuario_id: currentUser.id,
         usuario_nombre: currentUser.nombre,
         vecino_id: vec.id,
         cedula: vec.cedula,
+        request,
         detalles: {
           nombres: `${vec.nombres} ${vec.apellidos}`,
           vereda: vec.vereda,
@@ -317,9 +326,27 @@ export async function POST(request) {
       }
 
       const { vecinoId, motivo } = body;
+      const vecRes = await db.execute({ sql: 'SELECT id, cedula, nombres, apellidos, vereda, casa FROM vecinos WHERE id = ?', args: [vecinoId] });
+      const vecInfo = vecRes.rows[0] || {};
+
       await db.execute({
         sql: `UPDATE vecinos SET estado_aprobacion = 'RECHAZADO', observaciones = ?, updated_at = ? WHERE id = ?`,
         args: [motivo || 'Rechazado por administración', now, vecinoId]
+      });
+
+      await registrarAuditoria({
+        tipo_evento: 'RECHAZO_VECINO',
+        usuario_id: currentUser.id,
+        usuario_nombre: currentUser.nombre,
+        vecino_id: vecinoId,
+        cedula: vecInfo.cedula || null,
+        request,
+        detalles: {
+          nombres: vecInfo.nombres ? `${vecInfo.nombres} ${vecInfo.apellidos || ''}`.trim() : 'Vecino',
+          vereda: vecInfo.vereda,
+          casa: vecInfo.casa,
+          motivo: motivo || 'Rechazado por administración',
+        }
       });
 
       return NextResponse.json({ success: true, message: 'Vecino marcado como rechazado' });
@@ -583,6 +610,7 @@ export async function POST(request) {
         tipo_evento: 'IMPORTACION_CSV_VECINOS',
         usuario_id: currentUser.id,
         usuario_nombre: currentUser.nombre,
+        request,
         detalles: { 
           insertados, 
           duplicadosOmitidos: filasDuplicadas.length, 

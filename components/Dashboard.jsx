@@ -7,7 +7,8 @@ import {
   LogOut, Plus, Search, Filter, Download, Upload, Check, X,
   AlertTriangle, RefreshCw, Eye, EyeOff, Edit, Trash2, Key, CheckCircle2,
   Calendar, Clock, UserCheck, ShieldAlert, Sun, Moon, Image as ImageIcon,
-  ListPlus, Store, FileCheck, Printer
+  ListPlus, Store, FileCheck, Printer, Activity, Globe, Laptop, Smartphone,
+  ChevronDown, ChevronRight, User, Shield
 } from 'lucide-react';
 import { 
   VEREDAS, CASAS_POR_VEREDA, getCasasPorVereda, BANCOS_VENEZUELA, CALIDADES_TENENCIA,
@@ -46,6 +47,37 @@ export default function Dashboard({ user, onLogout }) {
   const navigateTo = (tab) => {
     window.location.hash = `#${tab}`;
     setCurrentTab(tab);
+    if (tab && tab !== 'auditoria') {
+      const titulosModulos = {
+        dashboard: 'Panel Principal',
+        vecinos: 'Padrón Comunal de Vecinos',
+        documentos: 'Emisión de Constancias y Validación',
+        censo: 'Censo Sociodemográfico',
+        pagos: 'Finanzas y Recaudación Comunitaria',
+        firmas: 'Firmas y Sellos Autorizados',
+        modelador: 'Modelador de Plantillas Documentales',
+        usuarios: 'Gestión de Voceros y Permisos',
+        estadisticas: 'Estadísticas e Indicadores',
+        configuracion: 'Configuración del Sistema',
+      };
+      try {
+        fetch('/api/auditoria', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'registrar_actividad',
+            tipo_evento: 'NAVEGACION_MODULO',
+            modulo: tab,
+            modulo_nombre: titulosModulos[tab] || tab,
+            detalles: {
+              accion: `Navegó al módulo "${titulosModulos[tab] || tab}"`,
+              modulo: tab,
+              modulo_nombre: titulosModulos[tab] || tab,
+            }
+          }),
+        }).catch(() => {});
+      } catch (e) {}
+    }
   };
 
   // Estados de datos generales
@@ -86,6 +118,11 @@ export default function Dashboard({ user, onLogout }) {
   const [filtroDocTipo, setFiltroDocTipo] = useState('');
   const [filtroDocEstado, setFiltroDocEstado] = useState('');
   const [loadingDocs, setLoadingDocs] = useState(false);
+
+  // Estados de módulo Aportes Comunitarios
+  const [filtroPagoBusqueda, setFiltroPagoBusqueda] = useState('');
+  const [filtroPagoTipo, setFiltroPagoTipo] = useState('TODOS'); // 'TODOS' | 'APORTE' | 'EXONERADO'
+  const [filtroPagoDoc, setFiltroPagoDoc] = useState('');
 
   // Estados de módulo Censo
   const [planillasCenso, setPlanillasCenso] = useState([]);
@@ -304,9 +341,24 @@ export default function Dashboard({ user, onLogout }) {
     setModalUsuario(true);
   };
 
-  // Estados de módulo Auditoría
+  // Estados avanzados de Bitácora y Control Cuantitativo de Auditoría
   const [auditorias, setAuditorias] = useState([]);
+  const [auditoriaCuantitativo, setAuditoriaCuantitativo] = useState(null);
   const [loadingAuditoria, setLoadingAuditoria] = useState(false);
+  const [ipPublicaServidor, setIpPublicaServidor] = useState('');
+  const [ipPublicaCliente, setIpPublicaCliente] = useState('');
+
+  // Filtros de Auditoría
+  const [auditFechaInicio, setAuditFechaInicio] = useState('');
+  const [auditFechaFin, setAuditFechaFin] = useState('');
+  const [auditFiltroTipo, setAuditFiltroTipo] = useState('');
+  const [auditFiltroCategoria, setAuditFiltroCategoria] = useState('');
+  const [auditFiltroPersona, setAuditFiltroPersona] = useState('');
+  const [auditFiltroIp, setAuditFiltroIp] = useState('');
+  const [auditBusqueda, setAuditBusqueda] = useState('');
+  const [auditSubTab, setAuditSubTab] = useState('integral'); // 'integral' | 'graficos' | 'personas' | 'ips' | 'tabla'
+  const [personaSeleccionadaDetalle, setPersonaSeleccionadaDetalle] = useState(null);
+  const [logDetalleModal, setLogDetalleModal] = useState(null);
 
   // Estados de módulo Configuración
   const [config, setConfig] = useState({});
@@ -414,7 +466,7 @@ export default function Dashboard({ user, onLogout }) {
 
   useEffect(() => {
     if (currentTab === 'vecinos') { cargarVecinos(); cargarCatalogosSistema(); }
-    if (currentTab === 'documentos') cargarDocumentos();
+    if (currentTab === 'documentos' || currentTab === 'pagos') { cargarDocumentos(); cargarConfiguracion(); }
     if (currentTab === 'censo') { cargarCenso(); cargarCatalogosSistema(); }
     if (currentTab === 'firmas') cargarFirmas();
     if (currentTab === 'modelador') cargarModelador();
@@ -776,17 +828,121 @@ export default function Dashboard({ user, onLogout }) {
     }
   };
 
-  const cargarAuditoria = async () => {
+  const cargarAuditoria = async (
+    fIni = auditFechaInicio,
+    fFin = auditFechaFin,
+    cat = auditFiltroCategoria,
+    tip = auditFiltroTipo,
+    pers = auditFiltroPersona,
+    ip = auditFiltroIp,
+    q = auditBusqueda
+  ) => {
     setLoadingAuditoria(true);
     try {
-      const res = await fetch('/api/auditoria');
+      const params = new URLSearchParams();
+      if (fIni) params.append('fechaInicio', fIni);
+      if (fFin) params.append('fechaFin', fFin);
+      if (cat) params.append('categoria', cat);
+      if (tip) params.append('tipo', tip);
+      if (pers) params.append('persona', pers);
+      if (ip) params.append('ip', ip);
+      if (q) params.append('cedula', q);
+      params.append('limit', '800');
+
+      const res = await fetch(`/api/auditoria?${params.toString()}`);
       const data = await res.json();
       setAuditorias(data.logs || []);
+      setAuditoriaCuantitativo(data.cuantitativo || null);
+      if (data.ip_publica_actual) setIpPublicaServidor(data.ip_publica_actual);
     } catch (e) {
-      console.error(e);
+      console.error('Error cargando auditoría:', e);
     } finally {
       setLoadingAuditoria(false);
     }
+  };
+
+  const aplicarFiltroRapidoFechaAudit = (diasAtras) => {
+    const hoy = new Date();
+    const hoyStr = hoy.toISOString().split('T')[0];
+    if (diasAtras === 0) {
+      setAuditFechaInicio(hoyStr);
+      setAuditFechaFin(hoyStr);
+      cargarAuditoria(hoyStr, hoyStr, auditFiltroCategoria, auditFiltroTipo, auditFiltroPersona, auditFiltroIp, auditBusqueda);
+    } else if (diasAtras > 0) {
+      const pasado = new Date(hoy.getTime() - diasAtras * 24 * 60 * 60 * 1000);
+      const pasadoStr = pasado.toISOString().split('T')[0];
+      setAuditFechaInicio(pasadoStr);
+      setAuditFechaFin(hoyStr);
+      cargarAuditoria(pasadoStr, hoyStr, auditFiltroCategoria, auditFiltroTipo, auditFiltroPersona, auditFiltroIp, auditBusqueda);
+    } else {
+      setAuditFechaInicio('');
+      setAuditFechaFin('');
+      cargarAuditoria('', '', auditFiltroCategoria, auditFiltroTipo, auditFiltroPersona, auditFiltroIp, auditBusqueda);
+    }
+  };
+
+  const exportarAuditoriaCsv = () => {
+    if (!auditorias || auditorias.length === 0) {
+      toast.error('No hay registros de auditoría para exportar');
+      return;
+    }
+    const headers = ['ID', 'Fecha_Hora', 'Evento', 'Categoria', 'Critico', 'Usuario_Operador', 'Cedula', 'Codigo_Documento', 'IP_Publica', 'Dispositivo', 'Accion_Detalle'];
+    const rows = auditorias.map(a => [
+      a.id,
+      `"${a.created_at || a.fecha || ''}"`,
+      `"${(a.etiqueta_evento || a.tipo_evento || '').replace(/"/g, '""')}"`,
+      `"${a.categoria_evento || ''}"`,
+      a.es_critico ? 'SI' : 'NO',
+      `"${(a.usuario_nombre || 'Público').replace(/"/g, '""')}"`,
+      `"${a.cedula || ''}"`,
+      `"${a.codigo_documento || ''}"`,
+      `"${a.ip || ''}"`,
+      `"${(a.dispositivo_resumen || '').replace(/"/g, '""')}"`,
+      `"${(a.resumen_accion || '').replace(/"/g, '""')}"`
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Bitacora_Auditoria_CCLL_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success('Acta de auditoría y bitácora exportada en CSV');
+  };
+
+  const exportarAportesCsv = () => {
+    const aportesExportar = documentos.filter(doc => Number(doc.monto_bs) > 0 || doc.numero_transferencia || doc.es_exonerado);
+    if (aportesExportar.length === 0) {
+      toast.info('No hay declaraciones de aportes comunitarios para exportar');
+      return;
+    }
+    const headers = ['Fecha_Pago', 'Codigo_Documento', 'Tipo_Documento', 'Cedula', 'Solicitante', 'Vereda_Casa', 'Banco_Origen', 'Numero_Referencia', 'Monto_Bs', 'Monto_USD', 'Tasa_BCV', 'Exonerado', 'Motivo_Exoneracion', 'Estado'];
+    const rows = aportesExportar.map(d => [
+      `"${d.fecha_pago || d.created_at || ''}"`,
+      `"${d.codigo_qr || ''}"`,
+      `"${d.tipo_documento || ''}"`,
+      `"${d.cedula || d.solicitante_cedula || ''}"`,
+      `"${(d.solicitante_nombre || `${d.nombres || ''} ${d.apellidos || ''}`).trim().replace(/"/g, '""')}"`,
+      `"${(d.vereda ? `${d.vereda} - ${d.casa || ''}` : '').replace(/"/g, '""')}"`,
+      `"${(d.banco_nombre || 'N/A').replace(/"/g, '""')}"`,
+      `"${(d.numero_transferencia || 'N/A').replace(/"/g, '""')}"`,
+      Number(d.monto_bs || 0).toFixed(2),
+      Number(d.monto_usd || 0).toFixed(2),
+      Number(d.tasa_bcv || tasaBcv || 0).toFixed(2),
+      d.es_exonerado ? 'SI' : 'NO',
+      `"${(d.motivo_exoneracion || 'N/A').replace(/"/g, '""')}"`,
+      `"${d.estado || ''}"`
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Aportes_Comunitarios_CCLL_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success('Reporte de recaudación comunitaria exportado en CSV');
   };
 
   const cargarConfiguracion = async () => {
@@ -1131,8 +1287,73 @@ export default function Dashboard({ user, onLogout }) {
   return (
     <div className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col md:flex-row">
       
-      {/* Sidebar Lateral */}
-      <aside className="w-full md:w-64 bg-slate-950 border-r border-slate-800/80 p-4 flex flex-col justify-between shrink-0">
+      {/* Navegación Superior Exclusiva para Móvil */}
+      <header className="md:hidden sticky top-0 z-40 bg-slate-950/95 backdrop-blur-md border-b border-slate-800 px-3 py-2 shadow-lg">
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <img
+              src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/logo.png"
+              alt="Logo"
+              className="w-7 h-7 object-contain shrink-0"
+            />
+            <div className="min-w-0">
+              <h2 className="text-[11px] font-extrabold text-white leading-tight truncate">C.C. LAS LLAVES</h2>
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] font-bold text-blue-400 truncate max-w-[110px]">{user?.nombre || user?.username}</span>
+                <span className="px-1 py-0.2 rounded text-[8px] font-extrabold bg-blue-500/15 text-blue-300 border border-blue-500/20">
+                  {user?.rol}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-800 text-emerald-400 font-bold whitespace-nowrap">
+              BCV: Bs. {Number(tasaBcv).toFixed(2)}
+            </span>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
+              className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-amber-400 hover:text-amber-300 transition shrink-0"
+            >
+              {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5 text-blue-500" />}
+            </button>
+            <button
+              onClick={onLogout}
+              title="Cerrar sesión"
+              className="p-1.5 text-rose-400 hover:bg-rose-500/10 rounded-lg border border-rose-500/20 transition shrink-0"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Pestañas de Módulos Desplazables Horizontalmente en Móvil */}
+        <nav className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth pt-1 pb-0.5">
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = currentTab === item.id;
+            return (
+              <button
+                key={`mob_${item.id}`}
+                onClick={() => navigateTo(item.id)}
+                className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition whitespace-nowrap ${
+                  isActive
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                    : 'bg-slate-900/90 text-slate-300 hover:text-white border border-slate-800/80'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5 shrink-0" />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </header>
+
+      {/* Sidebar Lateral para Pantallas Medianas y Grandes (Desktop) */}
+      <aside className="hidden md:flex md:w-64 bg-slate-950 border-r border-slate-800/80 p-4 flex-col justify-between shrink-0 min-h-screen sticky top-0">
         <div>
           {/* Logo y Encabezado Sidebar */}
           <div className="flex items-center gap-3 px-2 py-3 mb-6 border-b border-slate-850">
@@ -1191,10 +1412,10 @@ export default function Dashboard({ user, onLogout }) {
       </aside>
 
       {/* Área de Contenido Principal */}
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-y-auto">
+      <main className="flex-1 p-2.5 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-y-auto">
         
-        {/* Barra Superior Global del Dashboard */}
-        <div className="flex items-center justify-between pb-4 mb-6 border-b border-slate-800/80">
+        {/* Barra Superior Global del Dashboard (Desktop) */}
+        <div className="hidden md:flex items-center justify-between pb-4 mb-6 border-b border-slate-800/80">
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <span className="font-semibold text-slate-300">Consejo Comunal Las Llaves</span>
             <span>/</span>
@@ -1839,6 +2060,396 @@ export default function Dashboard({ user, onLogout }) {
             )}
           </div>
         )}
+
+        {/* TAB: APORTES COMUNITARIOS Y RECAUDACIÓN (UAFC - LOCC 2023) */}
+        {currentTab === 'pagos' && checkPermiso('pagos') && (() => {
+          const todosLosAportes = documentos.filter(d => 
+            Number(d.monto_bs) > 0 || d.numero_transferencia || d.es_exonerado
+          );
+          const aportesPagados = documentos.filter(d => 
+            !d.es_exonerado && (Number(d.monto_bs) > 0 || d.numero_transferencia)
+          );
+          const aportesExonerados = documentos.filter(d => Boolean(d.es_exonerado));
+
+          const totalRecaudadoBs = aportesPagados.reduce((acc, d) => acc + (Number(d.monto_bs) || 0), 0);
+          const totalRecaudadoUsd = aportesPagados.reduce((acc, d) => acc + (Number(d.monto_usd) || 0), 0);
+
+          const aportesFiltrados = todosLosAportes.filter(doc => {
+            if (filtroPagoTipo === 'APORTE' && doc.es_exonerado) return false;
+            if (filtroPagoTipo === 'EXONERADO' && !doc.es_exonerado) return false;
+            if (filtroPagoDoc && doc.tipo_documento !== filtroPagoDoc) return false;
+            if (filtroPagoBusqueda) {
+              const q = filtroPagoBusqueda.toLowerCase();
+              const str = `${doc.solicitante_nombre || ''} ${doc.nombres || ''} ${doc.apellidos || ''} ${doc.cedula || ''} ${doc.solicitante_cedula || ''} ${doc.numero_transferencia || ''} ${doc.banco_nombre || ''} ${doc.codigo_qr || ''}`.toLowerCase();
+              if (!str.includes(q)) return false;
+            }
+            return true;
+          });
+
+          return (
+            <div className="space-y-5 animate-in fade-in">
+              {/* Encabezado Principal */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h1 className="text-lg sm:text-2xl font-extrabold text-white flex items-center gap-2">
+                      <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
+                      Aportes Comunitarios y Recaudación
+                    </h1>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                      UAFC · LOCC 2023
+                    </span>
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
+                    Autogestión comunitaria, rendición de cuentas y exoneraciones sociales (Art. 24, 30 y 51 de la Ley Orgánica de los Consejos Comunales).
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => { cargarDocumentos(); toast.success('Datos de recaudación actualizados'); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Actualizar</span>
+                  </button>
+                  <button
+                    onClick={exportarAportesCsv}
+                    className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/20 transition"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Exportar CSV</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Tarjetas de Indicadores Financieros (KPIs) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                {/* Total en Bolívares */}
+                <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-750 transition shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-slate-400">Total Recaudado</span>
+                    <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400">
+                      <DollarSign className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-emerald-400 tracking-tight">
+                    Bs. {totalRecaudadoBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+                    <span>Equiv. en Divisas:</span>
+                    <strong className="text-slate-200">${totalRecaudadoUsd.toFixed(2)} USD</strong>
+                  </div>
+                </div>
+
+                {/* Tasa Oficial BCV */}
+                <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-750 transition shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-slate-400">Tasa Oficial BCV</span>
+                    <div className="p-2 rounded-xl bg-blue-500/15 text-blue-400">
+                      <Globe className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                    Bs. {Number(tasaBcv).toFixed(2)}
+                  </div>
+                  <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+                    <span>Banco Central de Vzla:</span>
+                    <strong className="text-emerald-400">Referencia Legal</strong>
+                  </div>
+                </div>
+
+                {/* Trámites con Aporte Realizado */}
+                <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-750 transition shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-slate-400">Aportes Declarados</span>
+                    <div className="p-2 rounded-xl bg-amber-500/15 text-amber-400">
+                      <FileCheck className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-amber-300 tracking-tight">
+                    {aportesPagados.length} <span className="text-xs font-normal text-slate-400">trámites</span>
+                  </div>
+                  <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+                    <span>Colaboraciones:</span>
+                    <strong className="text-slate-200">Autogestión UAFC</strong>
+                  </div>
+                </div>
+
+                {/* Exoneraciones Sociales 100% Gratuitas */}
+                <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-750 transition shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-slate-400">Exoneraciones Sociales</span>
+                    <div className="p-2 rounded-xl bg-purple-500/15 text-purple-400">
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-purple-300 tracking-tight">
+                    {aportesExonerados.length} <span className="text-xs font-normal text-slate-400">familias</span>
+                  </div>
+                  <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+                    <span>Principio:</span>
+                    <strong className="text-purple-300">100% Gratuito</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Barra de Filtros y Búsqueda */}
+              <div className="p-3 sm:p-4 rounded-2xl bg-slate-900/80 border border-slate-800 flex flex-col md:flex-row gap-2.5 sm:gap-3 items-stretch md:items-center justify-between">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
+                  <input
+                    type="text"
+                    value={filtroPagoBusqueda}
+                    onChange={(e) => setFiltroPagoBusqueda(e.target.value)}
+                    placeholder="Buscar por cédula, nombre de solicitante, referencia..."
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={filtroPagoTipo}
+                    onChange={(e) => setFiltroPagoTipo(e.target.value)}
+                    className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="TODOS">Todos los Trámites</option>
+                    <option value="APORTE">Solo Aportes Declarados</option>
+                    <option value="EXONERADO">Solo Exoneraciones Sociales</option>
+                  </select>
+
+                  <select
+                    value={filtroPagoDoc}
+                    onChange={(e) => setFiltroPagoDoc(e.target.value)}
+                    className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Cualquier Constancia</option>
+                    <option value="RESIDENCIA">Constancia de Residencia</option>
+                    <option value="BUENA_CONDUCTA">Carta de Buena Conducta</option>
+                    <option value="FALLECIMIENTO">Constancia de Fallecimiento</option>
+                    <option value="FUNCIONAMIENTO">Constancia de Funcionamiento</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* ESTADO VACÍO PROMINENTE CUANDO NO HAY APORTES REGISTRADOS */}
+              {aportesFiltrados.length === 0 ? (
+                <div className="p-6 sm:p-10 rounded-3xl bg-slate-900/40 border border-slate-800/80 text-center">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-xl shadow-amber-500/10 mx-auto mb-4 animate-pulse-subtle">
+                    <DollarSign className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400" />
+                  </div>
+                  
+                  <h3 className="text-base sm:text-xl font-extrabold text-white">
+                    A la espera de declaración de aportes comunitarios
+                  </h3>
+                  
+                  <p className="text-xs sm:text-sm text-slate-400 max-w-xl mx-auto mt-1.5 leading-relaxed">
+                    Actualmente no se registran aportes de recaudación comunitaria ni pagos asociados a solicitudes de constancias en el sistema. Los registros aparecerán automáticamente cuando los vecinos tramiten constancias con aporte o cuando se aprueben solicitudes.
+                  </p>
+
+                  {/* Tarjetas informativas de respaldo institucional */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-8 text-left max-w-4xl mx-auto">
+                    <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 hover:border-slate-750 transition">
+                      <div className="flex items-center gap-2.5 mb-2">
+                        <div className="p-2 rounded-xl bg-blue-500/15 text-blue-400">
+                          <ShieldCheck className="w-4 h-4" />
+                        </div>
+                        <h4 className="text-xs font-bold text-white">Fondo de Autogestión (LOCC 2023)</h4>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Conforme al <strong>Art. 51 Numeral 3</strong> de la Ley Orgánica de los Consejos Comunales (2023), los aportes por tramitación ingresan a la Unidad Administrativa y Financiera Comunitaria (UAFC) para cubrir gastos de impresión, papelería y conectividad del Consejo Comunal.
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 hover:border-slate-750 transition">
+                      <div className="flex items-center gap-2.5 mb-2">
+                        <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400">
+                          <Store className="w-4 h-4" />
+                        </div>
+                        <h4 className="text-xs font-bold text-white">Coordenadas de Pago Oficial</h4>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Banco oficial receptor: <strong>Banco de Venezuela (0102)</strong> · Titular: <strong>Consejo Comunal Dr. Alfredo Travieso Paúl - Las Llaves</strong> · RIF: <strong>C-299916862</strong>. Disponible mediante Pago Móvil y Transferencia Bancaria autorizada por Asamblea.
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 hover:border-slate-750 transition">
+                      <div className="flex items-center gap-2.5 mb-2">
+                        <div className="p-2 rounded-xl bg-purple-500/15 text-purple-400">
+                          <UserCheck className="w-4 h-4" />
+                        </div>
+                        <h4 className="text-xs font-bold text-white">Exoneración Social 100% Gratuita</h4>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Los vecinos <strong>Adultos Mayores, personas con discapacidad o condiciones crónicas de salud</strong> y trámites de defunción/escolares gozan de exoneración total del aporte, garantizando el acceso universal a sus certificaciones sin costo.
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 hover:border-slate-750 transition">
+                      <div className="flex items-center gap-2.5 mb-2">
+                        <div className="p-2 rounded-xl bg-amber-500/15 text-amber-400">
+                          <Globe className="w-4 h-4" />
+                        </div>
+                        <h4 className="text-xs font-bold text-white">Transparencia y Tasa Oficial BCV</h4>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Cálculo exacto a la tasa del <strong>Banco Central de Venezuela (BCV Oficial: Bs. {Number(tasaBcv).toFixed(2)})</strong>. Toda transacción cuenta con trazabilidad inalterable en la bitácora de auditoría para la Contraloría Social.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* TABLA DE APORTES COMUNITARIOS CUANDO EXISTEN REGISTROS */
+                <div className="rounded-2xl border border-slate-800 overflow-hidden bg-slate-950/60 shadow-lg">
+                  <div className="p-3 sm:p-4 border-b border-slate-800 flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-300">
+                      Mostrando {aportesFiltrados.length} aporte(s) comunitario(s)
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      Total listado: Bs. {aportesFiltrados.filter(d => !d.es_exonerado).reduce((acc, d) => acc + (Number(d.monto_bs) || 0), 0).toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-900/90 text-slate-400 border-b border-slate-800 font-semibold uppercase text-[10px] tracking-wider">
+                        <tr>
+                          <th className="py-3 px-3 sm:px-4">Fecha</th>
+                          <th className="py-3 px-3 sm:px-4">Solicitante</th>
+                          <th className="py-3 px-3 sm:px-4">Trámite / Constancia</th>
+                          <th className="py-3 px-3 sm:px-4">Banco Origen</th>
+                          <th className="py-3 px-3 sm:px-4">N° Transferencia / Ref</th>
+                          <th className="py-3 px-3 sm:px-4 text-right">Aporte (Bs / USD)</th>
+                          <th className="py-3 px-3 sm:px-4 text-center">Estado</th>
+                          <th className="py-3 px-3 sm:px-4 text-center">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-850">
+                        {aportesFiltrados.map((doc) => {
+                          const solicitante = doc.solicitante_nombre || `${doc.nombres || ''} ${doc.apellidos || ''}`.trim() || 'Vecino';
+                          const cedula = doc.solicitante_cedula || doc.cedula || 'N/A';
+                          return (
+                            <tr key={`pago_${doc.id || doc.codigo_qr}`} className="hover:bg-slate-900/50 transition">
+                              <td className="py-3 px-3 sm:px-4 whitespace-nowrap text-slate-300">
+                                <div className="flex items-center gap-1.5">
+                                  <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                  <span>{doc.fecha_pago || doc.created_at?.split('T')[0] || 'N/A'}</span>
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-3 sm:px-4">
+                                <div className="font-bold text-white">{solicitante}</div>
+                                <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                                  <span>{cedula}</span>
+                                  {doc.vereda && (
+                                    <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">
+                                      Vereda {doc.vereda} - {doc.casa}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-3 sm:px-4 whitespace-nowrap">
+                                <span className="font-semibold text-slate-200 block">
+                                  {doc.tipo_documento?.replace(/_/g, ' ')}
+                                </span>
+                                <span className="text-[10px] text-blue-400 font-mono">
+                                  {doc.codigo_qr}
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-3 sm:px-4 text-slate-300 whitespace-nowrap">
+                                {doc.banco_nombre || 'N/A'}
+                              </td>
+
+                              <td className="py-3 px-3 sm:px-4 font-mono text-slate-300 whitespace-nowrap">
+                                {doc.numero_transferencia ? (
+                                  <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-amber-300">
+                                    {doc.numero_transferencia}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-500">N/A</span>
+                                )}
+                              </td>
+
+                              <td className="py-3 px-3 sm:px-4 text-right whitespace-nowrap">
+                                {doc.es_exonerado ? (
+                                  <div>
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                      100% Exonerado
+                                    </span>
+                                    <div className="text-[9px] text-slate-400 mt-0.5">{doc.motivo_exoneracion || 'Caso Social'}</div>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <span className="font-bold text-emerald-400">
+                                      Bs. {Number(doc.monto_bs || 0).toFixed(2)}
+                                    </span>
+                                    <div className="text-[10px] text-slate-400">
+                                      ${Number(doc.monto_usd || 1).toFixed(2)} USD
+                                    </div>
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="py-3 px-3 sm:px-4 text-center whitespace-nowrap">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  doc.estado === 'EMITIDO' || doc.estado === 'APROBADO'
+                                    ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+                                    : doc.estado === 'REVOCADO'
+                                    ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                                    : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                                }`}>
+                                  {doc.estado || 'REGISTRADO'}
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-3 sm:px-4 text-center whitespace-nowrap">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <button
+                                    onClick={() => {
+                                      window.open(`/#validar?codigo=${doc.codigo_qr}`, '_blank');
+                                    }}
+                                    title="Ver en Validador QR"
+                                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      let plant = plantillas.find((p) => p.id === doc.tipo_documento);
+                                      if (!plant) {
+                                        try {
+                                          const resPl = await fetch(`/api/modelador?id=${encodeURIComponent(doc.tipo_documento)}`);
+                                          const dataPl = await resPl.json();
+                                          plant = dataPl.plantilla;
+                                        } catch (e) {}
+                                      }
+                                      await generarDocumentoPdf({
+                                        documento: doc,
+                                        firmas,
+                                        config,
+                                        plantilla: plant,
+                                      });
+                                    }}
+                                    title="Descargar Constancia Oficial PDF"
+                                    className="p-1.5 rounded-lg bg-blue-600/15 hover:bg-blue-600/30 text-blue-400 border border-blue-500/20 transition"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* TAB: FIRMAS Y SELLOS AUTORIZADOS */}
         {currentTab === 'firmas' && checkPermiso('firmas') && (
@@ -3102,50 +3713,961 @@ export default function Dashboard({ user, onLogout }) {
           </div>
         )}
 
-        {/* TAB: BITÁCORA Y AUDITORÍA */}
+        {/* TAB: BITÁCORA Y AUDITORÍA INTEGRAL DE CONTRALORÍA */}
         {currentTab === 'auditoria' && checkPermiso('auditoria') && (
-          <div className="space-y-5 animate-in fade-in">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-extrabold text-white">Bitácora de Auditoría del Sistema</h1>
-                <p className="text-xs text-slate-400">Registro inalterable de accesos al dashboard, descargas de constancias y autorizaciones</p>
+          <div className="space-y-6 animate-in fade-in pb-12">
+            {/* 1. CABECERA SUPERIOR Y ESTADO DE RED EN VIVO */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-slate-900 to-slate-850 border border-slate-800 shadow-2xl relative overflow-hidden">
+              <div className="space-y-1 relative z-10">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3 h-3 text-blue-400" /> Unidad de Contraloría Social
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    IP Pública Activa: {ipPublicaServidor || ipPublicaCliente || 'Detectada en conexión'}
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono text-slate-400 bg-slate-800/60 border border-slate-700/50 flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> Huso Horario: Venezuela (UTC-4)
+                  </span>
+                </div>
+                <h1 className="text-2xl font-black text-white tracking-tight">Bitácora de Auditoría del Sistema</h1>
+                <p className="text-xs text-slate-400 max-w-2xl">
+                  Registro inalterable con trazabilidad de IP Pública, historial cronológico de lo que hace cada persona y analítica cuantitativa de tráfico para la contraloría interna.
+                </p>
               </div>
+
+              <div className="flex flex-wrap items-center gap-2 relative z-10">
+                <button
+                  onClick={exportarAuditoriaCsv}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                  title="Descargar registro filtrado para acta de contraloría"
+                >
+                  <Download className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Exportar CSV</span>
+                </button>
+                <button
+                  onClick={() => cargarAuditoria()}
+                  disabled={loadingAuditoria}
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-lg shadow-blue-600/20 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingAuditoria ? 'animate-spin' : ''}`} />
+                  <span>{loadingAuditoria ? 'Actualizando...' : 'Refrescar'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 2. BARRA DE FILTROS AVANZADOS Y RANGO DE FECHAS */}
+            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-blue-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300">Filtros Cuantitativos y Rango de Fechas</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-slate-400 mr-1">Periodo rápido:</span>
+                  <button
+                    onClick={() => aplicarFiltroRapidoFechaAudit(0)}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-slate-200 border border-slate-700"
+                  >
+                    Hoy
+                  </button>
+                  <button
+                    onClick={() => aplicarFiltroRapidoFechaAudit(7)}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-slate-200 border border-slate-700"
+                  >
+                    Últimos 7 días
+                  </button>
+                  <button
+                    onClick={() => aplicarFiltroRapidoFechaAudit(30)}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-slate-200 border border-slate-700"
+                  >
+                    Últimos 30 días
+                  </button>
+                  <button
+                    onClick={() => aplicarFiltroRapidoFechaAudit(-1)}
+                    className="px-2.5 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-[11px] font-bold"
+                  >
+                    Todo el Historial
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                {/* Fecha Desde */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Desde (Fecha)</label>
+                  <input
+                    type="date"
+                    value={auditFechaInicio}
+                    onChange={(e) => setAuditFechaInicio(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Fecha Hasta */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Hasta (Fecha)</label>
+                  <input
+                    type="date"
+                    value={auditFechaFin}
+                    onChange={(e) => setAuditFechaFin(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Categoría */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Área / Categoría</label>
+                  <select
+                    value={auditFiltroCategoria}
+                    onChange={(e) => setAuditFiltroCategoria(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Todas las Áreas</option>
+                    <option value="ACCESOS">Accesos y Seguridad</option>
+                    <option value="DOCUMENTOS">Trámites, Descargas y QR</option>
+                    <option value="PADRON_CENSO">Padrón y Censo Comunal</option>
+                    <option value="ADMINISTRACION">Administración y Permisos</option>
+                    <option value="NAVEGACION">Navegación y Consultas</option>
+                  </select>
+                </div>
+
+                {/* Persona / Actor */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Persona / Operador</label>
+                  <select
+                    value={auditFiltroPersona}
+                    onChange={(e) => setAuditFiltroPersona(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500 truncate"
+                  >
+                    <option value="">Todas las personas</option>
+                    {(auditoriaCuantitativo?.historialPorPersona || []).map((p) => (
+                      <option key={p.persona_key} value={p.nombre}>
+                        {p.nombre} ({p.total_acciones} acciones)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Búsqueda por Cédula / Código QR / IP */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Cédula / QR / IP</label>
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
+                    <input
+                      type="text"
+                      placeholder="Ej: V-15..., CCLL-..."
+                      value={auditBusqueda}
+                      onChange={(e) => setAuditBusqueda(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && cargarAuditoria()}
+                      className="w-full pl-8 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* Botones de acción de filtros */}
+                <div className="flex items-end gap-1.5">
+                  <button
+                    onClick={() => cargarAuditoria()}
+                    className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition flex items-center justify-center gap-1 shadow-md shadow-blue-600/20"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Filtrar</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAuditFechaInicio('');
+                      setAuditFechaFin('');
+                      setAuditFiltroCategoria('');
+                      setAuditFiltroTipo('');
+                      setAuditFiltroPersona('');
+                      setAuditFiltroIp('');
+                      setAuditBusqueda('');
+                      cargarAuditoria('', '', '', '', '', '', '');
+                    }}
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition"
+                    title="Limpiar todos los filtros"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Indicador de filtro por IP activa si existe */}
+              {auditFiltroIp && (
+                <div className="flex items-center gap-2 p-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300">
+                  <Globe className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Filtrando exclusivamente por IP Pública: <strong className="font-mono text-white">{auditFiltroIp}</strong></span>
+                  <button
+                    onClick={() => {
+                      setAuditFiltroIp('');
+                      cargarAuditoria(auditFechaInicio, auditFechaFin, auditFiltroCategoria, auditFiltroTipo, auditFiltroPersona, '', auditBusqueda);
+                    }}
+                    className="ml-auto text-blue-400 hover:text-white underline text-[11px]"
+                  >
+                    Quitar filtro de IP
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 3. TARJETAS DE CONTROL CUANTITATIVO (6 KPIs DE CONTRALORÍA) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {/* Total Eventos */}
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 relative overflow-hidden">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Total Operaciones</span>
+                <div className="text-2xl font-black text-white">
+                  {auditoriaCuantitativo?.kpis?.total_eventos ?? auditorias.length}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                  <Activity className="w-3 h-3 text-blue-400" />
+                  <span>{auditoriaCuantitativo?.kpis?.promedio_eventos_dia ?? 0} prom/día activo</span>
+                </div>
+              </div>
+
+              {/* Hora Pico de Mayor Tráfico */}
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 relative overflow-hidden">
+                <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-1 flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> Hora Pico Tráfico
+                </span>
+                <div className="text-2xl font-black text-amber-300 font-mono">
+                  {auditoriaCuantitativo?.kpis?.hora_pico?.hora || '--:--'}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1 truncate">
+                  {auditoriaCuantitativo?.kpis?.hora_pico?.cantidad || 0} ops ({auditoriaCuantitativo?.kpis?.hora_pico?.porcentaje || 0}%)
+                </div>
+              </div>
+
+              {/* Franja Horaria Dominante */}
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Franja Principal</span>
+                <div className="text-sm font-bold text-white truncate">
+                  {auditoriaCuantitativo?.kpis?.franja_mayor_trafico?.nombre?.split('(')[0]?.trim() || 'Diurna'}
+                </div>
+                <div className="text-[10px] text-emerald-400 mt-1 font-mono font-bold">
+                  {auditoriaCuantitativo?.kpis?.franja_mayor_trafico?.total || 0} ops ({auditoriaCuantitativo?.kpis?.franja_mayor_trafico?.porcentaje || 0}%)
+                </div>
+              </div>
+
+              {/* IPs Públicas Únicas */}
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1 flex items-center gap-1">
+                  <Globe className="w-3 h-3 text-blue-400" /> IPs Públicas
+                </span>
+                <div className="text-2xl font-black text-blue-400 font-mono">
+                  {auditoriaCuantitativo?.kpis?.ips_unicas ?? 1}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1 truncate">
+                  Conexiones externas
+                </div>
+              </div>
+
+              {/* Personas Activas */}
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1 flex items-center gap-1">
+                  <Users className="w-3 h-3 text-purple-400" /> Personas Activas
+                </span>
+                <div className="text-2xl font-black text-purple-400 font-mono">
+                  {auditoriaCuantitativo?.kpis?.personas_activas ?? 0}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">
+                  {auditoriaCuantitativo?.kpis?.voceros_activos ?? 0} voc / {auditoriaCuantitativo?.kpis?.ciudadanos_activos ?? 0} vec
+                </div>
+              </div>
+
+              {/* Acciones Críticas */}
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+                <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block mb-1 flex items-center gap-1">
+                  <ShieldAlert className="w-3 h-3" /> Eventos Críticos
+                </span>
+                <div className="text-2xl font-black text-rose-400 font-mono">
+                  {auditoriaCuantitativo?.kpis?.acciones_criticas ?? 0}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1 truncate">
+                  Autorizaciones y seguridad
+                </div>
+              </div>
+            </div>
+
+            {/* 4. SUB-PESTAÑAS DE VISTA */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
               <button
-                onClick={cargarAuditoria}
-                className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300"
+                onClick={() => setAuditSubTab('integral')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  auditSubTab === 'integral'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
               >
-                Refrescar
+                <Activity className="w-3.5 h-3.5" />
+                <span>Vista Integral</span>
+              </button>
+              <button
+                onClick={() => setAuditSubTab('graficos')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  auditSubTab === 'graficos'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>Gráficos de Tráfico Horario ({auditoriaCuantitativo?.kpis?.hora_pico?.hora || '--:--'})</span>
+              </button>
+              <button
+                onClick={() => setAuditSubTab('personas')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  auditSubTab === 'personas'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>Historial y Estado por Persona ({auditoriaCuantitativo?.historialPorPersona?.length || 0})</span>
+              </button>
+              <button
+                onClick={() => setAuditSubTab('ips')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  auditSubTab === 'ips'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>Control de IPs Públicas ({auditoriaCuantitativo?.controlPorIp?.length || 0})</span>
+              </button>
+              <button
+                onClick={() => setAuditSubTab('tabla')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  auditSubTab === 'tabla'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Bitácora Detallada ({auditorias.length})</span>
               </button>
             </div>
 
-            <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-xl">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-950/80 text-slate-400 border-b border-slate-800 uppercase font-semibold">
-                    <tr>
-                      <th className="px-4 py-3">Fecha y Hora</th>
-                      <th className="px-4 py-3">Evento</th>
-                      <th className="px-4 py-3">Usuario / Vecino</th>
-                      <th className="px-4 py-3">Cédula</th>
-                      <th className="px-4 py-3">Documento / Código</th>
-                      <th className="px-4 py-3">IP / Origen</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
-                    {auditorias.map((a) => (
-                      <tr key={a.id} className="hover:bg-slate-850/50 transition">
-                        <td className="px-4 py-2.5 text-slate-400 whitespace-nowrap">{a.created_at}</td>
-                        <td className="px-4 py-2.5 font-bold text-blue-400">{a.tipo_evento}</td>
-                        <td className="px-4 py-2.5 text-slate-200">{a.usuario_nombre || 'Público'}</td>
-                        <td className="px-4 py-2.5 text-slate-300">{a.cedula || '—'}</td>
-                        <td className="px-4 py-2.5 text-emerald-400">{a.codigo_documento || a.tipo_documento || '—'}</td>
-                        <td className="px-4 py-2.5 text-slate-500">{a.ip || 'Local'}</td>
-                      </tr>
+            {/* 5.A SUBTAB: GRÁFICOS DE TRÁFICO HORARIO Y EVOLUCIÓN */}
+            {(auditSubTab === 'integral' || auditSubTab === 'graficos') && (
+              <div className="space-y-6">
+                {/* GRÁFICO 1: HORAS DE MAYOR TRÁFICO (00:00 A 23:00) */}
+                <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-amber-400" />
+                        <h3 className="text-base font-bold text-white">Distribución de Tráfico por Hora del Día (00:00 a 23:00)</h3>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        Identificación cuantitativa de las horas pico de mayor concurrencia en la plataforma para contraloría y soporte
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                        <span className="w-3 h-3 rounded bg-blue-500"></span> Gestión Interna Voceros
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                        <span className="w-3 h-3 rounded bg-emerald-500"></span> Trámites / Descargas / QR
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="h-72 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={auditoriaCuantitativo?.traficoPorHora || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                        <XAxis dataKey="hora" stroke="#64748b" fontSize={10} interval={1} />
+                        <YAxis stroke="#64748b" fontSize={10} allowDecimals={false} />
+                        <Tooltip
+                          content={({ active, payload, label }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              return (
+                                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl shadow-2xl text-xs space-y-1 font-sans">
+                                  <div className="font-bold text-white flex items-center justify-between gap-3">
+                                    <span>Hora: {label}</span>
+                                    {data.esHoraPico && (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                        HORA PICO
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-blue-400">Gestión Interna: <strong>{data.gestion_interna}</strong> ops</div>
+                                  <div className="text-emerald-400">Trámites y Descargas: <strong>{data.tramites_publicos}</strong> ops</div>
+                                  <div className="border-t border-slate-800 pt-1 text-slate-300 font-bold">
+                                    Total: {data.total} operaciones ({data.porcentaje}%)
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Bar dataKey="gestion_interna" name="Gestión Interna" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />
+                        <Bar dataKey="tramites_publicos" name="Trámites Públicos" stackId="a" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Resumen por Franjas Horarias */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+                    {(auditoriaCuantitativo?.franjasHorarias || []).map((f, idx) => (
+                      <div key={idx} className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-400 font-medium">{f.nombre.split('(')[0]}</span>
+                          <span className="font-mono font-bold text-white">{f.total}</span>
+                        </div>
+                        <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              idx === 0 ? 'bg-indigo-500' : idx === 1 ? 'bg-amber-500' : idx === 2 ? 'bg-blue-500' : 'bg-purple-500'
+                            }`}
+                            style={{ width: `${Math.min(100, f.porcentaje || 0)}%` }}
+                          ></div>
+                        </div>
+                        <div className="text-[10px] text-slate-500 flex justify-between">
+                          <span>{f.rango}</span>
+                          <span>{f.porcentaje}%</span>
+                        </div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                </div>
+
+                {/* GRÁFICO 2: EVOLUCIÓN TEMPORAL POR FECHA Y CATEGORÍAS */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Evolución Diaria en el Rango */}
+                  <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
+                    <div className="border-b border-slate-800 pb-3">
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-blue-400" />
+                        Evolución de Actividad en el Rango de Fechas
+                      </h3>
+                      <p className="text-xs text-slate-400">Total de transacciones auditadas por día</p>
+                    </div>
+
+                    <div className="h-60 w-full">
+                      {(auditoriaCuantitativo?.traficoPorDia || []).length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={auditoriaCuantitativo.traficoPorDia} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                            <XAxis dataKey="fecha" stroke="#64748b" fontSize={9} />
+                            <YAxis stroke="#64748b" fontSize={10} allowDecimals={false} />
+                            <Tooltip contentStyle={{ backgroundColor: '#020617', borderColor: '#1e293b', fontSize: 11 }} />
+                            <Line type="monotone" dataKey="total" name="Total Eventos" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 3 }} />
+                            <Line type="monotone" dataKey="tramites_publicos" name="Trámites Públicos" stroke="#10b981" strokeWidth={2} dot={{ r: 2 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-xs text-slate-500">
+                          Sin datos de evolución para el rango seleccionado
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Conteo Cuantitativo por Categoría de Contraloría */}
+                  <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
+                    <div className="border-b border-slate-800 pb-3">
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-purple-400" />
+                        Distribución por Área de Contraloría
+                      </h3>
+                      <p className="text-xs text-slate-400">Clasificación cuantitativa de eventos auditados</p>
+                    </div>
+
+                    <div className="space-y-3">
+                      {(auditoriaCuantitativo?.porCategoria || []).map((cat) => (
+                        <div key={cat.codigo} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold text-slate-300">{cat.nombre}</span>
+                            <span className="font-mono text-slate-400">
+                              <strong className="text-white">{cat.total}</strong> ops ({cat.porcentaje}%)
+                            </span>
+                          </div>
+                          <div className="w-full h-2 rounded-full bg-slate-950 overflow-hidden border border-slate-800/80">
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{ width: `${Math.min(100, cat.porcentaje || 0)}%`, backgroundColor: cat.color }}
+                            ></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* 5.B SUBTAB: HISTORIAL Y ESTADO POR PERSONA ("LO QUE ESTÁ HACIENDO + HISTORIAL PREVIO") */}
+            {(auditSubTab === 'integral' || auditSubTab === 'personas') && (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-5 rounded-2xl bg-slate-900 border border-slate-800">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <UserCheck className="w-4 h-4 text-emerald-400" />
+                      <h3 className="text-base font-bold text-white">Monitoreo Individual por Persona: Actividad Actual e Historial</h3>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Vigilancia en tiempo real de lo que hace cada vocero o ciudadano dentro del sistema, con trazabilidad de IP Pública, navegador y expediente cronológico de acciones.
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 rounded-xl bg-slate-800 text-xs font-mono text-slate-300 border border-slate-700">
+                    {auditoriaCuantitativo?.historialPorPersona?.length || 0} personas registradas
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {(auditoriaCuantitativo?.historialPorPersona || []).map((p) => {
+                    const act = p.accion_actual || {};
+                    return (
+                      <div
+                        key={p.persona_key}
+                        className="p-5 rounded-2xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition shadow-lg space-y-4"
+                      >
+                        {/* Encabezado Persona */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${
+                              p.es_vocero ? 'bg-purple-600/20 text-purple-300 border border-purple-500/30' : 'bg-blue-600/20 text-blue-300 border border-blue-500/30'
+                            }`}>
+                              {p.nombre ? p.nombre.slice(0, 2).toUpperCase() : 'US'}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h4 className="text-sm font-bold text-white">{p.nombre}</h4>
+                                <span className={`px-2 py-0.2 rounded text-[9px] font-bold uppercase ${
+                                  p.es_vocero ? 'bg-purple-500/20 text-purple-300' : 'bg-slate-800 text-slate-400'
+                                }`}>
+                                  {p.rol || (p.es_vocero ? 'Vocero' : 'Ciudadano')}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-400 font-mono">
+                                {p.cedula ? `C.I.: ${p.cedula}` : 'Sin cédula asociada'}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <span className="text-xs font-mono font-black text-blue-400 block">{p.total_acciones}</span>
+                            <span className="text-[10px] text-slate-500 uppercase">operaciones</span>
+                          </div>
+                        </div>
+
+                        {/* BLOQUE: LO QUE ESTÁ HACIENDO ACTUALMENTE */}
+                        <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                              Última Acción Registrada (En Vivo)
+                            </span>
+                            <span className="text-[10px] font-mono text-slate-500">{act.created_at || 'Reciente'}</span>
+                          </div>
+
+                          <div className="text-xs text-slate-200 font-medium">
+                            {act.resumen || act.etiqueta || 'Actividad general en el sistema'}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-900 text-[10px] font-mono text-slate-400">
+                            <span className="inline-flex items-center gap-1 text-blue-300 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                              <Globe className="w-3 h-3 text-blue-400" />
+                              IP: {act.ip || 'No disponible'}
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-slate-300 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                              <Laptop className="w-3 h-3 text-slate-400" />
+                              {act.dispositivo || 'Navegador Web'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* DESGLOSE CUANTITATIVO */}
+                        <div className="grid grid-cols-4 gap-2 text-center text-[10px] pt-1">
+                          <div className="p-2 rounded-lg bg-slate-950/50 border border-slate-850">
+                            <span className="text-slate-500 block">Accesos</span>
+                            <strong className="text-white font-mono text-xs">{p.accesos}</strong>
+                          </div>
+                          <div className="p-2 rounded-lg bg-slate-950/50 border border-slate-850">
+                            <span className="text-slate-500 block">Trámites</span>
+                            <strong className="text-emerald-400 font-mono text-xs">{p.documentos}</strong>
+                          </div>
+                          <div className="p-2 rounded-lg bg-slate-950/50 border border-slate-850">
+                            <span className="text-slate-500 block">Padrón/Censo</span>
+                            <strong className="text-amber-400 font-mono text-xs">{p.padron_censo}</strong>
+                          </div>
+                          <div className="p-2 rounded-lg bg-slate-950/50 border border-slate-850">
+                            <span className="text-slate-500 block">Administración</span>
+                            <strong className="text-purple-400 font-mono text-xs">{p.administracion}</strong>
+                          </div>
+                        </div>
+
+                        {/* BOTÓN PARA ABRIR HISTORIAL COMPLETO DE LA PERSONA */}
+                        <div className="pt-2 flex items-center justify-between border-t border-slate-850">
+                          <span className="text-[11px] text-slate-400">
+                            Historial previo: <strong className="text-slate-200">{p.historial_previo_count}</strong> acciones registradas
+                          </span>
+                          <button
+                            onClick={() => setPersonaSeleccionadaDetalle(p)}
+                            className="px-3 py-1.5 rounded-xl bg-blue-600/15 hover:bg-blue-600/25 text-blue-400 border border-blue-500/25 text-xs font-bold transition flex items-center gap-1"
+                          >
+                            <span>Ver Expediente Completo</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 5.C SUBTAB: CONTROL DE IPS PÚBLICAS Y DISPOSITIVOS */}
+            {(auditSubTab === 'integral' || auditSubTab === 'ips') && (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-5 rounded-2xl bg-slate-900 border border-slate-800">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-blue-400" />
+                      <h3 className="text-base font-bold text-white">Control Cuantitativo de Direcciones IP Públicas</h3>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Mapeo de orígenes de conexión, detección de múltiples usuarios operando desde una misma red y volumen de tráfico
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 rounded-xl bg-slate-800 text-xs font-mono text-slate-300 border border-slate-700">
+                    {auditoriaCuantitativo?.controlPorIp?.length || 0} IPs detectadas
+                  </span>
+                </div>
+
+                <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-xl">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-950/80 text-slate-400 border-b border-slate-800 uppercase font-semibold">
+                        <tr>
+                          <th className="px-4 py-3">IP Pública</th>
+                          <th className="px-4 py-3">Tráfico / Operaciones</th>
+                          <th className="px-4 py-3">Usuarios Conectados</th>
+                          <th className="px-4 py-3">Dispositivos y Navegadores</th>
+                          <th className="px-4 py-3">Última Conexión</th>
+                          <th className="px-4 py-3 text-right">Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                        {(auditoriaCuantitativo?.controlPorIp || []).map((ipItem) => (
+                          <tr key={ipItem.ip} className="hover:bg-slate-850/40 transition">
+                            <td className="px-4 py-3 font-bold text-blue-400 flex items-center gap-2">
+                              <Globe className="w-3.5 h-3.5 text-blue-400" />
+                              <span>{ipItem.ip}</span>
+                              {ipItem.ip === (ipPublicaServidor || ipPublicaCliente) && (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                  ACTUAL
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-slate-200">
+                              <strong>{ipItem.total_eventos}</strong> ops ({ipItem.porcentaje}%)
+                              {ipItem.eventos_criticos > 0 && (
+                                <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-500/20 text-rose-400">
+                                  {ipItem.eventos_criticos} críticas
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-slate-300 font-sans">
+                              <div className="font-semibold text-white">{ipItem.usuarios_count} persona(s):</div>
+                              <div className="text-[10px] text-slate-400 truncate max-w-xs">
+                                {ipItem.usuarios.slice(0, 3).join(', ')}
+                                {ipItem.usuarios.length > 3 && ` (+${ipItem.usuarios.length - 3})`}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-slate-400 font-sans text-[10px]">
+                              {ipItem.dispositivos.slice(0, 2).join(' | ') || 'Navegador Web'}
+                            </td>
+                            <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
+                              {ipItem.ultima_actividad || 'N/A'}
+                            </td>
+                            <td className="px-4 py-3 text-right font-sans">
+                              <button
+                                onClick={() => {
+                                  setAuditFiltroIp(ipItem.ip);
+                                  cargarAuditoria(auditFechaInicio, auditFechaFin, auditFiltroCategoria, auditFiltroTipo, auditFiltroPersona, ipItem.ip, auditBusqueda);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs font-bold transition"
+                              >
+                                Filtrar por esta IP
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 5.D SUBTAB: BITÁCORA GENERAL DETALLADA */}
+            {(auditSubTab === 'integral' || auditSubTab === 'tabla') && (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-5 rounded-2xl bg-slate-900 border border-slate-800">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-blue-400" />
+                      <h3 className="text-base font-bold text-white">Registro General Inalterable de Eventos</h3>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Asiento secuencial de cada transacción con detalle de IP pública, dispositivo y parámetros de contraloría
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 rounded-xl bg-slate-800 text-xs font-mono text-slate-300 border border-slate-700">
+                    Mostrando {auditorias.length} eventos
+                  </span>
+                </div>
+
+                <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-xl">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-950/80 text-slate-400 border-b border-slate-800 uppercase font-semibold">
+                        <tr>
+                          <th className="px-4 py-3">Fecha y Hora</th>
+                          <th className="px-4 py-3">Evento / Categoría</th>
+                          <th className="px-4 py-3">Usuario / Actor</th>
+                          <th className="px-4 py-3">Cédula / Código</th>
+                          <th className="px-4 py-3">Acción y Trazabilidad</th>
+                          <th className="px-4 py-3">IP Pública</th>
+                          <th className="px-4 py-3">Dispositivo</th>
+                          <th className="px-4 py-3 text-right">Detalle</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                        {auditorias.map((a) => (
+                          <tr key={a.id} className="hover:bg-slate-850/50 transition">
+                            <td className="px-4 py-2.5 text-slate-400 whitespace-nowrap">
+                              {a.created_at || a.fecha || '—'}
+                            </td>
+                            <td className="px-4 py-2.5 font-sans">
+                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                                a.es_critico ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
+                                a.categoria_evento === 'ACCESOS' ? 'bg-blue-500/15 text-blue-300' :
+                                a.categoria_evento === 'DOCUMENTOS' ? 'bg-emerald-500/15 text-emerald-300' :
+                                a.categoria_evento === 'PADRON_CENSO' ? 'bg-amber-500/15 text-amber-300' :
+                                'bg-purple-500/15 text-purple-300'
+                              }`}>
+                                {a.etiqueta_evento || a.tipo_evento}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-200 font-sans font-medium">
+                              <button
+                                onClick={() => {
+                                  const pMatch = (auditoriaCuantitativo?.historialPorPersona || []).find(
+                                    (x) => x.nombre === a.usuario_nombre || (a.cedula && x.cedula === a.cedula)
+                                  );
+                                  if (pMatch) setPersonaSeleccionadaDetalle(pMatch);
+                                }}
+                                className="hover:text-blue-400 hover:underline text-left block"
+                                title="Ver expediente de esta persona"
+                              >
+                                {a.usuario_nombre || 'Público'}
+                              </button>
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-300">
+                              {a.cedula || a.codigo_documento || '—'}
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-300 font-sans text-xs max-w-xs truncate" title={a.resumen_accion}>
+                              {a.resumen_accion || a.tipo_documento || '—'}
+                            </td>
+                            <td className="px-4 py-2.5 text-blue-400 whitespace-nowrap">
+                              <span className="inline-flex items-center gap-1">
+                                <Globe className="w-3 h-3 text-blue-400" />
+                                {a.ip || 'Local'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-400 font-sans text-[10px] max-w-[120px] truncate" title={a.dispositivo_resumen}>
+                              {a.dispositivo_resumen || 'Navegador Web'}
+                            </td>
+                            <td className="px-4 py-2.5 text-right font-sans">
+                              <button
+                                onClick={() => setLogDetalleModal(a)}
+                                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold"
+                              >
+                                Inspeccionar
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 6. MODAL: EXPEDIENTE COMPLETO E HISTORIAL DE LA PERSONA */}
+            {personaSeleccionadaDetalle && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full p-6 shadow-2xl space-y-5 max-h-[90vh] flex flex-col">
+                  {/* Encabezado del modal */}
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-blue-600/20 text-blue-300 border border-blue-500/30 flex items-center justify-center font-bold text-lg">
+                        {personaSeleccionadaDetalle.nombre?.slice(0, 2).toUpperCase() || 'US'}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-lg font-bold text-white">{personaSeleccionadaDetalle.nombre}</h2>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300">
+                            {personaSeleccionadaDetalle.rol}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 font-mono">
+                          {personaSeleccionadaDetalle.cedula ? `C.I.: ${personaSeleccionadaDetalle.cedula}` : 'Sin cédula registrada'} | Total: {personaSeleccionadaDetalle.total_acciones} acciones auditadas
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setPersonaSeleccionadaDetalle(null)}
+                      className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Resumen de IPs y Dispositivos de la persona */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-slate-950 p-4 rounded-2xl border border-slate-800/80">
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase font-bold mb-1">IPs Públicas Utilizadas</span>
+                      <div className="flex flex-wrap gap-1.5 font-mono text-blue-400">
+                        {personaSeleccionadaDetalle.ips_utilizadas?.map((ip, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 text-[11px]">
+                            {ip}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase font-bold mb-1">Navegadores y Dispositivos</span>
+                      <div className="text-slate-200 text-[11px]">
+                        {personaSeleccionadaDetalle.dispositivos?.join(' | ') || 'Navegador Web'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Línea de tiempo cronológica: TODO lo que ha hecho esa persona */}
+                  <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                      Cronología Paso a Paso de Actividades (Historial Completo)
+                    </h4>
+                    <div className="space-y-2 font-sans text-xs">
+                      {personaSeleccionadaDetalle.historial_acciones?.map((h, idx) => (
+                        <div
+                          key={h.id || idx}
+                          className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 hover:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                h.es_critico ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-blue-500/15 text-blue-300'
+                              }`}>
+                                {h.etiqueta || h.tipo_evento}
+                              </span>
+                              <span className="text-slate-300 font-medium">{h.resumen}</span>
+                            </div>
+                            <div className="text-[10px] font-mono text-slate-500 flex items-center gap-2">
+                              <span>IP: {h.ip}</span>
+                              <span>•</span>
+                              <span>{h.dispositivo}</span>
+                              {h.codigo_documento && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-emerald-400">Doc: {h.codigo_documento}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-[10px] font-mono text-slate-400 whitespace-nowrap">
+                            {h.created_at}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Pie del modal */}
+                  <div className="border-t border-slate-800 pt-3 flex items-center justify-between">
+                    <span className="text-xs text-slate-500 font-mono">Trazabilidad Inalterable de Contraloría</span>
+                    <button
+                      onClick={() => setPersonaSeleccionadaDetalle(null)}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white transition"
+                    >
+                      Cerrar Expediente
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 7. MODAL: DETALLES TÉCNICOS DE EVENTO AUDITADO */}
+            {logDetalleModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h3 className="text-sm font-bold text-white">Inspección de Registro #{logDetalleModal.id}</h3>
+                    <button
+                      onClick={() => setLogDetalleModal(null)}
+                      className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between py-1 border-b border-slate-800/60">
+                      <span className="text-slate-400">Tipo de Evento:</span>
+                      <strong className="text-blue-400 font-mono">{logDetalleModal.tipo_evento}</strong>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-800/60">
+                      <span className="text-slate-400">Usuario / Actor:</span>
+                      <strong className="text-white">{logDetalleModal.usuario_nombre || 'Público'}</strong>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-800/60">
+                      <span className="text-slate-400">Cédula:</span>
+                      <span className="text-slate-200 font-mono">{logDetalleModal.cedula || '—'}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-800/60">
+                      <span className="text-slate-400">IP Pública:</span>
+                      <span className="text-emerald-400 font-mono font-bold">{logDetalleModal.ip || 'Local'}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-800/60">
+                      <span className="text-slate-400">Dispositivo:</span>
+                      <span className="text-slate-300">{logDetalleModal.dispositivo_resumen || logDetalleModal.user_agent}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-800/60">
+                      <span className="text-slate-400">Fecha y Hora:</span>
+                      <span className="text-slate-400 font-mono">{logDetalleModal.created_at}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                      Parámetros y Metadatos JSON (Detalles)
+                    </span>
+                    <pre className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-emerald-400 max-h-48 overflow-y-auto whitespace-pre-wrap break-all">
+                      {JSON.stringify(logDetalleModal.detalles, null, 2)}
+                    </pre>
+                  </div>
+
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      onClick={() => setLogDetalleModal(null)}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white transition"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

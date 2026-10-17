@@ -223,17 +223,25 @@ export async function POST(request) {
         }
       }
 
-      // Registrar en auditoría
+      // Registrar en auditoría con IP pública
+      const currentUserEmit = extractUserFromRequest(request);
       await registrarAuditoria({
         tipo_evento: 'SOLICITUD_DOCUMENTO',
+        usuario_id: currentUserEmit?.id || null,
+        usuario_nombre: currentUserEmit?.nombre || `${vecino.nombres} ${vecino.apellidos}`.trim() || 'Ciudadano',
         vecino_id: vecino.id,
         cedula: vecino.cedula,
         codigo_documento: codigoQr,
         tipo_documento,
+        request,
         detalles: {
           tipo: tipo_documento,
+          titular: `${vecino.nombres} ${vecino.apellidos}`.trim(),
+          vereda: vecino.vereda,
+          casa: vecino.casa,
           exonerado: Boolean(es_exonerado),
           monto_bs,
+          monto_usd,
           banco: banco_nombre,
           referencia: numero_transferencia,
           comercio: datos_extra?.nombre_comercio || null
@@ -339,13 +347,17 @@ export async function POST(request) {
         ]
       });
 
+      const currentUserRenov = extractUserFromRequest(request);
       await registrarAuditoria({
         tipo_evento: 'RENOVACION_DOCUMENTO',
+        usuario_id: currentUserRenov?.id || null,
+        usuario_nombre: currentUserRenov?.nombre || oldDoc.nombres_apellidos || 'Ciudadano',
         vecino_id: oldDoc.vecino_id,
         cedula: oldDoc.cedula,
         codigo_documento: nuevoCodigoQr,
         tipo_documento: oldDoc.tipo_documento,
-        detalles: { renovado_de: oldDoc.codigo_qr, nueva_fecha_vencimiento: fechaVencimiento }
+        request,
+        detalles: { renovado_de: oldDoc.codigo_qr, nueva_fecha_vencimiento: fechaVencimiento, titular: oldDoc.nombres_apellidos }
       });
 
       return NextResponse.json({
@@ -369,6 +381,12 @@ export async function POST(request) {
       const { codigo, motivo } = body;
       if (!codigo) return NextResponse.json({ error: 'Código de documento requerido' }, { status: 400 });
 
+      const docInfoRes = await db.execute({
+        sql: 'SELECT cedula, tipo_documento, nombres_apellidos FROM documentos_solicitudes WHERE codigo_qr = ? LIMIT 1',
+        args: [codigo.toUpperCase()]
+      });
+      const docInfo = docInfoRes.rows[0] || {};
+
       await db.execute({
         sql: "UPDATE documentos_solicitudes SET estado = 'REVOCADO', updated_at = ? WHERE codigo_qr = ?",
         args: [nowIso, codigo.toUpperCase()]
@@ -378,8 +396,11 @@ export async function POST(request) {
         tipo_evento: 'REVOCACION_DOCUMENTO',
         usuario_id: currentUser.id,
         usuario_nombre: currentUser.nombre,
+        cedula: docInfo.cedula || null,
         codigo_documento: codigo.toUpperCase(),
-        detalles: { motivo: motivo || 'Revocado por administración' }
+        tipo_documento: docInfo.tipo_documento || null,
+        request,
+        detalles: { motivo: motivo || 'Revocado por administración', titular: docInfo.nombres_apellidos || null }
       });
 
       return NextResponse.json({ success: true, message: `Documento ${codigo} revocado` });
