@@ -2588,41 +2588,92 @@ export default function Dashboard({ user, onLogout }) {
 
                         if (parsedHeader && (parsedHeader.textos?.length > 0 || parsedHeader.imagenes?.length > 0)) {
                           const hHeight = parsedHeader.height || 180;
+                          const headerLayers = [];
+                          if (parsedHeader.mostrarLineaDivisoria !== false) {
+                            headerLayers.push({
+                              id: '__shape_linea_divisoria__',
+                              layerType: 'shape',
+                              zIndex: typeof parsedHeader.fondoZIndex === 'number' ? parsedHeader.fondoZIndex : 0,
+                            });
+                          }
+                          (parsedHeader.imagenes || []).forEach((img, idx) => {
+                            if (img.visible !== false) {
+                              headerLayers.push({
+                                id: img.id,
+                                layerType: 'image',
+                                zIndex: typeof img.zIndex === 'number' ? img.zIndex : (idx + 1) * 10,
+                                raw: img,
+                              });
+                            }
+                          });
+                          (parsedHeader.textos || []).forEach((t, idx) => {
+                            if (t.visible !== false) {
+                              headerLayers.push({
+                                id: t.id,
+                                layerType: 'text',
+                                zIndex: typeof t.zIndex === 'number' ? t.zIndex : 100 + (idx + 1) * 10,
+                                raw: t,
+                              });
+                            }
+                          });
+                          headerLayers.sort((a, b) => a.zIndex - b.zIndex);
+
                           return (
                             <div className="mb-6">
                               <svg
                                 viewBox={`0 0 750 ${hHeight}`}
                                 className="w-full h-auto"
-                                style={{ borderBottom: parsedHeader.mostrarLineaDivisoria !== false ? `1.5px solid ${parsedHeader.colorLinea || '#CBD5E1'}` : 'none' }}
                               >
-                                {(parsedHeader.imagenes || []).map((img) => (
-                                  <image
-                                    key={img.id}
-                                    href={img.url}
-                                    x={img.x}
-                                    y={img.y}
-                                    width={img.width}
-                                    height={img.height}
-                                    opacity={img.opacity ?? 1}
-                                    preserveAspectRatio={img.lockRatio ? 'xMidYMid meet' : 'none'}
-                                  />
-                                ))}
-                                {(parsedHeader.textos || []).map((t) => (
-                                  <text
-                                    key={t.id}
-                                    x={t.x}
-                                    y={t.y}
-                                    fontSize={t.fontSize || 11}
-                                    fontWeight={t.fontWeight || 'normal'}
-                                    fontStyle={t.fontStyle || 'normal'}
-                                    textDecoration={t.textDecoration || 'none'}
-                                    fill={t.color || '#0F172A'}
-                                    textAnchor={t.align || 'middle'}
-                                    fontFamily="Helvetica, Arial, sans-serif"
-                                  >
-                                    {t.textTransform === 'uppercase' ? String(t.texto || '').toUpperCase() : t.texto}
-                                  </text>
-                                ))}
+                                {headerLayers.map((layer) => {
+                                  if (layer.layerType === 'shape') {
+                                    return (
+                                      <line
+                                        key={layer.id}
+                                        x1="20"
+                                        y1={hHeight - 15}
+                                        x2="730"
+                                        y2={hHeight - 15}
+                                        stroke={parsedHeader.colorLinea || '#CBD5E1'}
+                                        strokeWidth="1.5"
+                                      />
+                                    );
+                                  }
+                                  if (layer.layerType === 'image') {
+                                    const img = layer.raw;
+                                    return (
+                                      <image
+                                        key={img.id}
+                                        href={img.url}
+                                        x={img.x}
+                                        y={img.y}
+                                        width={img.width}
+                                        height={img.height}
+                                        opacity={img.opacity ?? 1}
+                                        preserveAspectRatio={img.lockRatio ? 'xMidYMid meet' : 'none'}
+                                      />
+                                    );
+                                  }
+                                  if (layer.layerType === 'text') {
+                                    const t = layer.raw;
+                                    return (
+                                      <text
+                                        key={t.id}
+                                        x={t.x}
+                                        y={t.y}
+                                        fontSize={t.fontSize || 11}
+                                        fontWeight={t.fontWeight || 'normal'}
+                                        fontStyle={t.fontStyle || 'normal'}
+                                        textDecoration={t.textDecoration || 'none'}
+                                        fill={t.color || '#0F172A'}
+                                        textAnchor={t.align || 'middle'}
+                                        fontFamily="Helvetica, Arial, sans-serif"
+                                      >
+                                        {t.textTransform === 'uppercase' ? String(t.texto || '').toUpperCase() : t.texto}
+                                      </text>
+                                    );
+                                  }
+                                  return null;
+                                })}
                               </svg>
                             </div>
                           );
@@ -2693,43 +2744,91 @@ export default function Dashboard({ user, onLogout }) {
 
                         if (parsedFooter && (parsedFooter.textos?.length > 0 || parsedFooter.imagenes?.length > 0)) {
                           const fHeight = parsedFooter.height || 150;
+                          const footerLayers = [];
+                          if (parsedFooter.mostrarRecuadroValidacion !== false) {
+                            footerLayers.push({
+                              id: '__shape_recuadro_qr__',
+                              layerType: 'shape',
+                              zIndex: typeof parsedFooter.fondoZIndex === 'number' ? parsedFooter.fondoZIndex : 0,
+                            });
+                          }
+                          (parsedFooter.imagenes || []).forEach((img, idx) => {
+                            if (img.visible !== false) {
+                              footerLayers.push({
+                                id: img.id,
+                                layerType: 'image',
+                                zIndex: typeof img.zIndex === 'number' ? img.zIndex : (idx + 1) * 10,
+                                raw: img,
+                              });
+                            }
+                          });
+                          (parsedFooter.textos || []).forEach((t, idx) => {
+                            if (t.visible !== false) {
+                              footerLayers.push({
+                                id: t.id,
+                                layerType: 'text',
+                                zIndex: typeof t.zIndex === 'number' ? t.zIndex : 100 + (idx + 1) * 10,
+                                raw: t,
+                              });
+                            }
+                          });
+                          footerLayers.sort((a, b) => a.zIndex - b.zIndex);
+
                           return (
-                            <div
-                              className="rounded-lg overflow-hidden border"
-                              style={{
-                                backgroundColor: parsedFooter.colorFondo || '#F8FAFC',
-                                borderColor: parsedFooter.colorBorde || '#E2E8F0',
-                              }}
-                            >
+                            <div className="overflow-hidden">
                               <svg viewBox={`0 0 750 ${fHeight}`} className="w-full h-auto">
-                                {(parsedFooter.imagenes || []).map((img) => (
-                                  <image
-                                    key={img.id}
-                                    href={img.url}
-                                    x={img.x}
-                                    y={img.y}
-                                    width={img.width}
-                                    height={img.height}
-                                    opacity={img.opacity ?? 1}
-                                    preserveAspectRatio={img.lockRatio ? 'xMidYMid meet' : 'none'}
-                                  />
-                                ))}
-                                {(parsedFooter.textos || []).map((t) => (
-                                  <text
-                                    key={t.id}
-                                    x={t.x}
-                                    y={t.y}
-                                    fontSize={t.fontSize || 10}
-                                    fontWeight={t.fontWeight || 'normal'}
-                                    fontStyle={t.fontStyle || 'normal'}
-                                    textDecoration={t.textDecoration || 'none'}
-                                    fill={t.color || '#0F172A'}
-                                    textAnchor={t.align || 'start'}
-                                    fontFamily="Helvetica, Arial, sans-serif"
-                                  >
-                                    {t.textTransform === 'uppercase' ? String(t.texto || '').toUpperCase() : t.texto}
-                                  </text>
-                                ))}
+                                {footerLayers.map((layer) => {
+                                  if (layer.layerType === 'shape') {
+                                    return (
+                                      <rect
+                                        key={layer.id}
+                                        x="10"
+                                        y="6"
+                                        width="730"
+                                        height="95"
+                                        rx="6"
+                                        fill={parsedFooter.colorFondo || '#F8FAFC'}
+                                        stroke={parsedFooter.colorBorde || '#E2E8F0'}
+                                        strokeWidth="1"
+                                      />
+                                    );
+                                  }
+                                  if (layer.layerType === 'image') {
+                                    const img = layer.raw;
+                                    return (
+                                      <image
+                                        key={img.id}
+                                        href={img.url}
+                                        x={img.x}
+                                        y={img.y}
+                                        width={img.width}
+                                        height={img.height}
+                                        opacity={img.opacity ?? 1}
+                                        preserveAspectRatio={img.lockRatio ? 'xMidYMid meet' : 'none'}
+                                      />
+                                    );
+                                  }
+                                  if (layer.layerType === 'text') {
+                                    const t = layer.raw;
+                                    return (
+                                      <text
+                                        key={t.id}
+                                        x={t.x}
+                                        y={t.y}
+                                        fontSize={t.fontSize || 10}
+                                        fontWeight={t.fontWeight || 'normal'}
+                                        fontStyle={t.fontStyle || 'normal'}
+                                        textDecoration={t.textDecoration || 'none'}
+                                        fill={t.color || '#0F172A'}
+                                        textAnchor={t.align || 'start'}
+                                        fontFamily="Helvetica, Arial, sans-serif"
+                                      >
+                                        {t.textTransform === 'uppercase' ? String(t.texto || '').toUpperCase() : t.texto}
+                                      </text>
+                                    );
+                                  }
+                                  return null;
+                                })}
                               </svg>
                             </div>
                           );
