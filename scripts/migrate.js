@@ -356,6 +356,9 @@ async function migrate() {
     ['logo_url', 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/logo.png', 'Logo oficial'],
     ['mppcomunas_url', 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/mppcomunas.png', 'Logo MPP Comunas'],
     ['escudo_url', 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/escudo_venezuela.svg', 'Escudo de Venezuela'],
+    ['ley_organica_url', 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/archivo/Ley_Organica_Consejos_Comunales_2023.pdf', 'Enlace oficial de descarga de la Ley Orgánica de los Consejos Comunales (2023)'],
+    ['encabezado_svg_global', '', 'Cabecera única de documentos comunales (SVG JSON)'],
+    ['pie_svg_global', '', 'Footer único de documentos comunales (SVG JSON)'],
     ['doc_costos_json', JSON.stringify({
       RESIDENCIA: { gratuito: false, monto_usd: 1.0 },
       BUENA_CONDUCTA: { gratuito: false, monto_usd: 1.0 },
@@ -402,12 +405,12 @@ async function migrate() {
   }
   console.log('Catálogos del sistema (Parentesco, Instrucción, Salud) inicializados.');
 
-  // Semilla de las 3 Firmas Autorizadas
+  // Semilla de las 3 Firmas Autorizadas (Según Art. 18 de la Ley Orgánica de los Consejos Comunales 2023)
   const firmas = [
     {
       id: 1,
       orden: 1,
-      comision: 'Vocero Ejecutivo C.C. (Unidad Ejecutiva)',
+      comision: 'Vocero C.C. (Unidad Ejecutiva / Comisión Electoral)',
       nombre: 'Luis Alberto Peñaloza',
       cedula: 'V-4839634',
       telefono: '0424-4098127',
@@ -418,7 +421,7 @@ async function migrate() {
     {
       id: 2,
       orden: 2,
-      comision: 'Vocero Ejecutivo C.C. (Unidad Contraloría Social)',
+      comision: 'Vocero C.C. (Unidad de Contraloría Social)',
       nombre: 'Pedro Moya',
       cedula: 'V-4595138',
       telefono: '0414-0986516',
@@ -429,7 +432,7 @@ async function migrate() {
     {
       id: 3,
       orden: 3,
-      comision: 'Vocero Ejecutivo C.C. (Gestión Financiera)',
+      comision: 'Vocero C.C. (Unidad Administrativa y Financiera Comunitaria)',
       nombre: 'Vocería Delegada C.C.',
       cedula: 'V-8912450',
       telefono: '0412-5551234',
@@ -448,31 +451,31 @@ async function migrate() {
   }
   console.log('3 Firmas autorizadas registradas.');
 
-  // Semilla de Plantillas para los 3 Documentos Base
+  // Semilla de Plantillas para los Documentos Base (Adaptadas a la Ley Orgánica de los Consejos Comunales 2023)
   const plantillas = [
     {
       id: 'RESIDENCIA',
       titulo: 'CONSTANCIA DE RESIDENCIA',
       subtitulo: 'NRO: {codigo_qr}',
-      cuerpo_template: 'Quien suscribe, representantes del Consejo Comunal "LAS LLAVES" de la Urbanización DR. Alfredo Travieso Paúl, por medio de la presente hacemos constar que el ciudadano (a): {nombre_completo}, portador (a) de la cédula de identidad N°: {cedula}, reside en esta comunidad desde hace {tiempo_residencia} años, en la Vereda {vereda}, Casa N° {casa}.\n\nConstancia que se expide a solicitud de parte interesada, en la ciudad de Puerto Cabello, a los {dias} días del mes de {mes} del año {ano}.',
+      cuerpo_template: 'Quienes suscriben, voceras y voceros integrantes del Colectivo de Gobierno Comunal, la Unidad Ejecutiva y la Comisión Electoral del Consejo Comunal "LAS LLAVES" de la Urbanización Dr. Alfredo Travieso Paúl, en ejercicio de las atribuciones legales conferidas en los artículos 18, 23, 25 y 34 numerales 19 y 20 de la Ley Orgánica de los Consejos Comunales (Reforma 2023), por medio de la presente hacemos constar que la ciudadana o ciudadano: {nombre_completo}, titular de la cédula de identidad N°: {cedula}, reside en esta comunidad desde hace {tiempo_residencia} años, en la Vereda {vereda}, Casa N° {casa}, según consta en el Censo Demográfico Comunal.\n\nConstancia que se expide a solicitud de la parte interesada, en la ciudad de Puerto Cabello, a los {dias} días del mes de {mes} del año {ano}.',
     },
     {
       id: 'BUENA_CONDUCTA',
       titulo: 'CONSTANCIA DE BUENA CONDUCTA',
       subtitulo: 'NRO: {codigo_qr}',
-      cuerpo_template: 'El Consejo Comunal de la Urbanización Dr. Alfredo Travieso Paul "LAS LLAVES" hace constar por medio de la presente. Que conocemos de vista trato y comunicación al ciudadano (a) {nombre_completo}, C.I.: {cedula}, quien reside en la Vereda {vereda}, Casa N° {casa}, desde hace {tiempo_residencia} años y presenta buena conducta dentro del ámbito geográfico de nuestra comunidad.\n\nConstancia que se expide a solicitud de parte interesada, en la ciudad de Puerto Cabello, a los {dias} días del mes de {mes} del año {ano}.',
+      cuerpo_template: 'Quienes suscriben, voceras y voceros del Colectivo de Gobierno Comunal y la Unidad Ejecutiva del Consejo Comunal de la Urbanización Dr. Alfredo Travieso Paúl "LAS LLAVES", de conformidad con los principios de corresponsabilidad y convivencia comunitaria previstos en los artículos 4, 18, 23 y 25 de la Ley Orgánica de los Consejos Comunales (Reforma 2023), hacemos constar por medio de la presente que conocemos de vista, trato y comunicación a la ciudadana o ciudadano: {nombre_completo}, C.I.: {cedula}, quien reside en la Vereda {vereda}, Casa N° {casa}, desde hace {tiempo_residencia} años y demuestra una conducta cívica, pacífica y de respeto ciudadano dentro del ámbito geográfico de nuestra comunidad.\n\nConstancia que se expide a solicitud de la parte interesada, en la ciudad de Puerto Cabello, a los {dias} días del mes de {mes} del año {ano}.',
     },
     {
       id: 'FALLECIMIENTO',
       titulo: 'CONSTANCIA DE NOTIFICACIÓN DE FALLECIMIENTO',
       subtitulo: 'NRO: {codigo_qr}',
-      cuerpo_template: 'Quienes suscriben, voceros del Consejo Comunal de la Urbanización Dr. Alfredo Travieso Paul "LAS LLAVES", hacen constar por medio de la presente que quien en vida fue el ciudadano (a): {nombre_completo}, titular de la cédula de identidad N°: {cedula}, habitaba en esta comunidad en la Vereda {vereda}, Casa N° {casa}, y se certifica la debida notificación de su sensible fallecimiento para los fines legales y comunitarios pertinentes.\n\nConstancia que se expide a solicitud de parte interesada para trámites de ley, en la ciudad de Puerto Cabello, a los {dias} días del mes de {mes} del año {ano}.',
+      cuerpo_template: 'Quienes suscriben, voceras y voceros integrantes del Colectivo de Gobierno Comunal, la Unidad Ejecutiva y la Comisión Electoral del Consejo Comunal de la Urbanización Dr. Alfredo Travieso Paúl "LAS LLAVES", en ejercicio de las atribuciones establecidas en la Ley Orgánica de los Consejos Comunales (Reforma 2023), hacen constar por medio de la presente que quien en vida fuera la ciudadana o ciudadano: {nombre_completo}, titular de la cédula de identidad N°: {cedula}, habitaba en esta comunidad en la Vereda {vereda}, Casa N° {casa}, según registro del Censo Demográfico Comunal, y se certifica la debida notificación de su sensible fallecimiento para los trámites civiles, legales y comunitarios pertinentes.\n\nConstancia que se expide a solicitud de parte interesada para trámites de ley, en la ciudad de Puerto Cabello, a los {dias} días del mes de {mes} del año {ano}.',
     },
     {
       id: 'FUNCIONAMIENTO',
       titulo: 'CARTA COMUNAL DE FUNCIONAMIENTO COMERCIAL',
       subtitulo: 'NRO: {codigo_qr}',
-      cuerpo_template: 'Quienes suscriben, voceros del Consejo Comunal de la Urbanización Dr. Alfredo Travieso Paul "LAS LLAVES", hacen constar por medio de la presente que el ciudadano (a): {nombre_completo}, titular de la cédula de identidad N°: {cedula}, propietario(a) del inmueble ubicado en la Vereda {vereda}, Casa N° {casa}, posee en su vivienda un espacio comercial en calidad de arrendamiento.\n\nSe deja constancia comunal que en dicho inmueble funciona el establecimiento: {nombre_comercio}, RIF: {rif_comercio}, bajo el rubro: {rubro_establecimiento}, ocupando un área aproximada de {tamano_espacio}, activo en esta dirección comunitaria desde la fecha {fecha_alquiler}.\n\nConstancia que se expide a solicitud del dueño del inmueble para fines comerciales, legales y tributarios correspondientes, en la ciudad de Puerto Cabello, a los {dias} días del mes de {mes} del año {ano}.',
+      cuerpo_template: 'Quienes suscriben, voceras y voceros del Colectivo de Gobierno Comunal, la Unidad Ejecutiva y la Unidad de Contraloría Social del Consejo Comunal de la Urbanización Dr. Alfredo Travieso Paúl "LAS LLAVES", en el marco de los artículos 18, 23, 25, 26 y 32 de la Ley Orgánica de los Consejos Comunales (Reforma 2023), hacen constar por medio de la presente que la ciudadana o ciudadano: {nombre_completo}, titular de la cédula de identidad N°: {cedula}, propietario(a) del inmueble ubicado en la Vereda {vereda}, Casa N° {casa}, posee en su vivienda un espacio comercial en calidad de arrendamiento.\n\nSe deja constancia comunal que en dicho inmueble funciona el establecimiento: {nombre_comercio}, RIF: {rif_comercio}, bajo el rubro: {rubro_establecimiento}, ocupando un área aproximada de {tamano_espacio}, activo en esta dirección comunitaria desde la fecha {fecha_alquiler}.\n\nConstancia que se expide a solicitud del propietario del inmueble para fines comerciales, legales y tributarios correspondientes, en la ciudad de Puerto Cabello, a los {dias} días del mes de {mes} del año {ano}.',
     }
   ];
 
@@ -483,7 +486,7 @@ async function migrate() {
       args: [p.id, p.titulo, p.subtitulo, p.cuerpo_template, now]
     });
   }
-  console.log('Plantillas de los 3 documentos inicializadas.');
+  console.log('Plantillas de los 4 documentos inicializadas.');
 
   // Semilla de prueba: Vecinos iniciales para demostración (1 aprobado, 1 pendiente)
   await db.execute({

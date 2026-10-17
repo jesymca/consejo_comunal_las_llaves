@@ -199,12 +199,12 @@ export default function HomePage() {
           <div className="flex items-center gap-3">
             <img
               src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/tei.png"
-              alt="Comisión de Tecnología e Innovación"
+              alt="Comité de Tecnología e Innovación"
               className="w-10 h-10 object-contain"
             />
             <div>
               <p className="text-[10px] sm:text-xs font-bold tracking-wider text-slate-300 uppercase">
-                COMISION DE TECNOLOGÍA E INNOVACIÓN
+                COMITÉ DE TECNOLOGÍA E INNOVACIÓN (ART. 26 NUM. 19 LOCC)
               </p>
               <p className="font-semibold text-slate-400">© 2026 Consejo Comunal "Las Llaves"</p>
               <p className="text-[11px] text-slate-500">
@@ -213,7 +213,17 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4 text-[11px]">
+          <div className="flex flex-wrap items-center justify-center gap-4 text-[11px]">
+            <a
+              href="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/archivo/Ley_Organica_Consejos_Comunales_2023.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              download="Ley_Organica_Consejos_Comunales_2023.pdf"
+              className="text-amber-400 hover:text-amber-300 font-semibold transition"
+            >
+              Descargar Ley Orgánica C.C. (2023)
+            </a>
+            <span className="text-slate-800">|</span>
             <a
               href="https://www.comunas.gob.ve/fundacomunal/"
               target="_blank"

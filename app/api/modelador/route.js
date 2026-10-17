@@ -4,10 +4,43 @@ import { extractUserFromRequest, hasPermission } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+async function obtenerCabeceraYFooterUnicos() {
+  let cabeceraGlobal = '';
+  let footerGlobal = '';
+
+  try {
+    const cfgRes = await db.execute({
+      sql: "SELECT clave, valor FROM configuracion_sistema WHERE clave IN ('encabezado_svg_global', 'pie_svg_global')",
+      args: [],
+    });
+    for (const row of cfgRes.rows) {
+      if (row.clave === 'encabezado_svg_global' && row.valor) cabeceraGlobal = row.valor;
+      if (row.clave === 'pie_svg_global' && row.valor) footerGlobal = row.valor;
+    }
+
+    if (!cabeceraGlobal || !footerGlobal) {
+      const tplRes = await db.execute('SELECT encabezado_svg, pie_svg FROM documentos_plantillas ORDER BY updated_at DESC');
+      for (const row of tplRes.rows) {
+        if (!cabeceraGlobal && row.encabezado_svg && String(row.encabezado_svg).trim().length > 2) {
+          cabeceraGlobal = row.encabezado_svg;
+        }
+        if (!footerGlobal && row.pie_svg && String(row.pie_svg).trim().length > 2) {
+          footerGlobal = row.pie_svg;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Error consultando cabecera/footer únicos:', e);
+  }
+
+  return { cabeceraGlobal, footerGlobal };
+}
+
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const { cabeceraGlobal, footerGlobal } = await obtenerCabeceraYFooterUnicos();
 
     if (id) {
       const res = await db.execute({
@@ -15,11 +48,30 @@ export async function GET(request) {
         args: [id.toUpperCase()]
       });
       if (res.rows.length === 0) return NextResponse.json({ error: 'Plantilla no encontrada' }, { status: 404 });
-      return NextResponse.json({ plantilla: res.rows[0] });
+      const plantilla = {
+        ...res.rows[0],
+        encabezado_svg: cabeceraGlobal || res.rows[0].encabezado_svg || '',
+        pie_svg: footerGlobal || res.rows[0].pie_svg || '',
+      };
+      return NextResponse.json({
+        plantilla,
+        cabecera_global: plantilla.encabezado_svg,
+        footer_global: plantilla.pie_svg,
+      });
     }
 
     const res = await db.execute('SELECT * FROM documentos_plantillas ORDER BY id ASC');
-    return NextResponse.json({ plantillas: res.rows });
+    const plantillasUnificadas = res.rows.map((p) => ({
+      ...p,
+      encabezado_svg: cabeceraGlobal || p.encabezado_svg || '',
+      pie_svg: footerGlobal || p.pie_svg || '',
+    }));
+
+    return NextResponse.json({
+      plantillas: plantillasUnificadas,
+      cabecera_global: cabeceraGlobal,
+      footer_global: footerGlobal,
+    });
   } catch (err) {
     console.error('Error en /api/modelador GET:', err);
     return NextResponse.json({ error: err.message || 'Error del servidor' }, { status: 500 });
@@ -34,35 +86,69 @@ export async function PUT(request) {
     }
 
     const body = await request.json();
-    const { id, titulo, subtitulo, cuerpo_template, encabezado_svg, pie_svg } = body;
+    const { action, id, titulo, subtitulo, cuerpo_template, encabezado_svg, pie_svg } = body;
+    const now = new Date().toISOString();
+
+    // 1. Si se envía actualización de la Cabecera Única de Documentos, aplicarla globalmente a TODOS los documentos
+    if (encabezado_svg !== undefined) {
+      await db.execute({
+        sql: `INSERT OR REPLACE INTO configuracion_sistema (clave, valor, descripcion, updated_at)
+              VALUES ('encabezado_svg_global', ?, 'Cabecera única de documentos comunales (SVG JSON)', ?)`,
+        args: [encabezado_svg || '', now]
+      });
+      await db.execute({
+        sql: `UPDATE documentos_plantillas SET encabezado_svg = ?, updated_at = ?`,
+        args: [encabezado_svg || '', now]
+      });
+    }
+
+    // 2. Si se envía actualización del Footer Único de Documentos, aplicarlo globalmente a TODOS los documentos
+    if (pie_svg !== undefined) {
+      await db.execute({
+        sql: `INSERT OR REPLACE INTO configuracion_sistema (clave, valor, descripcion, updated_at)
+              VALUES ('pie_svg_global', ?, 'Footer único de documentos comunales (SVG JSON)', ?)`,
+        args: [pie_svg || '', now]
+      });
+      await db.execute({
+        sql: `UPDATE documentos_plantillas SET pie_svg = ?, updated_at = ?`,
+        args: [pie_svg || '', now]
+      });
+    }
+
+    // Si la acción es exclusivamente guardar la cabecera o el footer global
+    if (action === 'guardar_cabecera_global' || action === 'guardar_footer_global') {
+      return NextResponse.json({
+        success: true,
+        message: action === 'guardar_cabecera_global'
+          ? 'Cabecera única de documentos actualizada para todas las plantillas'
+          : 'Footer único de documentos actualizado para todas las plantillas'
+      });
+    }
 
     if (!id || !titulo || !cuerpo_template) {
       return NextResponse.json({ error: 'ID, Título y Cuerpo del template son requeridos' }, { status: 400 });
     }
-
-    const now = new Date().toISOString();
 
     await db.execute({
       sql: `UPDATE documentos_plantillas SET
         titulo = ?,
         subtitulo = ?,
         cuerpo_template = ?,
-        encabezado_svg = ?,
-        pie_svg = ?,
         updated_at = ?
         WHERE id = ?`,
       args: [
         titulo,
         subtitulo || '',
         cuerpo_template,
-        encabezado_svg || '',
-        pie_svg || '',
         now,
         id.toUpperCase(),
       ]
     });
 
-    return NextResponse.json({ success: true, message: 'Plantilla actualizada exitosamente' });
+    return NextResponse.json({
+      success: true,
+      message: 'Plantilla y diseño global de documentos actualizados exitosamente'
+    });
   } catch (err) {
     console.error('Error en /api/modelador PUT:', err);
     return NextResponse.json({ error: err.message || 'Error del servidor' }, { status: 500 });
@@ -77,7 +163,7 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    let { id, titulo, subtitulo, cuerpo_template, encabezado_svg, pie_svg } = body;
+    let { id, titulo, subtitulo, cuerpo_template } = body;
 
     if (!id || !titulo) {
       return NextResponse.json({ error: 'Identificador único (ID) y Título son requeridos' }, { status: 400 });
@@ -95,7 +181,9 @@ export async function POST(request) {
       return NextResponse.json({ error: `Ya existe una plantilla con el identificador ${cleanId}` }, { status: 400 });
     }
 
-    const defaultCuerpo = cuerpo_template || 'Quien suscribe, voceros del Consejo Comunal de la Urbanización Dr. Alfredo Travieso Paul "LAS LLAVES", por medio de la presente hacemos constar que el ciudadano (a): {nombre_completo}, portador (a) de la cédula de identidad N°: {cedula}, habitante de la Vereda {vereda}, Casa N° {casa}.\n\nConstancia que se expide a solicitud de parte interesada, en la ciudad de Puerto Cabello, a los {dias} días del mes de {mes} del año {ano}.';
+    const { cabeceraGlobal, footerGlobal } = await obtenerCabeceraYFooterUnicos();
+
+    const defaultCuerpo = cuerpo_template || 'Quienes suscriben, voceras y voceros integrantes del Colectivo de Gobierno Comunal, la Unidad Ejecutiva y la Comisión Electoral del Consejo Comunal de la Urbanización Dr. Alfredo Travieso Paúl "LAS LLAVES", en ejercicio de las atribuciones conferidas en los artículos 18, 23, 25 y 34 numeral 19 de la Ley Orgánica de los Consejos Comunales (Reforma 2023), por medio de la presente hacemos constar que la ciudadana o ciudadano: {nombre_completo}, titular de la cédula de identidad N°: {cedula}, es habitante de nuestra comunidad en la Vereda {vereda}, Casa N° {casa}, según consta en el Censo Demográfico Comunal.\n\nConstancia que se expide a solicitud de la parte interesada, en la ciudad de Puerto Cabello, a los {dias} días del mes de {mes} del año {ano}.';
 
     const now = new Date().toISOString();
 
@@ -107,20 +195,22 @@ export async function POST(request) {
         String(titulo).trim(),
         subtitulo ? String(subtitulo).trim() : 'NRO: {codigo_qr}',
         defaultCuerpo,
-        encabezado_svg || '',
-        pie_svg || '',
+        cabeceraGlobal || '',
+        footerGlobal || '',
         now,
       ]
     });
 
     return NextResponse.json({
       success: true,
-      message: 'Nueva plantilla documental creada exitosamente',
+      message: 'Nueva plantilla documental creada exitosamente (vinculada a la Cabecera y Footer únicos)',
       plantilla: {
         id: cleanId,
         titulo: String(titulo).trim(),
         subtitulo: subtitulo || 'NRO: {codigo_qr}',
         cuerpo_template: defaultCuerpo,
+        encabezado_svg: cabeceraGlobal || '',
+        pie_svg: footerGlobal || '',
       }
     });
   } catch (err) {

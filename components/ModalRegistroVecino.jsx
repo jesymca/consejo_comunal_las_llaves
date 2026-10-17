@@ -134,8 +134,8 @@ export default function ModalRegistroVecino({ initialCedula = '', onClose, onReg
             <UserPlus className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white">Registro Comunal de Vecino</h3>
-            <p className="text-xs text-slate-400">Padrón oficial del Consejo Comunal Las Llaves</p>
+            <h3 className="text-lg font-bold text-white">Registro en el Censo Demográfico Comunal</h3>
+            <p className="text-xs text-slate-400">Consejo Comunal Las Llaves · Art. 15 num. 3 y Art. 34 num. 20 LOCC (2023)</p>
           </div>
         </div>
 
@@ -143,7 +143,7 @@ export default function ModalRegistroVecino({ initialCedula = '', onClose, onReg
         <div className="mb-5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex gap-2.5 items-start">
           <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
           <div>
-            <span className="font-bold">Aviso importante de auditoría:</span> Al registrarte, tus datos quedarán en estado <strong>PENDIENTE</strong>. Podrás tramitar y descargar documentos una vez que un Administrador o Super Administrador apruebe que resides en la vereda indicada.
+            <span className="font-bold">Aviso de verificación comunal (Art. 34 num. 19 y 20 LOCC):</span> Al registrarte, tus datos quedarán en estado <strong>PENDIENTE</strong>. Podrás tramitar y descargar constancias una vez que la Comisión Electoral / Colectivo de Gobierno Comunal verifique tu residencia en la vereda indicada.
           </div>
         </div>
 
@@ -157,9 +157,9 @@ export default function ModalRegistroVecino({ initialCedula = '', onClose, onReg
         {exito ? (
           <div className="py-8 text-center">
             <CheckCircle className="w-12 h-12 text-emerald-400 mx-auto mb-3 animate-bounce" />
-            <h4 className="text-base font-bold text-white mb-1">¡Registro recibido con éxito!</h4>
+            <h4 className="text-base font-bold text-white mb-1">¡Registro recibido en el Censo Demográfico Comunal!</h4>
             <p className="text-xs text-slate-300">
-              Tus datos han sido registrados en la base de datos comunal. La vocería ejecutiva evaluará tu aprobación a la brevedad.
+              Tus datos han sido incorporados a la base de datos comunal. Las instancias del Consejo Comunal verificarán tu residencia a la brevedad.
             </p>
           </div>
         ) : (

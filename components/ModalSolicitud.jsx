@@ -147,9 +147,14 @@ export default function ModalSolicitud({
           fecha_emision: docGenerado.fecha_emision,
           fecha_vencimiento: docGenerado.fecha_vencimiento,
           vigencia_dias: docGenerado.vigencia_dias,
+          datos_extra: docGenerado.datos_extra || null,
         },
         firmas: firmasRes.firmas || [],
-        config: configRes.config || {},
+        config: {
+          ...(configRes.config || {}),
+          encabezado_svg_global: plantillaRes.cabecera_global || configRes.config?.encabezado_svg_global || '',
+          pie_svg_global: plantillaRes.footer_global || configRes.config?.pie_svg_global || '',
+        },
         plantilla: plantillaRes.plantilla || null,
       });
 
@@ -387,10 +392,13 @@ export default function ModalSolicitud({
               </div>
             ) : (
               <div className="p-3.5 rounded-2xl bg-blue-950/40 border border-blue-800/40">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-blue-200">Aporte de Corresponsabilidad y Sostenimiento:</span>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-blue-200">Autogestión Comunitaria (Art. 51 num. 3 LOCC 2023):</span>
                   <span className="text-xs font-extrabold text-white">${montoUsd.toFixed(2)} USD</span>
                 </div>
+                <p className="text-[10px] text-slate-400 mb-2">
+                  Destinado al Fondo de Gastos Operativos y de Administración del Consejo Comunal.
+                </p>
                 
                 <div className="flex items-center justify-between text-xs text-slate-300 border-t border-blue-900/40 pt-2">
                   <span>Tasa Oficial BCV: <strong>Bs. {Number(tasaBcv).toFixed(2)}</strong></span>

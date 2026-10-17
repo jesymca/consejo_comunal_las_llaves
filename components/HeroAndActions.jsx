@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, Home, Award, HeartCrack, Store, QrCode, ArrowRight, ShieldCheck, Clock, AlertTriangle, CheckCircle, Download } from 'lucide-react';
+import { Search, Home, Award, HeartCrack, Store, QrCode, ArrowRight, ShieldCheck, Clock, AlertTriangle, CheckCircle, Download, BookOpen } from 'lucide-react';
 
 export default function HeroAndActions({
   onSelectDocumentType,
@@ -28,9 +28,9 @@ export default function HeroAndActions({
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         
         {/* Badge Institucional y Tasa BCV */}
-        <div className="inline-flex items-center gap-3 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 text-xs text-slate-300 mb-6 backdrop-blur-md shadow-inner">
+        <div className="inline-flex flex-wrap items-center justify-center gap-3 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 text-xs text-slate-300 mb-6 backdrop-blur-md shadow-inner">
           <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>Gestión Comunal Digital Oficial</span>
+          <span>Gestión Comunal Digital · LOCC Reforma 2023</span>
           {tasaBcv && (
             <span className="border-l border-slate-750 pl-3 font-semibold text-emerald-400">
               Tasa Oficial BCV: Bs. {Number(tasaBcv).toFixed(2)} / $
@@ -47,11 +47,11 @@ export default function HeroAndActions({
         </h1>
 
         <p className="max-w-2xl mx-auto text-sm sm:text-base text-slate-400 mb-10 leading-relaxed">
-          Plataforma modular del <strong>Consejo Comunal Las Llaves</strong> para la tramitación de constancias con certificación digital, código QR alfanumérico único y verificación en tiempo real.
+          Plataforma oficial del <strong>Consejo Comunal Las Llaves</strong> adecuada a la <strong>Ley Orgánica de los Consejos Comunales (2023)</strong> para la tramitación de constancias con certificación digital, código QR alfanumérico único y verificación en tiempo real.
         </p>
 
         {/* Acceso Directo a los Documentos Base */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-6xl mx-auto mb-12 text-left">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-6xl mx-auto mb-10 text-left">
           
           {/* 1. Carta de Residencia */}
           <button
@@ -62,12 +62,12 @@ export default function HeroAndActions({
               <Home className="w-6 h-6" />
             </div>
             <div>
-              <span className="text-[10px] font-bold tracking-wider uppercase text-blue-400 mb-1 block">Documento 01</span>
+              <span className="text-[10px] font-bold tracking-wider uppercase text-blue-400 mb-1 block">Art. 34 Num. 19 LOCC</span>
               <h3 className="font-bold text-lg text-white group-hover:text-blue-300 transition mb-1">
                 Carta de Residencia
               </h3>
               <p className="text-xs text-slate-400 leading-normal">
-                Certifica la dirección de habitación en la vereda y casa comunal ante entes públicos y privados.
+                Certifica la residencia del habitante en la comunidad conforme al Censo Demográfico Comunal (Art. 34 num. 19 y 20 LOCC).
               </p>
             </div>
             <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-blue-400 group-hover:translate-x-1 transition-transform">
@@ -85,12 +85,12 @@ export default function HeroAndActions({
               <Award className="w-6 h-6" />
             </div>
             <div>
-              <span className="text-[10px] font-bold tracking-wider uppercase text-amber-400 mb-1 block">Documento 02</span>
+              <span className="text-[10px] font-bold tracking-wider uppercase text-amber-400 mb-1 block">Art. 4 y 25 LOCC</span>
               <h3 className="font-bold text-lg text-white group-hover:text-amber-300 transition mb-1">
                 Buena Conducta
               </h3>
               <p className="text-xs text-slate-400 leading-normal">
-                Acredita vista, trato, comunicación y moral intachable del habitante en el ámbito geográfico.
+                Acredita vista, trato, corresponsabilidad y convivencia ciudadana del habitante en el ámbito geográfico comunal.
               </p>
             </div>
             <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-amber-400 group-hover:translate-x-1 transition-transform">
@@ -108,12 +108,12 @@ export default function HeroAndActions({
               <HeartCrack className="w-6 h-6" />
             </div>
             <div>
-              <span className="text-[10px] font-bold tracking-wider uppercase text-rose-400 mb-1 block">Documento 03</span>
+              <span className="text-[10px] font-bold tracking-wider uppercase text-rose-400 mb-1 block">Solidaridad Comunal</span>
               <h3 className="font-bold text-lg text-white group-hover:text-rose-300 transition mb-1">
                 Fallecimiento
               </h3>
               <p className="text-xs text-slate-400 leading-normal">
-                Constancia comunitaria para trámites legales, Registro Civil y servicios funerarios de habitantes.
+                Constancia comunitaria gratuita para trámites legales, Registro Civil y servicios funerarios de habitantes.
               </p>
             </div>
             <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-rose-400 group-hover:translate-x-1 transition-transform">
@@ -131,12 +131,12 @@ export default function HeroAndActions({
               <Store className="w-6 h-6" />
             </div>
             <div>
-              <span className="text-[10px] font-bold tracking-wider uppercase text-indigo-400 mb-1 block">Documento 04</span>
+              <span className="text-[10px] font-bold tracking-wider uppercase text-indigo-400 mb-1 block">Art. 26 y 32 LOCC</span>
               <h3 className="font-bold text-lg text-white group-hover:text-indigo-300 transition mb-1">
                 Funcionamiento
               </h3>
               <p className="text-xs text-slate-400 leading-normal">
-                Aval para dueños de casa que poseen locales comerciales en alquiler en su inmueble.
+                Aval socio-productivo y de contraloría comunal para propietarios con locales comerciales en su inmueble.
               </p>
             </div>
             <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-indigo-400 group-hover:translate-x-1 transition-transform">
@@ -148,11 +148,11 @@ export default function HeroAndActions({
         </div>
 
         {/* Buscador de Cédula Central */}
-        <div className="max-w-2xl mx-auto p-6 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-2xl backdrop-blur-xl">
+        <div className="max-w-2xl mx-auto p-6 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-2xl backdrop-blur-xl mb-10">
           <div className="flex items-center justify-between mb-3 text-left">
             <div>
-              <h2 className="text-base font-bold text-white">Consulta y Solicitud por Cédula</h2>
-              <p className="text-xs text-slate-400">Ingresa tu cédula de identidad en formato <strong>V-12345678</strong> o sólo números.</p>
+              <h2 className="text-base font-bold text-white">Consulta en el Censo Demográfico y Solicitud por Cédula</h2>
+              <p className="text-xs text-slate-400">Ingresa tu cédula de identidad en formato <strong>V-12345678</strong> o sólo números (Art. 34 num. 19 y 20 LOCC).</p>
             </div>
             <ShieldCheck className="w-6 h-6 text-blue-400 shrink-0" />
           </div>
@@ -198,7 +198,7 @@ export default function HeroAndActions({
                     <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
                       <div className="flex items-center gap-2 mb-2 font-bold text-sm">
                         <CheckCircle className="w-4 h-4 text-emerald-400" />
-                        <span>Vecino Censado y Aprobado</span>
+                        <span>Habitante Censado y Verificado en el Censo Demográfico Comunal</span>
                       </div>
                       <p className="text-xs text-slate-300 mb-1">
                         <strong>Nombre:</strong> {vecinoBuscado.vecino.nombres} {vecinoBuscado.vecino.apellidos} &nbsp;|&nbsp; <strong>Cédula:</strong> {vecinoBuscado.vecino.cedula}
@@ -232,13 +232,13 @@ export default function HeroAndActions({
                     <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300">
                       <div className="flex items-center gap-2 mb-1.5 font-bold text-sm">
                         <Clock className="w-4 h-4 text-amber-400" />
-                        <span>Registro en Proceso de Aprobación</span>
+                        <span>Registro en Proceso de Verificación Comunal</span>
                       </div>
                       <p className="text-xs text-slate-300 mb-2">
-                        Hola, <strong>{vecinoBuscado.vecino.nombres}</strong> ({vecinoBuscado.vecino.cedula}). Tu solicitud de residencia en la Vereda {vecinoBuscado.vecino.vereda}, Casa {vecinoBuscado.vecino.casa} está registrada, pero se encuentra <strong>PENDIENTE DE APROBACIÓN</strong> por los voceros comunales.
+                        Hola, <strong>{vecinoBuscado.vecino.nombres}</strong> ({vecinoBuscado.vecino.cedula}). Tu solicitud de incorporación al Censo Demográfico en la Vereda {vecinoBuscado.vecino.vereda}, Casa {vecinoBuscado.vecino.casa} está registrada y se encuentra <strong>PENDIENTE DE VERIFICACIÓN</strong> por las instancias del Consejo Comunal.
                       </p>
                       <p className="text-[11px] text-amber-400/90 font-medium bg-amber-500/10 p-2 rounded border border-amber-500/15">
-                        Por normas de contraloría comunal, solo podrás tramitar y descargar documentos una vez que un Administrador o Super Administrador apruebe que habitas en el sector.
+                        Conforme al Art. 34 numerales 19 y 20 de la Ley Orgánica de los Consejos Comunales (2023), podrás emitir y descargar constancias una vez que la Comisión Electoral / Colectivo de Gobierno Comunal valide tu residencia en el sector.
                       </p>
                     </div>
                   )}
@@ -247,16 +247,16 @@ export default function HeroAndActions({
                 <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-slate-300">
                   <div className="flex items-center gap-2 mb-1.5 font-bold text-sm text-blue-300">
                     <AlertTriangle className="w-4 h-4 text-blue-400" />
-                    <span>Cédula no encontrada en el padrón</span>
+                    <span>Cédula no encontrada en el Censo Demográfico Comunal</span>
                   </div>
                   <p className="text-xs text-slate-300 mb-3">
-                    La cédula <strong>{vecinoBuscado.cedula}</strong> no aparece registrada en el padrón de vecinos del Consejo Comunal Las Llaves.
+                    La cédula <strong>{vecinoBuscado.cedula}</strong> no aparece registrada aún en el Censo Demográfico del Consejo Comunal Las Llaves (Art. 15 num. 3 y Art. 34 num. 20 LOCC).
                   </p>
                   <button
                     onClick={() => onOpenRegistro(vecinoBuscado.cedula)}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-md shadow-blue-600/30"
                   >
-                    <span>Completar Registro Comunal</span>
+                    <span>Completar Registro en el Censo Comunal</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -264,6 +264,42 @@ export default function HeroAndActions({
             </div>
           )}
 
+        </div>
+
+        {/* Banner Oficial de Descarga de la Ley Orgánica de los Consejos Comunales (2023) para Visitantes */}
+        <div className="max-w-4xl mx-auto p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-slate-900/95 via-blue-950/30 to-slate-900/95 border border-amber-500/30 shadow-xl text-left flex flex-col md:flex-row items-center justify-between gap-5">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 mt-0.5">
+              <BookOpen className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Marco Legal Vigente · Gaceta Oficial 2023
+                </span>
+                <span className="text-[11px] text-slate-400 font-medium">
+                  Asamblea Nacional · 22 de junio de 2023
+                </span>
+              </div>
+              <h3 className="text-base sm:text-lg font-extrabold text-white">
+                Ley Orgánica de los Consejos Comunales (Reforma 2023)
+              </h3>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                Consulta y descarga el texto íntegro de la Ley que rige la organización y funcionamiento de la <strong>Asamblea de Ciudadanas y Ciudadanos</strong>, el <strong>Colectivo de Gobierno Comunal</strong>, la <strong>Unidad Ejecutiva</strong>, la <strong>Unidad Administrativa y Financiera Comunitaria</strong>, la <strong>Unidad de Contraloría Social</strong> y la <strong>Comisión Electoral</strong> (Art. 18 al 35).
+              </p>
+            </div>
+          </div>
+
+          <a
+            href="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/archivo/Ley_Organica_Consejos_Comunales_2023.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            download="Ley_Organica_Consejos_Comunales_2023.pdf"
+            className="w-full md:w-auto px-5 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs transition shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 shrink-0"
+          >
+            <Download className="w-4 h-4" />
+            <span>Descargar Ley Orgánica (PDF)</span>
+          </a>
         </div>
 
       </div>

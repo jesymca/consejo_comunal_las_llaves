@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, FileText, CheckCircle2, UserCheck, Lock, LogOut, Sun, Moon } from 'lucide-react';
+import { ShieldCheck, FileText, CheckCircle2, UserCheck, Lock, LogOut, Sun, Moon, Download } from 'lucide-react';
 
 export default function Navbar({ user, config: initialConfig, onOpenLogin, onLogout, onNavigateHash }) {
   const [theme, setTheme] = useState('dark');
@@ -97,7 +97,7 @@ export default function Navbar({ user, config: initialConfig, onOpenLogin, onLog
             href="https://www.comunas.gob.ve/fundacomunal/"
             target="_blank"
             rel="noopener noreferrer"
-            title="Ministerio del Poder Popular para las Comunas"
+            title="Ministerio del Poder Popular para las Comunas y los Movimientos Sociales"
             className="sm:hidden shrink-0 pl-1"
           >
             <img
@@ -109,7 +109,7 @@ export default function Navbar({ user, config: initialConfig, onOpenLogin, onLog
         </div>
 
         {/* Enlaces y Acciones (En móvil se alinean debajo del encabezado en una fila fluida) */}
-        <div className="w-full sm:w-auto flex items-center justify-between sm:justify-end gap-1.5 sm:gap-3 pt-1 sm:pt-0 border-t border-slate-800/40 sm:border-t-0">
+        <div className="w-full sm:w-auto flex items-center justify-between sm:justify-end gap-1.5 sm:gap-2.5 pt-1 sm:pt-0 border-t border-slate-800/40 sm:border-t-0">
           <button
             onClick={() => onNavigateHash('inicio')}
             className="inline-flex items-center justify-center gap-1 text-[11px] sm:text-xs font-semibold px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition"
@@ -125,6 +125,19 @@ export default function Navbar({ user, config: initialConfig, onOpenLogin, onLog
             <CheckCircle2 className="w-3.5 h-3.5" />
             <span>Validador QR</span>
           </button>
+
+          <a
+            href="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/archivo/Ley_Organica_Consejos_Comunales_2023.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            download="Ley_Organica_Consejos_Comunales_2023.pdf"
+            title="Descargar Ley Orgánica de los Consejos Comunales (Reforma 2023)"
+            className="inline-flex items-center justify-center gap-1 text-[11px] sm:text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 transition shadow-sm shrink-0"
+          >
+            <Download className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden md:inline">Ley Orgánica C.C.</span>
+            <span className="md:hidden">Ley C.C.</span>
+          </a>
 
           {/* Selector de Modo Claro / Modo Oscuro */}
           <button

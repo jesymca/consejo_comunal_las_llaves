@@ -164,10 +164,12 @@ export default function Dashboard({ user, onLogout }) {
     orden: 1,
   });
 
-  // Estados de módulo Modelador
+  // Estados de módulo Modelador (1 sola Cabecera Única y 1 solo Footer Único para todos los documentos)
   const [plantillas, setPlantillas] = useState([]);
   const [plantillaSeleccionada, setPlantillaSeleccionada] = useState(null);
-  const [modeladorSubTab, setModeladorSubTab] = useState('cabecera'); // 'cabecera' | 'cuerpo' | 'pie' | 'previsualizacion'
+  const [cabeceraUnicaSvg, setCabeceraUnicaSvg] = useState('');
+  const [footerUnicoSvg, setFooterUnicoSvg] = useState('');
+  const [modeladorSubTab, setModeladorSubTab] = useState('cabecera'); // 'cabecera' | 'pie' | 'cuerpo' | 'previsualizacion'
 
   // Estados de módulo Usuarios (Super Admin) y Permisos Granulares
   const [usuarios, setUsuarios] = useState([]);
@@ -615,18 +617,79 @@ export default function Dashboard({ user, onLogout }) {
     }
   };
 
+  const guardarCabeceraUnica = async (jsonString) => {
+    try {
+      setCabeceraUnicaSvg(jsonString);
+      setPlantillas((prev) => prev.map((pl) => ({ ...pl, encabezado_svg: jsonString })));
+      if (plantillaSeleccionada) {
+        setPlantillaSeleccionada((prev) => (prev ? { ...prev, encabezado_svg: jsonString } : prev));
+      }
+      const res = await fetch('/api/modelador', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'guardar_cabecera_global',
+          encabezado_svg: jsonString,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success('¡Cabecera de Documentos única guardada para todos los documentos!');
+        cargarModelador();
+      } else {
+        toast.error(data.error || 'Error al guardar la Cabecera de Documentos');
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error('Error de conexión con el servidor');
+    }
+  };
+
+  const guardarFooterUnico = async (jsonString) => {
+    try {
+      setFooterUnicoSvg(jsonString);
+      setPlantillas((prev) => prev.map((pl) => ({ ...pl, pie_svg: jsonString })));
+      if (plantillaSeleccionada) {
+        setPlantillaSeleccionada((prev) => (prev ? { ...prev, pie_svg: jsonString } : prev));
+      }
+      const res = await fetch('/api/modelador', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'guardar_footer_global',
+          pie_svg: jsonString,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success('¡Footer de Documentos único guardado para todos los documentos!');
+        cargarModelador();
+      } else {
+        toast.error(data.error || 'Error al guardar el Footer de Documentos');
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error('Error de conexión con el servidor');
+    }
+  };
+
   const guardarPlantilla = async (plantillaToSave) => {
     const p = plantillaToSave || plantillaSeleccionada;
     if (!p) return;
     try {
+      const payload = {
+        ...p,
+        encabezado_svg: cabeceraUnicaSvg || p.encabezado_svg || '',
+        pie_svg: footerUnicoSvg || p.pie_svg || '',
+      };
       const res = await fetch('/api/modelador', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(p),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success('Plantilla guardada exitosamente');
+        toast.success('Plantilla y configuración documental guardada exitosamente');
         cargarModelador();
       } else {
         toast.error(data.error || 'Error al guardar plantilla');
@@ -638,10 +701,12 @@ export default function Dashboard({ user, onLogout }) {
   };
 
   const descargarMuestraPdf = async (plantilla) => {
+    const pEfectiva = plantilla || plantillaSeleccionada || plantillas[0];
+    if (!pEfectiva) return;
     try {
       const docMuestra = {
         codigo_qr: 'MUESTRA999',
-        tipo_documento: plantilla.id,
+        tipo_documento: pEfectiva.id,
         cedula: 'V-12.345.678',
         nombres_apellidos: 'CIUDADANO EJEMPLAR DE PRUEBA',
         vereda: 'A',
@@ -656,15 +721,21 @@ export default function Dashboard({ user, onLogout }) {
         firmas,
         config: {
           ...config,
+          encabezado_svg_global: cabeceraUnicaSvg || pEfectiva.encabezado_svg || '',
+          pie_svg_global: footerUnicoSvg || pEfectiva.pie_svg || '',
           sello_forma: selloForma,
           sello_ancho_mm: String(selloAnchoMm),
           sello_alto_mm: String(selloAltoMm),
           sello_tamano_mm: String(selloAnchoMm),
           sello_principal_url: selloPrincipalUrl,
         },
-        plantilla,
+        plantilla: {
+          ...pEfectiva,
+          encabezado_svg: cabeceraUnicaSvg || pEfectiva.encabezado_svg || '',
+          pie_svg: footerUnicoSvg || pEfectiva.pie_svg || '',
+        },
       });
-      toast.success('PDF de muestra generado');
+      toast.success('PDF de muestra generado con la Cabecera y Footer únicos');
     } catch (e) {
       console.error(e);
       toast.error('Error al generar PDF de muestra');
@@ -675,9 +746,20 @@ export default function Dashboard({ user, onLogout }) {
     try {
       const res = await fetch('/api/modelador');
       const data = await res.json();
-      setPlantillas(data.plantillas || []);
-      if (data.plantillas?.length > 0 && !plantillaSeleccionada) {
-        setPlantillaSeleccionada(data.plantillas[0]);
+      const lista = data.plantillas || [];
+      const cabGlobal = data.cabecera_global ?? lista[0]?.encabezado_svg ?? '';
+      const footGlobal = data.footer_global ?? lista[0]?.pie_svg ?? '';
+
+      setCabeceraUnicaSvg(cabGlobal);
+      setFooterUnicoSvg(footGlobal);
+      setPlantillas(lista);
+
+      if (lista.length > 0) {
+        setPlantillaSeleccionada((prev) => {
+          if (!prev) return lista[0];
+          const encontrada = lista.find((it) => it.id === prev.id);
+          return encontrada || lista[0];
+        });
       }
     } catch (e) {
       console.error(e);
@@ -2189,290 +2271,471 @@ export default function Dashboard({ user, onLogout }) {
           <div className="space-y-5 animate-in fade-in">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h1 className="text-2xl font-extrabold text-white">Modelador de Plantillas Documentales</h1>
-                <p className="text-xs text-slate-400">Editor visual SVG para Cabecera, Redacción Legal y Footer interactivo</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-2xl font-extrabold text-white">Modelador de Plantillas Documentales</h1>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    Cabecera y Footer Únicos Unificados
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Gestión centralizada con <strong>1 sola Cabecera de Documentos</strong> y <strong>1 solo Footer de Documentos</strong> para todas las constancias comunales (Ley Orgánica de los Consejos Comunales 2023)
+                </p>
               </div>
 
-              {plantillaSeleccionada && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => descargarMuestraPdf(plantillaSeleccionada)}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition"
-                  >
-                    <Download className="w-4 h-4 text-blue-400" /> Descargar Muestra PDF
-                  </button>
-                  <button
-                    onClick={() => guardarPlantilla(plantillaSeleccionada)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition"
-                  >
-                    <Check className="w-4 h-4" /> Guardar Todo
-                  </button>
-                </div>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <a
+                  href="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/archivo/Ley_Organica_Consejos_Comunales_2023.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30 transition"
+                >
+                  <FileText className="w-4 h-4 text-amber-400" /> Ley Orgánica C.C. 2023
+                </a>
+                {plantillaSeleccionada && (
+                  <>
+                    <button
+                      onClick={() => descargarMuestraPdf(plantillaSeleccionada)}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition"
+                    >
+                      <Download className="w-4 h-4 text-blue-400" /> Descargar Muestra PDF
+                    </button>
+                    <button
+                      onClick={() => guardarPlantilla(plantillaSeleccionada)}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition"
+                    >
+                      <Check className="w-4 h-4" /> Guardar Todo
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
-            {/* Selector de Plantilla */}
-            <div className="flex flex-wrap items-center gap-2.5">
-              {plantillas.map((p) => (
-                <div key={p.id} className="relative group">
-                  <button
-                    onClick={() => setPlantillaSeleccionada(p)}
-                    className={`px-4 py-2.5 rounded-2xl text-left transition border ${
-                      plantillaSeleccionada?.id === p.id
-                        ? 'bg-blue-600/20 border-blue-500 text-white font-bold shadow-md shadow-blue-600/20'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <span className="text-xs block">{p.titulo}</span>
-                    <span className="text-[10px] text-slate-500 font-mono">ID: {p.id}</span>
-                  </button>
-                  {/* Botón de eliminar si no es una de las plantillas base */}
-                  {!['RESIDENCIA', 'BUENA_CONDUCTA', 'FALLECIMIENTO', 'FUNCIONAMIENTO'].includes(p.id) && user?.rol === 'SUPER_ADMIN' && (
+            {/* Pestañas Principales del Modelador: Cabecera de Documentos (Única), Footer de Documentos (Único), Redacción Legal y Vista Previa */}
+            <div className="flex flex-wrap items-center gap-2.5 p-2 rounded-2xl bg-slate-900/90 border border-slate-800">
+              <button
+                onClick={() => setModeladorSubTab('cabecera')}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                  modeladorSubTab === 'cabecera'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                    : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
+                }`}
+              >
+                <Sliders className="w-4 h-4" />
+                <span>Cabecera de Documentos</span>
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                  modeladorSubTab === 'cabecera' ? 'bg-white/20 text-white' : 'bg-blue-500/15 text-blue-400'
+                }`}>
+                  Única
+                </span>
+              </button>
+
+              <button
+                onClick={() => setModeladorSubTab('pie')}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                  modeladorSubTab === 'pie'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                    : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
+                }`}
+              >
+                <Sliders className="w-4 h-4" />
+                <span>Footer de Documentos</span>
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                  modeladorSubTab === 'pie' ? 'bg-white/20 text-white' : 'bg-emerald-500/15 text-emerald-400'
+                }`}>
+                  Único
+                </span>
+              </button>
+
+              <button
+                onClick={() => setModeladorSubTab('cuerpo')}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                  modeladorSubTab === 'cuerpo'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                    : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                <span>Redacción Legal por Documento</span>
+              </button>
+
+              <button
+                onClick={() => setModeladorSubTab('previsualizacion')}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                  modeladorSubTab === 'previsualizacion'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                    : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
+                }`}
+              >
+                <Eye className="w-4 h-4" />
+                <span>Vista Previa Hoja Completa</span>
+              </button>
+            </div>
+
+            {/* Subtab 1: Cabecera de Documentos (ÚNICA PARA TODOS LOS DOCUMENTOS) */}
+            {modeladorSubTab === 'cabecera' && (
+              <div className="space-y-3">
+                <div className="p-3.5 rounded-2xl bg-blue-950/30 border border-blue-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2.5 text-blue-200">
+                    <ShieldCheck className="w-5 h-5 text-blue-400 shrink-0" />
+                    <span>
+                      <strong>Cabecera de Documentos Única:</strong> Esta cabecera institucional es global y se utiliza exactamente igual en <strong>todos los documentos y constancias</strong> emitidos por el Consejo Comunal.
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono text-blue-300 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20 shrink-0">
+                    Aplica a {plantillas.length || 4} plantillas activas
+                  </span>
+                </div>
+
+                <SvgCanvasEditor
+                  key="cabecera-documentos-unica-global"
+                  mode="header"
+                  initialData={cabeceraUnicaSvg}
+                  onSave={guardarCabeceraUnica}
+                  title="Cabecera de Documentos (Única para Todos los Documentos)"
+                />
+              </div>
+            )}
+
+            {/* Subtab 2: Footer de Documentos (ÚNICO PARA TODOS LOS DOCUMENTOS) */}
+            {modeladorSubTab === 'pie' && (
+              <div className="space-y-3">
+                <div className="p-3.5 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2.5 text-emerald-200">
+                    <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+                    <span>
+                      <strong>Footer de Documentos Único:</strong> Este pie de página y bloque de validación QR es global y se utiliza exactamente igual en <strong>todos los documentos y constancias</strong> del Consejo Comunal.
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono text-emerald-300 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 shrink-0">
+                    Aplica a {plantillas.length || 4} plantillas activas
+                  </span>
+                </div>
+
+                <SvgCanvasEditor
+                  key="footer-documentos-unico-global"
+                  mode="footer"
+                  initialData={footerUnicoSvg}
+                  onSave={guardarFooterUnico}
+                  title="Footer de Documentos (Único para Todos los Documentos)"
+                />
+              </div>
+            )}
+
+            {/* Selector de Documento para Redacción Legal y Vista Previa */}
+            {(modeladorSubTab === 'cuerpo' || modeladorSubTab === 'previsualizacion') && (
+              <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-300">
+                    Selecciona el Documento para editar su Redacción Legal o ver su Vista Previa (conservando la misma Cabecera y Footer únicos):
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {plantillas.map((p) => (
+                    <div key={p.id} className="relative group">
+                      <button
+                        onClick={() => setPlantillaSeleccionada(p)}
+                        className={`px-4 py-2.5 rounded-2xl text-left transition border ${
+                          plantillaSeleccionada?.id === p.id
+                            ? 'bg-blue-600/20 border-blue-500 text-white font-bold shadow-md shadow-blue-600/20'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <span className="text-xs block">{p.titulo}</span>
+                        <span className="text-[10px] text-slate-500 font-mono">ID: {p.id}</span>
+                      </button>
+                      {/* Botón de eliminar si no es una de las plantillas base */}
+                      {!['RESIDENCIA', 'BUENA_CONDUCTA', 'FALLECIMIENTO', 'FUNCIONAMIENTO'].includes(p.id) && user?.rol === 'SUPER_ADMIN' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            eliminarPlantillaDocumental(p);
+                          }}
+                          className="absolute -top-1.5 -right-1.5 p-1 rounded-full bg-rose-600 hover:bg-rose-500 text-white shadow opacity-0 group-hover:opacity-100 transition"
+                          title="Eliminar plantilla"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Botón para Crear Nuevo Documento */}
+                  {(user?.rol === 'SUPER_ADMIN' || user?.rol === 'ADMIN') && (
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        eliminarPlantillaDocumental(p);
+                      onClick={() => {
+                        setNuevaPlantillaForm({
+                          id: '',
+                          titulo: '',
+                          subtitulo: 'NRO: {codigo_qr}',
+                          cuerpo_template: 'Quienes suscriben, voceras y voceros integrantes del Colectivo de Gobierno Comunal, la Unidad Ejecutiva y la Comisión Electoral del Consejo Comunal de la Urbanización Dr. Alfredo Travieso Paúl "LAS LLAVES", en ejercicio de las atribuciones conferidas en los artículos 18, 23, 25 y 34 numeral 19 de la Ley Orgánica de los Consejos Comunales (Reforma 2023), por medio de la presente hacemos constar que la ciudadana o ciudadano: {nombre_completo}, titular de la cédula de identidad N°: {cedula}, es habitante de nuestra comunidad en la Vereda {vereda}, Casa N° {casa}, según consta en el Censo Demográfico Comunal.\n\nConstancia que se expide a solicitud de la parte interesada, en la ciudad de Puerto Cabello, a los {dias} días del mes de {mes} del año {ano}.',
+                        });
+                        setModalNuevaPlantilla(true);
                       }}
-                      className="absolute -top-1.5 -right-1.5 p-1 rounded-full bg-rose-600 hover:bg-rose-500 text-white shadow opacity-0 group-hover:opacity-100 transition"
-                      title="Eliminar plantilla"
+                      className="px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition shadow-md shadow-indigo-600/20 flex items-center gap-1.5 shrink-0"
                     >
-                      <X className="w-3 h-3" />
+                      <Plus className="w-4 h-4" />
+                      <span>+ Nuevo Documento</span>
                     </button>
                   )}
                 </div>
-              ))}
+              </div>
+            )}
 
-              {/* Botón para Crear Nuevo Documento */}
-              {(user?.rol === 'SUPER_ADMIN' || user?.rol === 'ADMIN') && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNuevaPlantillaForm({
-                      id: '',
-                      titulo: '',
-                      subtitulo: 'NRO: {codigo_qr}',
-                      cuerpo_template: 'Quien suscribe, voceros del Consejo Comunal de la Urbanización Dr. Alfredo Travieso Paul "LAS LLAVES", por medio de la presente hacemos constar que el ciudadano (a): {nombre_completo}, portador (a) de la cédula de identidad N°: {cedula}, habitante de la Vereda {vereda}, Casa N° {casa}.\n\nConstancia que se expide a solicitud de parte interesada, en la ciudad de Puerto Cabello, a los {dias} días del mes de {mes} del año {ano}.',
-                    });
-                    setModalNuevaPlantilla(true);
-                  }}
-                  className="px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition shadow-md shadow-indigo-600/20 flex items-center gap-1.5 shrink-0"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>+ Nuevo Documento</span>
-                </button>
-              )}
-            </div>
+            {/* Subtab 3: Cuerpo Legal & Redacción por Documento */}
+            {modeladorSubTab === 'cuerpo' && plantillaSeleccionada && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div>
+                      <span className="text-[10px] font-mono uppercase text-blue-400 font-bold">Plantilla Seleccionada: {plantillaSeleccionada.id}</span>
+                      <h3 className="text-sm font-bold text-white">{plantillaSeleccionada.titulo}</h3>
+                    </div>
+                    <span className="text-[11px] text-slate-400">
+                      Usa la <strong>Cabecera de Documentos</strong> y <strong>Footer de Documentos</strong> únicos
+                    </span>
+                  </div>
 
-            {plantillaSeleccionada && (
-              <div className="space-y-4">
-                {/* Sub-pestañas del Modelador */}
-                <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
-                  <button
-                    onClick={() => setModeladorSubTab('cabecera')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-                      modeladorSubTab === 'cabecera'
-                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                        : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                    }`}
-                  >
-                    <Sliders className="w-4 h-4" /> 1. Cabecera Institucional (Editor SVG)
-                  </button>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Título del Documento</label>
+                    <input
+                      type="text"
+                      value={plantillaSeleccionada.titulo}
+                      onChange={(e) => setPlantillaSeleccionada({ ...plantillaSeleccionada, titulo: e.target.value })}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs font-bold"
+                    />
+                  </div>
 
-                  <button
-                    onClick={() => setModeladorSubTab('cuerpo')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-                      modeladorSubTab === 'cuerpo'
-                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                        : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                    }`}
-                  >
-                    <FileText className="w-4 h-4" /> 2. Redacción Legal y Variables
-                  </button>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Subtítulo Oficial (Opcional)</label>
+                    <input
+                      type="text"
+                      value={plantillaSeleccionada.subtitulo || ''}
+                      onChange={(e) => setPlantillaSeleccionada({ ...plantillaSeleccionada, subtitulo: e.target.value })}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs"
+                      placeholder="Ej: NRO: {codigo_qr}"
+                    />
+                  </div>
 
-                  <button
-                    onClick={() => setModeladorSubTab('pie')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-                      modeladorSubTab === 'pie'
-                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                        : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                    }`}
-                  >
-                    <Sliders className="w-4 h-4" /> 3. Pie de Página / Footer (Editor SVG)
-                  </button>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Cuerpo Legal y Redacción (Adaptado a la Ley Orgánica de los Consejos Comunales 2023)
+                    </label>
+                    <textarea
+                      rows="10"
+                      value={plantillaSeleccionada.cuerpo_template}
+                      onChange={(e) => setPlantillaSeleccionada({ ...plantillaSeleccionada, cuerpo_template: e.target.value })}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs font-mono leading-relaxed"
+                    />
+                  </div>
 
                   <button
-                    onClick={() => setModeladorSubTab('previsualizacion')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-                      modeladorSubTab === 'previsualizacion'
-                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                        : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                    }`}
+                    onClick={() => guardarPlantilla(plantillaSeleccionada)}
+                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-md shadow-blue-600/30"
                   >
-                    <Eye className="w-4 h-4" /> 4. Vista Previa Hoja Completa
+                    Guardar Cambios de Redacción
                   </button>
                 </div>
 
-                {/* Subtab 1: Cabecera SVG */}
-                {modeladorSubTab === 'cabecera' && (
-                  <SvgCanvasEditor
-                    key={`header-${plantillaSeleccionada.id}`}
-                    mode="header"
-                    initialData={plantillaSeleccionada.encabezado_svg}
-                    onSave={async (jsonString) => {
-                      const updated = { ...plantillaSeleccionada, encabezado_svg: jsonString };
-                      setPlantillaSeleccionada(updated);
-                      await guardarPlantilla(updated);
-                    }}
-                    title={`Editor SVG de Cabecera (${plantillaSeleccionada.titulo})`}
-                  />
-                )}
-
-                {/* Subtab 2: Cuerpo Legal & Redacción */}
-                {modeladorSubTab === 'cuerpo' && (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-2 p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">Título del Documento</label>
-                        <input
-                          type="text"
-                          value={plantillaSeleccionada.titulo}
-                          onChange={(e) => setPlantillaSeleccionada({ ...plantillaSeleccionada, titulo: e.target.value })}
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs font-bold"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">Subtítulo Oficial (Opcional)</label>
-                        <input
-                          type="text"
-                          value={plantillaSeleccionada.subtitulo || ''}
-                          onChange={(e) => setPlantillaSeleccionada({ ...plantillaSeleccionada, subtitulo: e.target.value })}
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs"
-                          placeholder="Ej: Para trámites legales y bancarios"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">Cuerpo Legal y Redacción</label>
-                        <textarea
-                          rows="10"
-                          value={plantillaSeleccionada.cuerpo_template}
-                          onChange={(e) => setPlantillaSeleccionada({ ...plantillaSeleccionada, cuerpo_template: e.target.value })}
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs font-mono leading-relaxed"
-                        />
-                      </div>
-
-                      <button
-                        onClick={() => guardarPlantilla(plantillaSeleccionada)}
-                        className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-md shadow-blue-600/30"
-                      >
-                        Guardar Cambios de Redacción
-                      </button>
-                    </div>
-
-                    <div className="p-5 rounded-3xl bg-slate-950 border border-slate-800 text-xs text-slate-400 space-y-2.5">
-                      <span className="font-bold text-white block mb-1 text-sm">Variables Dinámicas Disponibles:</span>
-                      <p className="text-[11px] text-slate-400">Inserta estas etiquetas en el texto para que se reemplacen automáticamente con los datos del vecino al emitir:</p>
-                      <div className="space-y-1.5 pt-2">
-                        <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{nombre_completo}'}</code> - Nombres y apellidos</div>
-                        <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{cedula}'}</code> - Cédula con formato</div>
-                        <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{vereda}'}</code> - Vereda de residencia</div>
-                        <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{casa}'}</code> - Número de casa</div>
-                        <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{tiempo_residencia}'}</code> - Años viviendo en la comunidad</div>
-                        <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{codigo_qr}'}</code> - Código alfanumérico único</div>
-                        <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{dias}'}</code>, <code className="text-blue-400 font-mono">{'{mes}'}</code>, <code className="text-blue-400 font-mono">{'{ano}'}</code> - Fecha actual</div>
-                      </div>
-                    </div>
+                <div className="p-5 rounded-3xl bg-slate-950 border border-slate-800 text-xs text-slate-400 space-y-2.5">
+                  <span className="font-bold text-white block mb-1 text-sm">Variables Dinámicas Disponibles:</span>
+                  <p className="text-[11px] text-slate-400">Inserta estas etiquetas en el texto para que se reemplacen automáticamente con los datos del habitante al emitir:</p>
+                  <div className="space-y-1.5 pt-2">
+                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{nombre_completo}'}</code> - Nombres y apellidos</div>
+                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{cedula}'}</code> - Cédula con formato</div>
+                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{vereda}'}</code> - Vereda de residencia</div>
+                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{casa}'}</code> - Número de casa</div>
+                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{tiempo_residencia}'}</code> - Años viviendo en la comunidad</div>
+                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{codigo_qr}'}</code> - Código alfanumérico único</div>
+                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{dias}'}</code>, <code className="text-blue-400 font-mono">{'{mes}'}</code>, <code className="text-blue-400 font-mono">{'{ano}'}</code> - Fecha actual</div>
                   </div>
-                )}
+                  <div className="mt-3 pt-3 border-t border-slate-800 text-[11px] text-slate-400 space-y-1">
+                    <span className="font-bold text-amber-400 block">Base Legal LOCC (Gaceta 2023):</span>
+                    <p>• <strong>Art. 18:</strong> Instancias del Consejo Comunal (Asamblea de Ciudadanas y Ciudadanos, Colectivo de Gobierno Comunal, Unidad Ejecutiva, Unidad Administrativa y Financiera Comunitaria, Unidad de Contraloría Social y Comisión Electoral).</p>
+                    <p>• <strong>Art. 34 num. 19 y 20:</strong> Emisión de constancias de residencia y actualización del Censo Demográfico Comunal.</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
-                {/* Subtab 3: Pie de Página SVG */}
-                {modeladorSubTab === 'pie' && (
-                  <SvgCanvasEditor
-                    key={`footer-${plantillaSeleccionada.id}`}
-                    mode="footer"
-                    initialData={plantillaSeleccionada.pie_svg}
-                    onSave={async (jsonString) => {
-                      const updated = { ...plantillaSeleccionada, pie_svg: jsonString };
-                      setPlantillaSeleccionada(updated);
-                      await guardarPlantilla(updated);
-                    }}
-                    title={`Editor SVG de Pie de Página (${plantillaSeleccionada.titulo})`}
-                  />
-                )}
+            {/* Subtab 4: Previsualización de Hoja Completa (Con Cabecera Única y Footer Único) */}
+            {modeladorSubTab === 'previsualizacion' && plantillaSeleccionada && (
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <span className="text-xs text-slate-300">
+                    Vista previa en tamaño Carta unificando la <strong>Cabecera de Documentos única</strong>, la redacción de <strong>{plantillaSeleccionada.titulo}</strong>, las firmas autorizadas y el <strong>Footer de Documentos único</strong>.
+                  </span>
+                  <button
+                    onClick={() => descargarMuestraPdf(plantillaSeleccionada)}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow transition shrink-0"
+                  >
+                    <Download className="w-4 h-4" /> Generar y Descargar PDF
+                  </button>
+                </div>
 
-                {/* Subtab 4: Previsualización de Hoja Completa */}
-                {modeladorSubTab === 'previsualizacion' && (
-                  <div className="space-y-4">
-                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                      <span className="text-xs text-slate-300">
-                        Esta es la vista previa de cómo quedará el documento impreso en tamaño Carta con la cabecera, redacción legal, firmas y pie configurados.
-                      </span>
-                      <button
-                        onClick={() => descargarMuestraPdf(plantillaSeleccionada)}
-                        className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow transition"
-                      >
-                        <Download className="w-4 h-4" /> Generar y Descargar PDF
-                      </button>
-                    </div>
+                <div className="flex justify-center p-6 bg-slate-950 rounded-3xl border border-slate-800 overflow-x-auto">
+                  <div className="w-[680px] min-h-[850px] bg-white text-slate-900 p-10 shadow-2xl rounded-lg font-serif relative flex flex-col justify-between">
+                    {/* Cabecera Única de Documentos Renderizada */}
+                    <div>
+                      {(() => {
+                        let parsedHeader = null;
+                        try {
+                          if (cabeceraUnicaSvg) {
+                            parsedHeader = typeof cabeceraUnicaSvg === 'string' ? JSON.parse(cabeceraUnicaSvg) : cabeceraUnicaSvg;
+                          }
+                        } catch (e) {}
 
-                    <div className="flex justify-center p-6 bg-slate-950 rounded-3xl border border-slate-800 overflow-x-auto">
-                      <div className="w-[680px] min-h-[850px] bg-white text-slate-900 p-10 shadow-2xl rounded-lg font-serif relative flex flex-col justify-between">
-                        {/* Cabecera Mockup */}
-                        <div>
+                        if (parsedHeader && (parsedHeader.textos?.length > 0 || parsedHeader.imagenes?.length > 0)) {
+                          const hHeight = parsedHeader.height || 180;
+                          return (
+                            <div className="mb-6">
+                              <svg
+                                viewBox={`0 0 750 ${hHeight}`}
+                                className="w-full h-auto"
+                                style={{ borderBottom: parsedHeader.mostrarLineaDivisoria !== false ? `1.5px solid ${parsedHeader.colorLinea || '#CBD5E1'}` : 'none' }}
+                              >
+                                {(parsedHeader.imagenes || []).map((img) => (
+                                  <image
+                                    key={img.id}
+                                    href={img.url}
+                                    x={img.x}
+                                    y={img.y}
+                                    width={img.width}
+                                    height={img.height}
+                                    opacity={img.opacity ?? 1}
+                                    preserveAspectRatio={img.lockRatio ? 'xMidYMid meet' : 'none'}
+                                  />
+                                ))}
+                                {(parsedHeader.textos || []).map((t) => (
+                                  <text
+                                    key={t.id}
+                                    x={t.x}
+                                    y={t.y}
+                                    fontSize={t.fontSize || 11}
+                                    fontWeight={t.fontWeight || 'normal'}
+                                    fontStyle={t.fontStyle || 'normal'}
+                                    textDecoration={t.textDecoration || 'none'}
+                                    fill={t.color || '#0F172A'}
+                                    textAnchor={t.align || 'middle'}
+                                    fontFamily="Helvetica, Arial, sans-serif"
+                                  >
+                                    {t.textTransform === 'uppercase' ? String(t.texto || '').toUpperCase() : t.texto}
+                                  </text>
+                                ))}
+                              </svg>
+                            </div>
+                          );
+                        }
+
+                        return (
                           <div className="text-center border-b border-slate-300 pb-4 mb-6 relative">
                             <img src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/mppcomunas.png" alt="Comunas" className="absolute left-0 top-0 h-10 object-contain" />
                             <img src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/logo.png" alt="CC" className="absolute right-0 top-0 h-12 object-contain" />
                             <h4 className="text-xs font-bold text-slate-900 tracking-wider">REPÚBLICA BOLIVARIANA DE VENEZUELA</h4>
-                            <p className="text-[10px] text-slate-700">MINISTERIO DEL PODER POPULAR PARA LAS COMUNAS</p>
+                            <p className="text-[10px] text-slate-700">MINISTERIO DEL PODER POPULAR PARA LAS COMUNAS Y LOS MOVIMIENTOS SOCIALES</p>
                             <p className="text-[10px] font-bold text-slate-800">CONSEJO COMUNAL &quot;LAS LLAVES&quot;</p>
                             <p className="text-[9px] text-slate-600">Urbanización {config?.urbanizacion || 'Dr. Alfredo Travieso Paúl'} - Parroquia {config?.parroquia || 'Goaigoaza'}</p>
                             <p className="text-[9px] text-slate-500">Municipio {config?.municipio || 'Puerto Cabello'}, Estado {config?.estado || 'Carabobo'} | RIF: {config?.rif || 'C299916862'} | SITUR: {config?.situr_codigo || '08-11-04-001-0033'}</p>
                           </div>
+                        );
+                      })()}
 
-                          <div className="text-right text-[11px] font-mono font-bold text-slate-700 mb-4">
-                            NRO: CCLL-MUESTRA999
+                      <div className="text-right text-[11px] font-mono font-bold text-slate-700 mb-4">
+                        NRO: CCLL-MUESTRA999
+                      </div>
+
+                      <div className="text-center text-base font-extrabold text-slate-900 tracking-wide mb-6 uppercase">
+                        {plantillaSeleccionada.titulo}
+                      </div>
+
+                      <div className="text-xs text-slate-800 leading-relaxed text-justify mb-8 whitespace-pre-line">
+                        {plantillaSeleccionada.cuerpo_template
+                          .replace(/{nombre_completo}/g, 'JUAN CARLOS PÉREZ')
+                          .replace(/{cedula}/g, 'V-15.892.450')
+                          .replace(/{vereda}/g, 'B')
+                          .replace(/{casa}/g, 'B-12')
+                          .replace(/{tiempo_residencia}/g, '18')
+                          .replace(/{codigo_qr}/g, 'MUESTRA999')
+                          .replace(/{dias}/g, String(new Date().getDate()))
+                          .replace(/{mes}/g, 'octubre')
+                          .replace(/{ano}/g, String(new Date().getFullYear()))}
+                      </div>
+
+                      <div className="text-center text-xs text-slate-800 mb-10">
+                        <p>Atentamente.</p>
+                        <p className="font-bold">Por el Consejo Comunal &quot;LAS LLAVES&quot;</p>
+                      </div>
+                    </div>
+
+                    {/* Firmas y Footer Único de Documentos */}
+                    <div>
+                      <div className="grid grid-cols-2 gap-8 text-center text-[10px] border-t border-slate-200 pt-6 mb-6">
+                        {firmas.slice(0, 2).map((f) => (
+                          <div key={f.id} className="space-y-0.5">
+                            <div className="h-10 flex items-center justify-center">
+                              {f.url_firma && <img src={f.url_firma} alt="Firma" className="max-h-10 object-contain" />}
+                            </div>
+                            <div className="border-t border-slate-400 pt-1 font-bold">{f.comision}</div>
+                            <div>{f.nombre}</div>
+                            <div>C.I.: {f.cedula}</div>
                           </div>
+                        ))}
+                      </div>
 
-                          <div className="text-center text-base font-extrabold text-slate-900 tracking-wide mb-6 uppercase">
-                            {plantillaSeleccionada.titulo}
-                          </div>
+                      {(() => {
+                        let parsedFooter = null;
+                        try {
+                          if (footerUnicoSvg) {
+                            parsedFooter = typeof footerUnicoSvg === 'string' ? JSON.parse(footerUnicoSvg) : footerUnicoSvg;
+                          }
+                        } catch (e) {}
 
-                          <div className="text-xs text-slate-800 leading-relaxed text-justify mb-8 whitespace-pre-line">
-                            {plantillaSeleccionada.cuerpo_template
-                              .replace(/{nombre_completo}/g, 'JUAN CARLOS PÉREZ')
-                              .replace(/{cedula}/g, 'V-15.892.450')
-                              .replace(/{vereda}/g, 'B')
-                              .replace(/{casa}/g, 'B-12')
-                              .replace(/{tiempo_residencia}/g, '18')
-                              .replace(/{codigo_qr}/g, 'MUESTRA999')
-                              .replace(/{dias}/g, String(new Date().getDate()))
-                              .replace(/{mes}/g, 'octubre')
-                              .replace(/{ano}/g, String(new Date().getFullYear()))}
-                          </div>
+                        if (parsedFooter && (parsedFooter.textos?.length > 0 || parsedFooter.imagenes?.length > 0)) {
+                          const fHeight = parsedFooter.height || 150;
+                          return (
+                            <div
+                              className="rounded-lg overflow-hidden border"
+                              style={{
+                                backgroundColor: parsedFooter.colorFondo || '#F8FAFC',
+                                borderColor: parsedFooter.colorBorde || '#E2E8F0',
+                              }}
+                            >
+                              <svg viewBox={`0 0 750 ${fHeight}`} className="w-full h-auto">
+                                {(parsedFooter.imagenes || []).map((img) => (
+                                  <image
+                                    key={img.id}
+                                    href={img.url}
+                                    x={img.x}
+                                    y={img.y}
+                                    width={img.width}
+                                    height={img.height}
+                                    opacity={img.opacity ?? 1}
+                                    preserveAspectRatio={img.lockRatio ? 'xMidYMid meet' : 'none'}
+                                  />
+                                ))}
+                                {(parsedFooter.textos || []).map((t) => (
+                                  <text
+                                    key={t.id}
+                                    x={t.x}
+                                    y={t.y}
+                                    fontSize={t.fontSize || 10}
+                                    fontWeight={t.fontWeight || 'normal'}
+                                    fontStyle={t.fontStyle || 'normal'}
+                                    textDecoration={t.textDecoration || 'none'}
+                                    fill={t.color || '#0F172A'}
+                                    textAnchor={t.align || 'start'}
+                                    fontFamily="Helvetica, Arial, sans-serif"
+                                  >
+                                    {t.textTransform === 'uppercase' ? String(t.texto || '').toUpperCase() : t.texto}
+                                  </text>
+                                ))}
+                              </svg>
+                            </div>
+                          );
+                        }
 
-                          <div className="text-center text-xs text-slate-800 mb-10">
-                            <p>Atentamente.</p>
-                            <p className="font-bold">Por Consejo Comunal &quot;LAS LLAVES&quot;</p>
-                          </div>
-                        </div>
-
-                        {/* Firmas y Footer Mockup */}
-                        <div>
-                          <div className="grid grid-cols-2 gap-8 text-center text-[10px] border-t border-slate-200 pt-6 mb-6">
-                            {firmas.slice(0, 2).map((f) => (
-                              <div key={f.id} className="space-y-0.5">
-                                <div className="h-10 flex items-center justify-center">
-                                  {f.url_firma && <img src={f.url_firma} alt="Firma" className="max-h-10 object-contain" />}
-                                </div>
-                                <div className="border-t border-slate-400 pt-1 font-bold">{f.comision}</div>
-                                <div>{f.nombre}</div>
-                                <div>C.I.: {f.cedula}</div>
-                              </div>
-                            ))}
-                          </div>
-
+                        return (
                           <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-3">
                             <img src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/favicon.svg" alt="QR" className="w-12 h-12 object-contain" />
                             <div className="text-[9px] text-slate-600">
@@ -2481,11 +2744,11 @@ export default function Dashboard({ user, onLogout }) {
                               <span className="block text-slate-400">Verifique en: https://lasllaves.org/#validar</span>
                             </div>
                           </div>
-                        </div>
-                      </div>
+                        );
+                      })()}
                     </div>
                   </div>
-                )}
+                </div>
               </div>
             )}
           </div>
