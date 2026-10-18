@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, Home, Award, HeartCrack, Store, QrCode, ArrowRight, ShieldCheck, Clock, AlertTriangle, CheckCircle, Download, BookOpen } from 'lucide-react';
+import { Search, Home, Award, HeartCrack, Store, QrCode, ArrowRight, ShieldCheck, Clock, AlertTriangle, CheckCircle, Download, BookOpen, Flame, History, Wallet } from 'lucide-react';
 
 export default function HeroAndActions({
   onSelectDocumentType,
   onBuscarCedula,
   onOpenRegistro,
+  onOpenServicios,
   vecinoBuscado,
   isSearching,
   tasaBcv,
@@ -146,6 +147,40 @@ export default function HeroAndActions({
           </button>
 
         </div>
+
+        {/* Banner de Jornadas de Servicios / Gas Comunal y Aportes */}
+        {onOpenServicios && (
+          <div className="max-w-4xl mx-auto p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-amber-950/40 via-slate-900/90 to-amber-950/30 border border-amber-500/40 shadow-xl text-left flex flex-col sm:flex-row items-center justify-between gap-4 mb-8">
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 mt-0.5">
+                <Flame className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Servicios Comunales · LOCC Art. 51
+                  </span>
+                  <span className="text-[11px] text-amber-200/90 font-semibold">Jornada Activa de Gas & Servicios</span>
+                </div>
+                <h3 className="text-sm sm:text-base font-bold text-white">
+                  Aportes Comunitarios y Declaración de Pagos de Servicios
+                </h3>
+                <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
+                  Participa en las jornadas comunales de Gas (bombonas de 10kg, 18kg, 43kg), declara tus transferencias / pago móvil bancario y consulta el historial consolidado de tus aportes.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+              <button
+                onClick={onOpenServicios}
+                className="w-full sm:w-auto px-4 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs transition shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
+              >
+                <Flame className="w-4 h-4" />
+                <span>Declarar / Mis Aportes</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Buscador de Cédula Central */}
         <div className="max-w-2xl mx-auto p-6 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-2xl backdrop-blur-xl mb-10">

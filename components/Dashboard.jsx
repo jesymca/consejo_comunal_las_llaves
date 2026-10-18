@@ -8,7 +8,8 @@ import {
   AlertTriangle, RefreshCw, Eye, EyeOff, Edit, Trash2, Key, CheckCircle2,
   Calendar, Clock, UserCheck, ShieldAlert, Sun, Moon, Image as ImageIcon,
   ListPlus, Store, FileCheck, Printer, Activity, Globe, Laptop, Smartphone,
-  ChevronDown, ChevronRight, User, Shield
+  ChevronDown, ChevronRight, User, Shield, Flame, Building2, CreditCard,
+  Gift, Layers, CheckSquare, Sparkles, Hash, Copy
 } from 'lucide-react';
 import { 
   VEREDAS, CASAS_POR_VEREDA, getCasasPorVereda, BANCOS_VENEZUELA, CALIDADES_TENENCIA,
@@ -371,6 +372,40 @@ export default function Dashboard({ user, onLogout }) {
   const [resetCargando, setResetCargando] = useState(false);
   const [mostrarPasswordUsuario, setMostrarPasswordUsuario] = useState(false);
 
+  // Estados de Servicios y Jornadas Comunales (Gas, CLAP, etc.)
+  const [serviciosCatalogo, setServiciosCatalogo] = useState([]);
+  const [jornadas, setJornadas] = useState([]);
+  const [jornadaSeleccionadaId, setJornadaSeleccionadaId] = useState('');
+  const [solicitudesJornada, setSolicitudesJornada] = useState([]);
+  const [loadingServicios, setLoadingServicios] = useState(false);
+  const [loadingJornadas, setLoadingJornadas] = useState(false);
+  const [loadingSolicitudesJornada, setLoadingSolicitudesJornada] = useState(false);
+  const [modalServicio, setModalServicio] = useState(false);
+  const [servicioEditando, setServicioEditando] = useState(null);
+  const [servicioForm, setServicioForm] = useState({
+    id: '',
+    nombre: '',
+    categoria: 'GAS',
+    costo_base_usd: 1.0,
+    alicuota_autogestion_usd: 0.5,
+    descripcion: '',
+    activo: 1,
+  });
+  const [modalNuevaJornada, setModalNuevaJornada] = useState(false);
+  const [jornadaForm, setJornadaForm] = useState({
+    titulo: '',
+    descripcion: '',
+    tipo_servicio: 'GAS',
+    fecha_inicio: new Date().toISOString().split('T')[0],
+    fecha_fin: '',
+    max_unidades_por_familia: 2,
+    servicios_permitidos: [],
+  });
+  const [pagosSubTab, setPagosSubTab] = useState('documentos'); // 'documentos' | 'servicios'
+  const [filtroServicioBusqueda, setFiltroServicioBusqueda] = useState('');
+  const [filtroServicioEstado, setFiltroServicioEstado] = useState('TODOS');
+  const [reciboModalServicio, setReciboModalServicio] = useState(null);
+
   // Estado de Tema Claro / Oscuro
   const [theme, setTheme] = useState('dark');
 
@@ -466,15 +501,21 @@ export default function Dashboard({ user, onLogout }) {
 
   useEffect(() => {
     if (currentTab === 'vecinos') { cargarVecinos(); cargarCatalogosSistema(); }
-    if (currentTab === 'documentos' || currentTab === 'pagos') { cargarDocumentos(); cargarConfiguracion(); }
+    if (currentTab === 'documentos' || currentTab === 'pagos') { cargarDocumentos(); cargarConfiguracion(); cargarServiciosCatalogo(); cargarJornadas(); }
     if (currentTab === 'censo') { cargarCenso(); cargarCatalogosSistema(); }
     if (currentTab === 'firmas') cargarFirmas();
     if (currentTab === 'modelador') cargarModelador();
     if (currentTab === 'usuarios' && user?.rol === 'SUPER_ADMIN') cargarUsuarios();
     if (currentTab === 'auditoria') cargarAuditoria();
-    if (currentTab === 'configuracion') cargarConfiguracion();
+    if (currentTab === 'configuracion') { cargarConfiguracion(); cargarServiciosCatalogo(); cargarJornadas(); }
     if (currentTab === 'estadisticas') cargarEstadisticas();
   }, [currentTab, filtroVereda, filtroCasa, filtroEstado, filtroBusqueda]);
+
+  useEffect(() => {
+    if (jornadaSeleccionadaId) {
+      cargarSolicitudesJornada(jornadaSeleccionadaId);
+    }
+  }, [jornadaSeleccionadaId]);
 
   const cargarVecinos = async () => {
     setLoadingVecinos(true);
@@ -989,6 +1030,274 @@ export default function Dashboard({ user, onLogout }) {
       } else {
         const d = await res.json();
         toast.error(d.error || 'Error al guardar costos');
+      }
+    } catch (e) {
+      toast.error('Error de conexión: ' + e.message);
+    }
+  };
+
+  // --- SERVICIOS COMUNALES Y JORNADAS (GAS COMUNAL) ---
+  const cargarServiciosCatalogo = async () => {
+    setLoadingServicios(true);
+    try {
+      const res = await fetch('/api/servicios?action=catalogo');
+      const data = await res.json();
+      setServiciosCatalogo(data.servicios || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingServicios(false);
+    }
+  };
+
+  const cargarJornadas = async () => {
+    setLoadingJornadas(true);
+    try {
+      const res = await fetch('/api/servicios?action=jornadas');
+      const data = await res.json();
+      const list = data.jornadas || [];
+      setJornadas(list);
+      if (list.length > 0 && !jornadaSeleccionadaId) {
+        setJornadaSeleccionadaId(list[0].id);
+        cargarSolicitudesJornada(list[0].id);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingJornadas(false);
+    }
+  };
+
+  const cargarSolicitudesJornada = async (jId) => {
+    const targetId = jId || jornadaSeleccionadaId;
+    if (!targetId) return;
+    setLoadingSolicitudesJornada(true);
+    try {
+      const res = await fetch(`/api/servicios?action=solicitudes&jornada_id=${targetId}`);
+      const data = await res.json();
+      setSolicitudesJornada(data.solicitudes || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingSolicitudesJornada(false);
+    }
+  };
+
+  const guardarServicio = async (e) => {
+    if (e) e.preventDefault();
+    if (!servicioForm.nombre?.trim()) {
+      toast.error('El nombre del servicio es obligatorio');
+      return;
+    }
+    try {
+      const action = servicioEditando ? 'editar_servicio' : 'crear_servicio';
+      const res = await fetch('/api/servicios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...servicioForm }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(servicioEditando ? 'Servicio actualizado' : 'Servicio creado exitosamente');
+        setModalServicio(false);
+        setServicioEditando(null);
+        cargarServiciosCatalogo();
+      } else {
+        toast.error(data.error || 'Error al guardar servicio');
+      }
+    } catch (err) {
+      toast.error('Error de conexión: ' + err.message);
+    }
+  };
+
+  const toggleActivoServicio = async (serv) => {
+    try {
+      const nuevoActivo = serv.activo ? 0 : 1;
+      const res = await fetch('/api/servicios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'editar_servicio',
+          id: serv.id,
+          nombre: serv.nombre,
+          categoria: serv.categoria,
+          costo_base_usd: serv.costo_base_usd,
+          alicuota_autogestion_usd: serv.alicuota_autogestion_usd,
+          descripcion: serv.descripcion,
+          activo: nuevoActivo,
+        }),
+      });
+      if (res.ok) {
+        toast.success(`Servicio ${nuevoActivo ? 'activado' : 'desactivado'}`);
+        cargarServiciosCatalogo();
+      }
+    } catch (err) {
+      toast.error('Error al actualizar servicio');
+    }
+  };
+
+  const guardarNuevaJornada = async (e) => {
+    if (e) e.preventDefault();
+    if (!jornadaForm.titulo?.trim()) {
+      toast.error('El título de la jornada es obligatorio');
+      return;
+    }
+    try {
+      const res = await fetch('/api/servicios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'crear_jornada',
+          ...jornadaForm,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success('¡Jornada de servicios creada exitosamente!');
+        setModalNuevaJornada(false);
+        setJornadaForm({
+          titulo: '',
+          descripcion: '',
+          tipo_servicio: 'GAS',
+          fecha_inicio: new Date().toISOString().split('T')[0],
+          fecha_fin: '',
+          max_unidades_por_familia: 2,
+          servicios_permitidos: [],
+        });
+        cargarJornadas();
+      } else {
+        toast.error(data.error || 'Error al crear la jornada');
+      }
+    } catch (err) {
+      toast.error('Error de conexión: ' + err.message);
+    }
+  };
+
+  const cambiarEstadoJornada = async (id, estado) => {
+    try {
+      const res = await fetch('/api/servicios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cambiar_estado_jornada', id, estado }),
+      });
+      if (res.ok) {
+        toast.success(`Jornada actualizada a ${estado}`);
+        cargarJornadas();
+      } else {
+        toast.error('Error al cambiar estado de jornada');
+      }
+    } catch (err) {
+      toast.error('Error de conexión');
+    }
+  };
+
+  const cambiarEstadoSolicitudServicio = async (id, estado) => {
+    try {
+      const res = await fetch('/api/servicios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cambiar_estado_solicitud', id, estado }),
+      });
+      if (res.ok) {
+        toast.success(`Solicitud marcada como ${estado}`);
+        cargarSolicitudesJornada(jornadaSeleccionadaId);
+      } else {
+        toast.error('Error al actualizar estado');
+      }
+    } catch (err) {
+      toast.error('Error de conexión');
+    }
+  };
+
+  const exportarServiciosCsv = () => {
+    if (!solicitudesJornada || solicitudesJornada.length === 0) {
+      toast.error('No hay solicitudes registradas en esta jornada para exportar');
+      return;
+    }
+    const jornadaActual = jornadas.find(j => j.id === jornadaSeleccionadaId);
+    const headers = [
+      'Fecha',
+      'Cédula',
+      'Nombres y Apellidos',
+      'Vereda',
+      'Casa',
+      'Teléfono',
+      'Detalle Bombonas/Items',
+      'Total Unidades',
+      'Total USD',
+      'Total Bs',
+      'Banco Origen',
+      'Nro Referencia',
+      'Estado',
+    ];
+    const rows = solicitudesJornada.map(s => {
+      let detalleTxt = '';
+      try {
+        const items = JSON.parse(s.items_json || '[]');
+        detalleTxt = items.map(it => `${it.cantidad}x ${it.nombre}`).join(' | ');
+      } catch (e) {
+        detalleTxt = s.items_json || '';
+      }
+      return [
+        `"${s.created_at?.split('T')[0] || ''}"`,
+        `"${s.cedula || ''}"`,
+        `"${(s.nombres_apellidos || '').replace(/"/g, '""')}"`,
+        `"${s.vereda || ''}"`,
+        `"${s.casa || ''}"`,
+        `"${s.telefono || ''}"`,
+        `"${detalleTxt.replace(/"/g, '""')}"`,
+        s.total_unidades || 0,
+        Number(s.monto_total_usd || 0).toFixed(2),
+        Number(s.monto_total_bs || 0).toFixed(2),
+        `"${(s.banco_origen || '').replace(/"/g, '""')}"`,
+        `"${s.numero_referencia || ''}"`,
+        `"${s.estado || ''}"`,
+      ].join(',');
+    });
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    const nomArchivo = `despacho_jornada_${jornadaActual?.titulo?.replace(/\s+/g, '_') || 'gas'}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.setAttribute('download', nomArchivo);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('Lista de despacho de la jornada exportada en CSV');
+  };
+
+  const guardarCoordenadasBancarias = async (bancoData) => {
+    try {
+      const res = await fetch('/api/configuracion', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: bancoData }),
+      });
+      if (res.ok) {
+        setConfig(prev => ({ ...prev, ...bancoData }));
+        window.dispatchEvent(new CustomEvent('config_updated', { detail: bancoData }));
+        toast.success('Coordenadas bancarias oficiales guardadas con éxito');
+      } else {
+        toast.error('Error al guardar datos bancarios');
+      }
+    } catch (e) {
+      toast.error('Error de conexión: ' + e.message);
+    }
+  };
+
+  const guardarCupoGratis = async (cupoData) => {
+    try {
+      const res = await fetch('/api/configuracion', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: cupoData }),
+      });
+      if (res.ok) {
+        setConfig(prev => ({ ...prev, ...cupoData }));
+        window.dispatchEvent(new CustomEvent('config_updated', { detail: cupoData }));
+        toast.success('Parámetros de cupo gratuito actualizados');
+      } else {
+        toast.error('Error al guardar cupo');
       }
     } catch (e) {
       toast.error('Error de conexión: ' + e.message);
@@ -2074,6 +2383,37 @@ export default function Dashboard({ user, onLogout }) {
           const totalRecaudadoBs = aportesPagados.reduce((acc, d) => acc + (Number(d.monto_bs) || 0), 0);
           const totalRecaudadoUsd = aportesPagados.reduce((acc, d) => acc + (Number(d.monto_usd) || 0), 0);
 
+          // Métricas de Servicios y Jornadas (Gas)
+          const totalServiciosBs = solicitudesJornada.reduce((acc, s) => acc + (Number(s.monto_total_bs) || 0), 0);
+          const totalServiciosUsd = solicitudesJornada.reduce((acc, s) => acc + (Number(s.monto_total_usd) || 0), 0);
+          const totalUnidadesGas = solicitudesJornada.reduce((acc, s) => acc + (Number(s.total_unidades) || 0), 0);
+
+          let conteo10Kg = 0;
+          let conteo18Kg = 0;
+          let conteo43Kg = 0;
+          solicitudesJornada.forEach(s => {
+            try {
+              const items = JSON.parse(s.items_json || '[]');
+              items.forEach(it => {
+                const nom = (it.nombre || '').toLowerCase();
+                const cant = Number(it.cantidad) || 0;
+                if (nom.includes('10')) conteo10Kg += cant;
+                else if (nom.includes('18')) conteo18Kg += cant;
+                else if (nom.includes('43')) conteo43Kg += cant;
+              });
+            } catch (e) {}
+          });
+
+          const solicitudesFiltradasServicios = solicitudesJornada.filter(s => {
+            if (filtroServicioEstado !== 'TODOS' && s.estado !== filtroServicioEstado) return false;
+            if (filtroServicioBusqueda) {
+              const q = filtroServicioBusqueda.toLowerCase();
+              const str = `${s.cedula || ''} ${s.nombres_apellidos || ''} ${s.vereda || ''} ${s.casa || ''} ${s.telefono || ''} ${s.numero_referencia || ''} ${s.banco_origen || ''}`.toLowerCase();
+              if (!str.includes(q)) return false;
+            }
+            return true;
+          });
+
           const aportesFiltrados = todosLosAportes.filter(doc => {
             if (filtroPagoTipo === 'APORTE' && doc.es_exonerado) return false;
             if (filtroPagoTipo === 'EXONERADO' && !doc.es_exonerado) return false;
@@ -2107,23 +2447,76 @@ export default function Dashboard({ user, onLogout }) {
 
                 <div className="flex items-center gap-2 shrink-0">
                   <button
-                    onClick={() => { cargarDocumentos(); toast.success('Datos de recaudación actualizados'); }}
+                    onClick={() => {
+                      cargarDocumentos();
+                      cargarJornadas();
+                      if (jornadaSeleccionadaId) cargarSolicitudesJornada(jornadaSeleccionadaId);
+                      toast.success('Datos de recaudación actualizados');
+                    }}
                     className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
                   >
                     <RefreshCw className="w-3.5 h-3.5 text-blue-400" />
                     <span>Actualizar</span>
                   </button>
-                  <button
-                    onClick={exportarAportesCsv}
-                    className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/20 transition"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Exportar CSV</span>
-                  </button>
+                  {pagosSubTab === 'documentos' ? (
+                    <button
+                      onClick={exportarAportesCsv}
+                      className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/20 transition"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Exportar CSV</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={exportarServiciosCsv}
+                      className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold shadow-md shadow-amber-500/20 transition"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Exportar Despacho (CSV)</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {/* Tarjetas de Indicadores Financieros (KPIs) */}
+              {/* Selector de Subpestañas de Recaudación */}
+              <div className="flex border-b border-slate-800 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPagosSubTab('documentos')}
+                  className={`px-4 py-2.5 font-bold text-xs rounded-t-xl transition flex items-center gap-2 border-b-2 ${
+                    pagosSubTab === 'documentos'
+                      ? 'border-emerald-500 text-emerald-400 bg-slate-900/90'
+                      : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>Aportes por Trámites y Constancias</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-slate-300">
+                    {todosLosAportes.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPagosSubTab('servicios')}
+                  className={`px-4 py-2.5 font-bold text-xs rounded-t-xl transition flex items-center gap-2 border-b-2 ${
+                    pagosSubTab === 'servicios'
+                      ? 'border-amber-500 text-amber-400 bg-slate-900/90'
+                      : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
+                  }`}
+                >
+                  <Flame className="w-4 h-4" />
+                  <span>Aportes de Servicios y Jornadas (Gas)</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    {solicitudesJornada.length}
+                  </span>
+                </button>
+              </div>
+
+              {/* VISTA 1: APORTES POR TRÁMITES Y CONSTANCIAS */}
+              {pagosSubTab === 'documentos' && (
+                <div className="space-y-4">
+                  {/* Tarjetas de Indicadores Financieros (KPIs) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {/* Total en Bolívares */}
                 <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-750 transition shadow-sm">
@@ -2445,6 +2838,301 @@ export default function Dashboard({ user, onLogout }) {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              )}
+                </div>
+              )}
+
+              {/* VISTA 2: APORTES DE SERVICIOS Y JORNADAS (GAS COMUNAL) */}
+              {pagosSubTab === 'servicios' && (
+                <div className="space-y-4">
+                  {/* Selector de Jornada y Acciones */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
+                        <Flame className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-extrabold uppercase text-amber-400 tracking-wider">
+                          Jornada Comunitaria Seleccionada
+                        </div>
+                        {jornadas.length > 0 ? (
+                          <select
+                            value={jornadaSeleccionadaId}
+                            onChange={(e) => {
+                              setJornadaSeleccionadaId(e.target.value);
+                              cargarSolicitudesJornada(e.target.value);
+                            }}
+                            className="bg-transparent font-bold text-sm text-white focus:outline-none cursor-pointer mt-0.5"
+                          >
+                            {jornadas.map((j) => (
+                              <option key={j.id} value={j.id} className="bg-slate-900 text-white">
+                                {j.titulo} ({j.estado}) · Límite: Máx {j.max_unidades_por_familia} unid/familia
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="text-xs text-slate-400 mt-0.5">No hay jornadas creadas todavía</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          cargarJornadas();
+                          if (jornadaSeleccionadaId) cargarSolicitudesJornada(jornadaSeleccionadaId);
+                          toast.success('Datos de la jornada actualizados');
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Actualizar</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={exportarServiciosCsv}
+                        className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Exportar Despacho (CSV)</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Indicadores Físicos y Financieros de la Jornada */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-sm">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-slate-400">Total Recaudado Jornada</span>
+                        <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400">
+                          <DollarSign className="w-4 h-4" />
+                        </div>
+                      </div>
+                      <div className="text-xl sm:text-2xl font-black text-emerald-400 tracking-tight">
+                        Bs. {totalServiciosBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-1 flex items-center justify-between">
+                        <span>Equiv. Total USD:</span>
+                        <strong className="text-slate-200">${totalServiciosUsd.toFixed(2)} USD</strong>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-sm">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-slate-400">Total Bombonas Solicitadas</span>
+                        <div className="p-2 rounded-xl bg-amber-500/15 text-amber-400">
+                          <Flame className="w-4 h-4" />
+                        </div>
+                      </div>
+                      <div className="text-xl sm:text-2xl font-black text-amber-400 tracking-tight">
+                        {totalUnidadesGas} Unidades
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-1 flex items-center justify-between">
+                        <span>Familias Declarantes:</span>
+                        <strong className="text-white">{solicitudesJornada.length} hogares</strong>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-sm">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-slate-400">Distribución por Cilindro</span>
+                        <div className="p-2 rounded-xl bg-blue-500/15 text-blue-400">
+                          <Layers className="w-4 h-4" />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-white flex-wrap">
+                        <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">10kg: {conteo10Kg}</span>
+                        <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">18kg: {conteo18Kg}</span>
+                        <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">43kg: {conteo43Kg}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-1">
+                        Cálculo para camión distribuidor
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-sm">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-slate-400">Tasa Oficial y Autogestión</span>
+                        <div className="p-2 rounded-xl bg-purple-500/15 text-purple-400">
+                          <ShieldCheck className="w-4 h-4" />
+                        </div>
+                      </div>
+                      <div className="text-base sm:text-lg font-black text-white tracking-tight">
+                        Bs. {Number(tasaBcv).toFixed(2)} / $
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-1">
+                        Incluye alícuota comunal (Art. 51 LOCC)
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Barra de Filtros de Servicios */}
+                  <div className="flex flex-col sm:flex-row gap-2.5">
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
+                      <input
+                        type="text"
+                        value={filtroServicioBusqueda}
+                        onChange={(e) => setFiltroServicioBusqueda(e.target.value)}
+                        placeholder="Buscar por cédula, nombre de vecino, vereda, casa, referencia..."
+                        className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    <select
+                      value={filtroServicioEstado}
+                      onChange={(e) => setFiltroServicioEstado(e.target.value)}
+                      className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="TODOS">Todos los Estados</option>
+                      <option value="DECLARADO">Solo Declarados (Pendientes)</option>
+                      <option value="VERIFICADO">Solo Verificados (Pago Confirmado)</option>
+                      <option value="ENTREGADO">Solo Entregados (Despachados)</option>
+                    </select>
+                  </div>
+
+                  {/* Tabla o Estado Vacío */}
+                  {solicitudesFiltradasServicios.length === 0 ? (
+                    <div className="p-8 rounded-3xl bg-slate-900/40 border border-slate-800/80 text-center">
+                      <div className="w-16 h-16 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto mb-4">
+                        <Flame className="w-8 h-8 text-amber-400" />
+                      </div>
+                      <h3 className="text-base font-extrabold text-white">
+                        A la espera de declaraciones de aportes para esta jornada
+                      </h3>
+                      <p className="text-xs text-slate-400 max-w-lg mx-auto mt-1 leading-relaxed">
+                        Los vecinos censados que declaren su pago de bombonas de gas mediante la web pública aparecerán listados aquí en tiempo real para verificación de pago y entrega física de cilindros.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-slate-800 overflow-hidden bg-slate-950/60 shadow-lg">
+                      <div className="p-3 border-b border-slate-800 flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-300">
+                          Mostrando {solicitudesFiltradasServicios.length} declaración(es) de aporte
+                        </span>
+                        <span className="text-slate-400">
+                          Total Unidades: {solicitudesFiltradasServicios.reduce((acc, s) => acc + (Number(s.total_unidades) || 0), 0)} bombonas
+                        </span>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-900/90 text-slate-400 border-b border-slate-800 font-semibold uppercase text-[10px] tracking-wider">
+                            <tr>
+                              <th className="py-3 px-3">Fecha</th>
+                              <th className="py-3 px-3">Vecino / Solicitante</th>
+                              <th className="py-3 px-3">Ubicación</th>
+                              <th className="py-3 px-3">Cilindros / Ítems</th>
+                              <th className="py-3 px-3 text-right">Aporte Total</th>
+                              <th className="py-3 px-3">Referencia / Pago</th>
+                              <th className="py-3 px-3 text-center">Estado</th>
+                              <th className="py-3 px-3 text-center">Acciones</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-850">
+                            {solicitudesFiltradasServicios.map((sol) => {
+                              let items = [];
+                              try {
+                                items = JSON.parse(sol.items_json || '[]');
+                              } catch (e) {}
+
+                              return (
+                                <tr key={`sol_${sol.id}`} className="hover:bg-slate-900/50 transition">
+                                  <td className="py-3 px-3 whitespace-nowrap text-slate-300">
+                                    <div className="flex items-center gap-1.5">
+                                      <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                      <span>{sol.created_at?.split('T')[0] || 'N/A'}</span>
+                                    </div>
+                                  </td>
+
+                                  <td className="py-3 px-3">
+                                    <div className="font-bold text-white">{sol.nombres_apellidos}</div>
+                                    <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                                      <span className="font-mono">{sol.cedula}</span>
+                                      {sol.telefono && (
+                                        <span>· Tel: {sol.telefono}</span>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  <td className="py-3 px-3 whitespace-nowrap">
+                                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-200 font-medium">
+                                      Vereda {sol.vereda} - Casa {sol.casa}
+                                    </span>
+                                  </td>
+
+                                  <td className="py-3 px-3">
+                                    <div className="flex flex-wrap gap-1">
+                                      {items.map((it, idx) => (
+                                        <span
+                                          key={idx}
+                                          className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                                        >
+                                          {it.cantidad}x {it.nombre}
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-1 font-semibold">
+                                      Total: {sol.total_unidades} unidad(es)
+                                    </div>
+                                  </td>
+
+                                  <td className="py-3 px-3 text-right whitespace-nowrap">
+                                    <div className="font-bold text-emerald-400">
+                                      Bs. {Number(sol.monto_total_bs).toFixed(2)}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 font-mono">
+                                      ${Number(sol.monto_total_usd).toFixed(2)} USD
+                                    </div>
+                                  </td>
+
+                                  <td className="py-3 px-3">
+                                    <div className="font-mono text-white text-[11px] font-bold">
+                                      Ref: {sol.numero_referencia || 'N/A'}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400">
+                                      {sol.banco_origen || 'Pago Móvil / Transf.'}
+                                    </div>
+                                  </td>
+
+                                  <td className="py-3 px-3 text-center whitespace-nowrap">
+                                    <select
+                                      value={sol.estado}
+                                      onChange={(e) => cambiarEstadoSolicitudServicio(sol.id, e.target.value)}
+                                      className={`px-2 py-1 rounded-lg text-[10px] font-bold border cursor-pointer focus:outline-none transition ${
+                                        sol.estado === 'ENTREGADO'
+                                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                          : sol.estado === 'VERIFICADO'
+                                          ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                                          : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                      }`}
+                                    >
+                                      <option value="DECLARADO" className="bg-slate-900 text-amber-300">🟡 Declarado</option>
+                                      <option value="VERIFICADO" className="bg-slate-900 text-blue-300">🔵 Verificado</option>
+                                      <option value="ENTREGADO" className="bg-slate-900 text-emerald-300">🟢 Entregado</option>
+                                    </select>
+                                  </td>
+
+                                  <td className="py-3 px-3 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => setReciboModalServicio(sol)}
+                                      className="p-1.5 rounded-lg bg-blue-600/15 hover:bg-blue-600/30 text-blue-400 border border-blue-500/20 transition"
+                                      title="Ver Comprobante Digital"
+                                    >
+                                      <Eye className="w-3.5 h-3.5" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -4791,7 +5479,7 @@ export default function Dashboard({ user, onLogout }) {
 
         {/* TAB: CONFIGURACIÓN GENERAL */}
         {currentTab === 'configuracion' && user?.rol === 'SUPER_ADMIN' && (
-          <div className="space-y-5 animate-in fade-in max-w-2xl">
+          <div className="space-y-5 animate-in fade-in max-w-5xl">
             <div>
               <h1 className="text-2xl font-extrabold text-white">Configuración del Sistema Comunal</h1>
               <p className="text-xs text-slate-400">Parámetros institucionales, vigencia de constancias y aportes</p>
@@ -4978,6 +5666,510 @@ export default function Dashboard({ user, onLogout }) {
               >
                 Guardar Parámetros
               </button>
+            </div>
+
+            {/* SECCIÓN 1: COORDENADAS BANCARIAS OFICIALES DEL CONSEJO COMUNAL */}
+            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-blue-600/20 text-blue-400">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <span>Coordenadas Bancarias Oficiales de Recepción</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                        LOCC 2023 Art. 51
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Cuenta bancaria del Consejo Comunal donde los vecinos transferirán sus aportes para constancias y servicios.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Nombre de la Entidad Bancaria</label>
+                  <input
+                    type="text"
+                    value={config.banco_nombre || '0102 - BANCO DE VENEZUELA'}
+                    onChange={(e) => setConfig({ ...config, banco_nombre: e.target.value })}
+                    placeholder="Ej. 0102 - BANCO DE VENEZUELA"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Número de Cuenta Corriente (20 Dígitos)</label>
+                  <input
+                    type="text"
+                    maxLength={20}
+                    value={config.banco_cuenta || '01020000000000000000'}
+                    onChange={(e) => setConfig({ ...config, banco_cuenta: e.target.value })}
+                    placeholder="0102-0000-00-0000000000"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">RIF Institucional del Consejo Comunal</label>
+                  <input
+                    type="text"
+                    value={config.banco_rif || config.rif || 'C-299916862'}
+                    onChange={(e) => setConfig({ ...config, banco_rif: e.target.value, rif: e.target.value })}
+                    placeholder="C-299916862"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Teléfono para Pago Móvil / WhatsApp</label>
+                  <input
+                    type="text"
+                    value={config.banco_telefono || '0412-1234567'}
+                    onChange={(e) => setConfig({ ...config, banco_telefono: e.target.value })}
+                    placeholder="0412-1234567"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-slate-300 font-semibold mb-1">Titular Oficial de la Cuenta</label>
+                  <input
+                    type="text"
+                    value={config.banco_titular || 'CONSEJO COMUNAL DR. ALFREDO TRAVIESO PAÚL - LAS LLAVES'}
+                    onChange={(e) => setConfig({ ...config, banco_titular: e.target.value })}
+                    placeholder="Nombre institucional registrado en el banco"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-medium"
+                  />
+                </div>
+              </div>
+
+              {/* Tarjeta de previsualización para el vecino */}
+              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-center justify-between text-xs">
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Vista Previa para el Vecino:</span>
+                  <div className="text-white font-bold">{config.banco_nombre || '0102 - BANCO DE VENEZUELA'}</div>
+                  <div className="text-slate-300 font-mono text-[11px]">
+                    Cuenta: {config.banco_cuenta || '01020000000000000000'} · RIF: {config.banco_rif || config.rif || 'C-299916862'}
+                  </div>
+                  <div className="text-emerald-400 text-[11px] font-medium">
+                    Pago Móvil: {config.banco_telefono || '0412-1234567'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const datos = `${config.banco_nombre || 'Banco de Venezuela'}\nCuenta: ${config.banco_cuenta || ''}\nRIF: ${config.banco_rif || config.rif || ''}\nTel: ${config.banco_telefono || ''}`;
+                    navigator.clipboard.writeText(datos);
+                    toast.success('Coordenadas copiadas al portapapeles');
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-slate-855 hover:bg-slate-750 text-slate-300 text-[11px] font-semibold border border-slate-700 transition flex items-center gap-1.5 shrink-0"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copiar Datos</span>
+                </button>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => guardarCoordenadasBancarias({
+                    banco_nombre: config.banco_nombre || '0102 - BANCO DE VENEZUELA',
+                    banco_cuenta: config.banco_cuenta || '01020000000000000000',
+                    banco_rif: config.banco_rif || config.rif || 'C-299916862',
+                    banco_telefono: config.banco_telefono || '0412-1234567',
+                    banco_titular: config.banco_titular || 'CONSEJO COMUNAL DR. ALFREDO TRAVIESO PAÚL - LAS LLAVES',
+                    rif: config.banco_rif || config.rif || 'C-299916862',
+                  })}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow-lg shadow-blue-600/30 flex items-center gap-2"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Guardar Coordenadas Bancarias</span>
+                </button>
+              </div>
+            </div>
+
+            {/* SECCIÓN 2: SUBVENCIÓN SOCIAL COMUNITARIA (CUPO DE DOCUMENTOS GRATUITOS CON CONTADOR REGRESIVO) */}
+            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-emerald-600/20 text-emerald-400">
+                    <Gift className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <span>Subvención Social: Cupo de Documentos Gratuitos</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        Number(config.cupo_docs_gratis_activo)
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700'
+                      }`}>
+                        {Number(config.cupo_docs_gratis_activo) ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Emisión de constancias gratuitas con descuento progresivo automático hasta llegar a 0.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(Number(config.cupo_docs_gratis_activo))}
+                      onChange={(e) => setConfig({ ...config, cupo_docs_gratis_activo: e.target.checked ? '1' : '0' })}
+                      className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-0"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-white">Habilitar Subvención por Cupo Gratuito</span>
+                      <p className="text-[11px] text-slate-400">
+                        Los vecinos podrán tramitar constancias sin aporte monetario mientras queden unidades disponibles en el cupo.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-800/80 text-xs">
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">Cupo Total Asignado</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="1000"
+                      value={config.cupo_docs_gratis_total || '20'}
+                      onChange={(e) => setConfig({ ...config, cupo_docs_gratis_total: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white font-mono font-bold"
+                    />
+                    <span className="text-[10px] text-slate-500">Cantidad máxima de constancias gratuitas a otorgar</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">Cupo Restante Actual</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="1000"
+                      value={config.cupo_docs_gratis_restante !== undefined ? config.cupo_docs_gratis_restante : '20'}
+                      onChange={(e) => setConfig({ ...config, cupo_docs_gratis_restante: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-emerald-400 font-mono font-bold"
+                    />
+                    <span className="text-[10px] text-slate-500">Se resta 1 automáticamente tras cada emisión</span>
+                  </div>
+                </div>
+
+                {/* Barra de Progreso y Contador Visual en Tiempo Real */}
+                {(() => {
+                  const total = parseInt(config.cupo_docs_gratis_total || '20', 10) || 1;
+                  const restante = parseInt(config.cupo_docs_gratis_restante !== undefined ? config.cupo_docs_gratis_restante : '20', 10) || 0;
+                  const porcentaje = Math.min(100, Math.max(0, Math.round((restante / total) * 100)));
+                  return (
+                    <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-300 font-semibold flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          <span>Disponibilidad del Cupo Social:</span>
+                        </span>
+                        <span className="font-extrabold text-white font-mono text-sm">
+                          {restante} / {total} constancias ({porcentaje}%)
+                        </span>
+                      </div>
+
+                      <div className="w-full h-2.5 rounded-full bg-slate-950 overflow-hidden border border-slate-800">
+                        <div
+                          className={`h-full transition-all duration-500 ${
+                            restante > 5 ? 'bg-emerald-500' : restante > 0 ? 'bg-amber-500' : 'bg-rose-500'
+                          }`}
+                          style={{ width: `${porcentaje}%` }}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[10px] text-slate-400">
+                          {restante > 0 ? (
+                            <span className="text-emerald-400 font-bold">¡Subvención comunitaria activa para los vecinos!</span>
+                          ) : (
+                            <span className="text-amber-400 font-bold">Cupo agotado: el sistema solicita el aporte voluntario de ley.</span>
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const tot = config.cupo_docs_gratis_total || '20';
+                            setConfig({ ...config, cupo_docs_gratis_restante: tot });
+                            guardarCupoGratis({
+                              cupo_docs_gratis_activo: config.cupo_docs_gratis_activo || '1',
+                              cupo_docs_gratis_total: tot,
+                              cupo_docs_gratis_restante: tot,
+                            });
+                            toast.success(`Cupo restablecido a ${tot} constancias`);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[10.5px] font-bold transition flex items-center gap-1"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span>Restablecer a {config.cupo_docs_gratis_total || '20'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-[11px] text-blue-300 leading-relaxed">
+                  ⚖️ <strong>Sustento Legal (LOCC 2023 Art. 51 Num. 3):</strong> Mientras el contador sea mayor a 0, la constancia se emite con la leyenda <em>"Cupo Gratuito Subvencionado Comunal"</em> y exención total de pago. Al agotarse (0), el sistema activa automáticamente la solicitud de aporte comunitario para el fondo de autogestión.
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => guardarCupoGratis({
+                    cupo_docs_gratis_activo: config.cupo_docs_gratis_activo || '0',
+                    cupo_docs_gratis_total: config.cupo_docs_gratis_total || '20',
+                    cupo_docs_gratis_restante: config.cupo_docs_gratis_restante !== undefined ? config.cupo_docs_gratis_restante : '20',
+                  })}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-lg shadow-emerald-600/30 flex items-center gap-2"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Guardar Parámetros de Cupo</span>
+                </button>
+              </div>
+            </div>
+
+            {/* SECCIÓN 3: CATÁLOGO DE SERVICIOS COMUNITARIOS Y ALÍCUOTAS DE AUTOGESTIÓN */}
+            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400">
+                    <Flame className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <span>Catálogo de Servicios Comunitarios y Alícuotas</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                        {serviciosCatalogo.length} Servicios
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Configuración de precios de Gas Comunal, CLAP y alícuota de autogestión (Art. 51 Num. 3 LOCC).
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setServicioEditando(null);
+                    setServicioForm({
+                      id: '',
+                      nombre: '',
+                      categoria: 'GAS',
+                      costo_base_usd: 1.0,
+                      alicuota_autogestion_usd: 0.5,
+                      descripcion: '',
+                      activo: 1,
+                    });
+                    setModalServicio(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow-md shadow-amber-500/20 transition shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Agregar Servicio</span>
+                </button>
+              </div>
+
+              {loadingServicios ? (
+                <div className="p-6 text-center text-xs text-slate-400">
+                  <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-amber-400" />
+                  <span>Cargando catálogo de servicios...</span>
+                </div>
+              ) : serviciosCatalogo.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-400 bg-slate-950/60 rounded-2xl border border-slate-800">
+                  No hay servicios registrados. Haz clic en "+ Agregar Servicio" para registrar bombonas de gas u otros productos.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {serviciosCatalogo.map((serv) => {
+                    const totalUsd = Number(serv.costo_base_usd || 0) + Number(serv.alicuota_autogestion_usd || 0);
+                    const totalBs = totalUsd * Number(tasaBcv);
+                    return (
+                      <div
+                        key={serv.id}
+                        className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-amber-500/40 transition flex flex-col justify-between text-xs space-y-3 shadow-sm"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/25">
+                              {serv.categoria || 'GAS'}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              serv.activo ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-800 text-slate-400'
+                            }`}>
+                              {serv.activo ? 'Activo' : 'Pausado'}
+                            </span>
+                          </div>
+
+                          <h4 className="font-bold text-white text-sm mb-1">{serv.nombre}</h4>
+                          {serv.descripcion && (
+                            <p className="text-[11px] text-slate-400 line-clamp-2 mb-2">{serv.descripcion}</p>
+                          )}
+
+                          <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
+                            <div className="flex justify-between text-[11px] text-slate-300">
+                              <span>Costo Proveedor:</span>
+                              <span className="font-mono">${Number(serv.costo_base_usd || 0).toFixed(2)} USD</span>
+                            </div>
+                            <div className="flex justify-between text-[11px] text-amber-300">
+                              <span>Alícuota Autogestión:</span>
+                              <span className="font-mono font-bold">+${Number(serv.alicuota_autogestion_usd || 0).toFixed(2)} USD</span>
+                            </div>
+                            <div className="flex justify-between pt-1 border-t border-slate-800 font-bold text-white">
+                              <span>Total a Declarar:</span>
+                              <div className="text-right">
+                                <span className="font-bold text-emerald-400 block">${totalUsd.toFixed(2)} USD</span>
+                                <span className="text-[10px] text-slate-400 font-mono">≈ Bs. {totalBs.toFixed(2)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-850 flex items-center justify-between">
+                          <button
+                            type="button"
+                            onClick={() => toggleActivoServicio(serv)}
+                            className="text-[11px] font-semibold text-slate-400 hover:text-white transition"
+                          >
+                            {serv.activo ? 'Desactivar' : 'Activar'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setServicioEditando(serv);
+                              setServicioForm({
+                                id: serv.id,
+                                nombre: serv.nombre,
+                                categoria: serv.categoria || 'GAS',
+                                costo_base_usd: serv.costo_base_usd,
+                                alicuota_autogestion_usd: serv.alicuota_autogestion_usd,
+                                descripcion: serv.descripcion || '',
+                                activo: serv.activo,
+                              });
+                              setModalServicio(true);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-bold transition flex items-center gap-1 border border-slate-700"
+                          >
+                            <Edit className="w-3 h-3" />
+                            <span>Editar</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* SECCIÓN 4: CONVOCATORIAS DE JORNADAS DE SERVICIOS (DISTRIBUCIÓN DE GAS Y OTROS) */}
+            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-purple-600/20 text-purple-400">
+                    <Calendar className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <span>Jornadas Comunitarias de Servicios (Gas Comunal)</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                        {jornadas.length} Convocatorias
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Convocatorias con límite de bombonas por familia censada y control de aportes para contraloría.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setModalNuevaJornada(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs shadow-md shadow-purple-600/20 transition shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Nueva Jornada</span>
+                </button>
+              </div>
+
+              {loadingJornadas ? (
+                <div className="p-6 text-center text-xs text-slate-400">
+                  <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-purple-400" />
+                  <span>Cargando jornadas comunitarias...</span>
+                </div>
+              ) : jornadas.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-400 bg-slate-950/60 rounded-2xl border border-slate-800">
+                  No hay jornadas registradas. Crea una nueva jornada para habilitar la solicitud y declaración de gas comunal a los vecinos.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {jornadas.map((jorn) => (
+                    <div
+                      key={jorn.id}
+                      className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-slate-750 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-extrabold text-white text-sm">{jorn.titulo}</h4>
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold ${
+                            jorn.estado === 'ACTIVA'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}>
+                            {jorn.estado}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                            Máx {jorn.max_unidades_por_familia} unid / familia censada
+                          </span>
+                        </div>
+                        <p className="text-slate-400 text-[11px]">
+                          Inicio: <strong className="text-slate-200">{jorn.fecha_inicio}</strong>
+                          {jorn.fecha_fin && <> · Cierre: <strong className="text-slate-200">{jorn.fecha_fin}</strong></>}
+                          {jorn.descripcion && <> · {jorn.descripcion}</>}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setJornadaSeleccionadaId(jorn.id);
+                            setPagosSubTab('servicios');
+                            navigateTo('pagos');
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-blue-400" />
+                          <span>Ver Aportes</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => cambiarEstadoJornada(jorn.id, jorn.estado === 'ACTIVA' ? 'CERRADA' : 'ACTIVA')}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 ${
+                            jorn.estado === 'ACTIVA'
+                              ? 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30'
+                              : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/30'
+                          }`}
+                        >
+                          <span>{jorn.estado === 'ACTIVA' ? 'Cerrar Jornada' : 'Activar Jornada'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* SECCIÓN: VALORES Y GRATUIDAD POR TIPO DE DOCUMENTO */}
@@ -7510,6 +8702,367 @@ export default function Dashboard({ user, onLogout }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CREAR / EDITAR SERVICIO DEL CATÁLOGO */}
+      {modalServicio && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative text-xs">
+            <button
+              onClick={() => { setModalServicio(false); setServicioEditando(null); }}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-amber-500/20 text-amber-400 rounded-2xl border border-amber-500/30">
+                <Flame className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-white">
+                  {servicioEditando ? 'Editar Servicio Comunitario' : 'Nuevo Servicio Comunitario'}
+                </h3>
+                <p className="text-slate-400 text-xs">Catálogo de servicios, bombonas de gas y alícuotas de autogestión</p>
+              </div>
+            </div>
+
+            <form onSubmit={guardarServicio} className="space-y-4">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Nombre del Servicio / Producto</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej. GAS BOMBONA DE 10 KG o GAS BOMBONA 18 KG"
+                  value={servicioForm.nombre}
+                  onChange={(e) => setServicioForm({ ...servicioForm, nombre: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Categoría</label>
+                  <select
+                    value={servicioForm.categoria}
+                    onChange={(e) => setServicioForm({ ...servicioForm, categoria: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs"
+                  >
+                    <option value="GAS">Gas Comunal</option>
+                    <option value="ALIMENTOS">Alimentos / CLAP</option>
+                    <option value="AGUA">Agua Potable</option>
+                    <option value="SERVICIOS">Servicios Varios</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Estado</label>
+                  <select
+                    value={servicioForm.activo}
+                    onChange={(e) => setServicioForm({ ...servicioForm, activo: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs"
+                  >
+                    <option value={1}>Activo (Disponible)</option>
+                    <option value={0}>Inactivo (Pausado)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-slate-950/70 border border-slate-800">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Costo Base ($ USD)</label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    required
+                    value={servicioForm.costo_base_usd}
+                    onChange={(e) => setServicioForm({ ...servicioForm, costo_base_usd: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs"
+                  />
+                  <span className="text-[10px] text-slate-500">Costo directo del proveedor</span>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Alícuota Autogestión ($ USD)</label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    required
+                    value={servicioForm.alicuota_autogestion_usd}
+                    onChange={(e) => setServicioForm({ ...servicioForm, alicuota_autogestion_usd: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-amber-300 font-mono text-xs font-bold"
+                  />
+                  <span className="text-[10px] text-amber-400/80">Logística / LOCC Art. 51 Num 3</span>
+                </div>
+              </div>
+
+              {/* Total Calculado en $ y Bs */}
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Total a pagar por unidad:</span>
+                  <span className="text-white font-bold text-sm">
+                    ${(Number(servicioForm.costo_base_usd || 0) + Number(servicioForm.alicuota_autogestion_usd || 0)).toFixed(2)} USD
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-slate-400 block text-[10px]">Equivalente en Bolívares (BCV):</span>
+                  <span className="text-emerald-400 font-black text-sm">
+                    Bs. {((Number(servicioForm.costo_base_usd || 0) + Number(servicioForm.alicuota_autogestion_usd || 0)) * Number(tasaBcv)).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Descripción / Observaciones</label>
+                <input
+                  type="text"
+                  placeholder="Detalles sobre recarga o cilindro..."
+                  value={servicioForm.descripcion || ''}
+                  onChange={(e) => setServicioForm({ ...servicioForm, descripcion: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setModalServicio(false); setServicioEditando(null); }}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold shadow-lg shadow-amber-500/20 transition flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{servicioEditando ? 'Guardar Cambios' : 'Registrar Servicio'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CREAR NUEVA JORNADA DE SERVICIOS */}
+      {modalNuevaJornada && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative text-xs">
+            <button
+              onClick={() => setModalNuevaJornada(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-blue-500/20 text-blue-400 rounded-2xl border border-blue-500/30">
+                <Calendar className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-white">Nueva Convocatoria de Jornada</h3>
+                <p className="text-slate-400 text-xs">Distribución de gas o servicios con límite por familia censada</p>
+              </div>
+            </div>
+
+            <form onSubmit={guardarNuevaJornada} className="space-y-4">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Título de la Jornada</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej. Jornada de Distribución Gas Comunal - Febrero 2026"
+                  value={jornadaForm.titulo}
+                  onChange={(e) => setJornadaForm({ ...jornadaForm, titulo: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Fecha de Inicio</label>
+                  <input
+                    type="date"
+                    required
+                    value={jornadaForm.fecha_inicio}
+                    onChange={(e) => setJornadaForm({ ...jornadaForm, fecha_inicio: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Fecha de Cierre (Opcional)</label>
+                  <input
+                    type="date"
+                    value={jornadaForm.fecha_fin}
+                    onChange={(e) => setJornadaForm({ ...jornadaForm, fecha_fin: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Límite Máximo de Unidades por Familia del Censo */}
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2">
+                <label className="block text-amber-300 font-bold">
+                  Límite Máximo de Unidades por Familia / Vivienda
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    required
+                    value={jornadaForm.max_unidades_por_familia}
+                    onChange={(e) => setJornadaForm({ ...jornadaForm, max_unidades_por_familia: parseInt(e.target.value) || 1 })}
+                    className="w-24 px-3 py-2 rounded-xl bg-slate-950 border border-amber-500/50 text-white font-mono font-bold text-sm text-center"
+                  />
+                  <span className="text-xs text-slate-300 font-medium">
+                    Unidades máximas en total por hogar censado
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                  Ejemplo con límite 2: Una familia puede pedir 2 bombonas de 10kg, o 2 de 18kg, o 1 de 10kg y 1 de 18kg. El sistema valida automáticamente y bloquea excesos.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Descripción / Instrucciones de Entrega</label>
+                <textarea
+                  rows="2"
+                  placeholder="Lugar de acopio de cilindros, requisitos de pago..."
+                  value={jornadaForm.descripcion}
+                  onChange={(e) => setJornadaForm({ ...jornadaForm, descripcion: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs resize-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModalNuevaJornada(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold shadow-lg shadow-blue-600/20 transition flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Publicar Jornada</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RECIBO DIGITAL DE SERVICIO / GAS */}
+      {reciboModalServicio && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative text-xs text-white">
+            <button
+              onClick={() => setReciboModalServicio(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center pb-4 border-b border-slate-800">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto mb-2 border border-amber-500/30">
+                <Flame className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-extrabold text-white">Comprobante de Aporte Comunitario</h3>
+              <p className="text-[11px] text-slate-400">Consejo Comunal Las Llaves · SITUR {config.situr_codigo || '08-11-04-001-0033'}</p>
+            </div>
+
+            <div className="py-4 space-y-3">
+              <div className="flex justify-between border-b border-slate-800/60 pb-2">
+                <span className="text-slate-400">Fecha Declaración:</span>
+                <span className="font-semibold text-white">{reciboModalServicio.created_at?.split('T')[0]}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-800/60 pb-2">
+                <span className="text-slate-400">Vecino:</span>
+                <span className="font-bold text-white text-right">{reciboModalServicio.nombres_apellidos}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-800/60 pb-2">
+                <span className="text-slate-400">Cédula:</span>
+                <span className="font-mono text-white">{reciboModalServicio.cedula}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-800/60 pb-2">
+                <span className="text-slate-400">Ubicación:</span>
+                <span className="text-white font-medium">Vereda {reciboModalServicio.vereda} - Casa {reciboModalServicio.casa}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-800/60 pb-2">
+                <span className="text-slate-400">Teléfono:</span>
+                <span className="font-mono text-white">{reciboModalServicio.telefono || 'N/A'}</span>
+              </div>
+
+              <div>
+                <span className="text-slate-400 block mb-1.5">Ítems / Bombonas Solicitadas:</span>
+                <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                  {(() => {
+                    try {
+                      const its = JSON.parse(reciboModalServicio.items_json || '[]');
+                      return its.map((it, idx) => (
+                        <div key={idx} className="flex justify-between text-[11px]">
+                          <span>{it.cantidad}x {it.nombre}</span>
+                          <span className="font-bold text-amber-300">${((Number(it.costo_base_usd || 0) + Number(it.alicuota_autogestion_usd || 0)) * it.cantidad).toFixed(2)} USD</span>
+                        </div>
+                      ));
+                    } catch (e) {
+                      return <span className="text-slate-400">{reciboModalServicio.items_json}</span>;
+                    }
+                  })()}
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+                <span className="font-bold text-slate-200">Monto Total Aporte:</span>
+                <div className="text-right">
+                  <span className="block font-black text-emerald-400 text-sm">
+                    Bs. {Number(reciboModalServicio.monto_total_bs).toFixed(2)}
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    (${Number(reciboModalServicio.monto_total_usd).toFixed(2)} USD)
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex justify-between border-b border-slate-800/60 pb-2">
+                <span className="text-slate-400">Referencia de Pago:</span>
+                <span className="font-mono text-white font-bold">{reciboModalServicio.numero_referencia}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-800/60 pb-2">
+                <span className="text-slate-400">Banco de Origen:</span>
+                <span className="text-white">{reciboModalServicio.banco_origen || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Estado de Entrega:</span>
+                <span className={`px-2.5 py-1 rounded-lg text-xs font-extrabold ${
+                  reciboModalServicio.estado === 'ENTREGADO'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    : reciboModalServicio.estado === 'VERIFICADO'
+                    ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                }`}>
+                  {reciboModalServicio.estado}
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-white font-bold transition flex items-center justify-center gap-1.5"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Imprimir Recibo</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

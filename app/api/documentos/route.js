@@ -156,6 +156,39 @@ export async function POST(request) {
 
       const estadoInicial = 'VIGENTE'; // Habilitado directamente para descarga
 
+      // Lógica de Cupo de Documentos Gratuitos con Resta Automática
+      let esExoneradoFinal = es_exonerado ? 1 : 0;
+      let motivoExoneracionFinal = motivo_exoneracion || null;
+      let montoBsFinal = monto_bs || 0;
+      let montoUsdFinal = monto_usd || 1.0;
+
+      if (!esExoneradoFinal) {
+        try {
+          const cupoCfg = await db.execute(`SELECT clave, valor FROM configuracion_sistema WHERE clave IN ('cupo_docs_gratis_activo', 'cupo_docs_gratis_restante')`);
+          let cupoActivo = '0';
+          let cupoRestante = 0;
+          cupoCfg.rows.forEach(r => {
+            if (r.clave === 'cupo_docs_gratis_activo') cupoActivo = String(r.valor);
+            if (r.clave === 'cupo_docs_gratis_restante') cupoRestante = Number(r.valor) || 0;
+          });
+
+          if (cupoActivo === '1' && cupoRestante > 0) {
+            esExoneradoFinal = 1;
+            motivoExoneracionFinal = `Cupo Gratuito Subvencionado Comunal (Beneficio N° ${cupoRestante})`;
+            montoBsFinal = 0;
+            montoUsdFinal = 0;
+
+            // Restar 1 al cupo restante
+            await db.execute({
+              sql: `UPDATE configuracion_sistema SET valor = CAST(CAST(valor AS INTEGER) - 1 AS TEXT), updated_at = ? WHERE clave = 'cupo_docs_gratis_restante' AND CAST(valor AS INTEGER) > 0`,
+              args: [nowIso]
+            });
+          }
+        } catch (e) {
+          console.warn('Aviso: No se pudo verificar cupo_docs_gratis:', e);
+        }
+      }
+
       const res = await db.execute({
         sql: `INSERT INTO documentos_solicitudes (
           codigo_qr, tipo_documento, vecino_id, cedula, nombres_apellidos,
@@ -180,12 +213,12 @@ export async function POST(request) {
           banco_origen_id || null,
           banco_nombre || null,
           numero_transferencia || null,
-          monto_bs || 0,
-          monto_usd || 1.0,
+          montoBsFinal,
+          montoUsdFinal,
           tasa_bcv || 0,
           fecha_pago || fechaEmision,
-          es_exonerado ? 1 : 0,
-          motivo_exoneracion || null,
+          esExoneradoFinal,
+          motivoExoneracionFinal,
           datos_extra ? JSON.stringify(datos_extra) : null,
           nowIso,
           nowIso,

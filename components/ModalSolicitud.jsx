@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, FileText, CheckCircle2, Download, AlertCircle, RefreshCw, QrCode } from 'lucide-react';
+import { X, FileText, CheckCircle2, Download, AlertCircle, RefreshCw, QrCode, ShieldCheck, Copy, Check, Store } from 'lucide-react';
 import { BANCOS_VENEZUELA } from '@/lib/territory';
 import { generarDocumentoPdf } from '@/lib/pdfGenerator';
 import { toast } from '@/lib/toast';
@@ -16,6 +16,8 @@ export default function ModalSolicitud({
   const [tipo, setTipo] = useState(tipoDocumento || 'RESIDENCIA');
   const [plantillasLista, setPlantillasLista] = useState([]);
   const [docCostos, setDocCostos] = useState({});
+  const [configuracion, setConfiguracion] = useState({});
+  const [copiadoKey, setCopiadoKey] = useState('');
   const [esExonerado, setEsExonerado] = useState(false);
   const [motivoExoneracion, setMotivoExoneracion] = useState('Adulto Mayor / Situación de Vulnerabilidad');
   const [bancoOrigenId, setBancoOrigenId] = useState(10); // Banco de Venezuela por defecto
@@ -34,6 +36,13 @@ export default function ModalSolicitud({
   const [docGenerado, setDocGenerado] = useState(null);
   const [descargandoPdf, setDescargandoPdf] = useState(false);
 
+  const copiarTexto = (texto, key) => {
+    navigator.clipboard.writeText(texto);
+    setCopiadoKey(key);
+    toast.success('Copiado al portapapeles');
+    setTimeout(() => setCopiadoKey(''), 2000);
+  };
+
   // Cargar plantillas y configuración de costos
   useEffect(() => {
     Promise.all([
@@ -43,12 +52,15 @@ export default function ModalSolicitud({
       if (modData.plantillas && modData.plantillas.length > 0) {
         setPlantillasLista(modData.plantillas);
       }
-      if (cfgData.config && cfgData.config.doc_costos_json) {
-        try {
-          const parsed = JSON.parse(cfgData.config.doc_costos_json);
-          setDocCostos(parsed);
-        } catch (e) {
-          console.warn('Error parseando doc_costos_json:', e);
+      if (cfgData.config) {
+        setConfiguracion(cfgData.config);
+        if (cfgData.config.doc_costos_json) {
+          try {
+            const parsed = JSON.parse(cfgData.config.doc_costos_json);
+            setDocCostos(parsed);
+          } catch (e) {
+            console.warn('Error parseando doc_costos_json:', e);
+          }
         }
       }
     });
@@ -61,9 +73,13 @@ export default function ModalSolicitud({
   // Determinar costo o gratuidad configurada para el tipo de documento seleccionado
   const configDocActual = docCostos[tipo] || { gratuito: false, monto_usd: 1.0 };
   const esGratuitoPorConfiguracion = Boolean(configDocActual.gratuito);
-  const montoUsd = esGratuitoPorConfiguracion ? 0 : Number(configDocActual.monto_usd ?? 1.0);
+  const cupoActivo = configuracion.cupo_docs_gratis_activo === '1';
+  const cupoRestante = Number(configuracion.cupo_docs_gratis_restante) || 0;
+  const tieneCupoGratuito = cupoActivo && cupoRestante > 0;
+
+  const montoUsd = (esGratuitoPorConfiguracion || tieneCupoGratuito) ? 0 : Number(configDocActual.monto_usd ?? 1.0);
   const montoBsCalculado = Number((montoUsd * (tasaBcv || 875.65)).toFixed(2));
-  const noRequierePago = esGratuitoPorConfiguracion || esExonerado;
+  const noRequierePago = esGratuitoPorConfiguracion || esExonerado || tieneCupoGratuito;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -380,7 +396,24 @@ export default function ModalSolicitud({
             )}
 
             {/* Aporte Comunitario y Cálculo de Bolívares */}
-            {esGratuitoPorConfiguracion ? (
+            {tieneCupoGratuito ? (
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/60 to-slate-900 border border-emerald-500/40 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-emerald-300">¡Subvención Social Activa!</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
+                      Cupo Restante: {cupoRestante} disponibles
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-300 block mt-0.5">
+                    Tu constancia está cubierta al 100% por el cupo comunitario gratuito del Consejo Comunal.
+                  </span>
+                </div>
+                <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 whitespace-nowrap">
+                  $0.00 (Gratis)
+                </span>
+              </div>
+            ) : esGratuitoPorConfiguracion ? (
               <div className="p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between">
                 <div>
                   <span className="text-xs font-bold text-emerald-300 block">Trámite Comunal Gratuito</span>
@@ -409,8 +442,8 @@ export default function ModalSolicitud({
               </div>
             )}
 
-            {/* Select de Exoneración Social por Vulnerabilidad (solo si no es gratuito por configuración) */}
-            {!esGratuitoPorConfiguracion && (
+            {/* Select de Exoneración Social por Vulnerabilidad (solo si no es gratuito por configuración y no tiene cupo gratuito) */}
+            {!esGratuitoPorConfiguracion && !tieneCupoGratuito && (
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -446,7 +479,77 @@ export default function ModalSolicitud({
             {/* Datos de Pago (Si requiere pago) */}
             {!noRequierePago && (
               <div className="space-y-3 p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800">
-                <span className="text-xs font-bold text-slate-200 block">Datos del Pago Comunitario</span>
+                
+                {/* Tarjeta de Coordenadas Oficiales del Consejo Comunal */}
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-950/60 to-slate-900 border border-blue-500/30 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Store className="w-4 h-4 text-blue-400" />
+                      <span className="text-xs font-bold text-white">Coordenadas de Pago Oficial del Consejo Comunal</span>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      Cuenta Receptora Única
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800">
+                      <span className="text-[10px] text-slate-400 block font-medium">Banco Receptor:</span>
+                      <strong className="text-white">{configuracion.banco_nombre || 'Banco de Venezuela (0102)'}</strong>
+                    </div>
+
+                    <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-medium">RIF Consejo Comunal:</span>
+                        <strong className="text-amber-300 font-mono">{configuracion.banco_rif || 'C-299916862'}</strong>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => copiarTexto(configuracion.banco_rif || 'C-299916862', 'rif_modal')}
+                        className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-semibold"
+                      >
+                        {copiadoKey === 'rif_modal' ? '¡Copiado!' : 'Copiar'}
+                      </button>
+                    </div>
+
+                    <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between sm:col-span-2">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-medium">N° de Cuenta Bancaria (Transferencia):</span>
+                        <strong className="text-white font-mono text-[11px] sm:text-xs">
+                          {configuracion.banco_cuenta || '0102-0888-21-0000123456'}
+                        </strong>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => copiarTexto((configuracion.banco_cuenta || '01020888210000123456').replace(/[-\s]/g, ''), 'cuenta_modal')}
+                        className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-semibold shrink-0"
+                      >
+                        {copiadoKey === 'cuenta_modal' ? '¡Copiado!' : 'Copiar'}
+                      </button>
+                    </div>
+
+                    {configuracion.banco_telefono && (
+                      <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between sm:col-span-2">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-medium">Pago Móvil (Teléfono Revisor):</span>
+                          <strong className="text-emerald-400 font-mono">{configuracion.banco_telefono}</strong>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => copiarTexto(configuracion.banco_telefono.replace(/[-\s]/g, ''), 'tlf_modal')}
+                          className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-semibold shrink-0"
+                        >
+                          {copiadoKey === 'tlf_modal' ? '¡Copiado!' : 'Copiar'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    Titular: <strong>{configuracion.banco_titular || 'Consejo Comunal Dr. Alfredo Travieso Paúl - Las Llaves'}</strong>
+                  </p>
+                </div>
+
+                <span className="text-xs font-bold text-slate-200 block pt-1">Datos del Pago Realizado</span>
                 
                 {/* Banco de Origen */}
                 <div>

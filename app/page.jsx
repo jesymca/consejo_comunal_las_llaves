@@ -7,6 +7,7 @@ import ValidadorPublico from '@/components/ValidadorPublico';
 import ModalSolicitud from '@/components/ModalSolicitud';
 import ModalRegistroVecino from '@/components/ModalRegistroVecino';
 import ModalLogin from '@/components/ModalLogin';
+import ModalServicios from '@/components/ModalServicios';
 import Dashboard from '@/components/Dashboard';
 import { toast } from '@/lib/toast';
 
@@ -19,6 +20,7 @@ export default function HomePage() {
   const [modalLoginOpen, setModalLoginOpen] = useState(false);
   const [modalRegistroOpen, setModalRegistroOpen] = useState(false);
   const [modalSolicitudOpen, setModalSolicitudOpen] = useState(false);
+  const [modalServiciosOpen, setModalServiciosOpen] = useState(false);
 
   // Estados de datos
   const [cedulaInicialRegistro, setCedulaInicialRegistro] = useState('');
@@ -156,6 +158,7 @@ export default function HomePage() {
         user={user}
         config={config}
         onOpenLogin={() => setModalLoginOpen(true)}
+        onOpenServicios={() => setModalServiciosOpen(true)}
         onLogout={handleLogout}
         onNavigateHash={handleNavigateHash}
       />
@@ -178,6 +181,7 @@ export default function HomePage() {
                 onSelectDocumentType={handleSelectDocumentType}
                 onBuscarCedula={handleBuscarCedula}
                 onOpenRegistro={handleOpenRegistro}
+                onOpenServicios={() => setModalServiciosOpen(true)}
                 vecinoBuscado={vecinoBuscado}
                 isSearching={isSearching}
                 tasaBcv={tasaBcv}
@@ -279,6 +283,13 @@ export default function HomePage() {
           tasaBcv={tasaBcv}
           onClose={() => setModalSolicitudOpen(false)}
           onDocumentoGenerado={() => {}}
+        />
+      )}
+
+      {modalServiciosOpen && (
+        <ModalServicios
+          onClose={() => setModalServiciosOpen(false)}
+          tasaBcv={tasaBcv}
         />
       )}
 
