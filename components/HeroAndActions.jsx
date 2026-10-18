@@ -170,6 +170,23 @@ export default function HeroAndActions({
                       Máx. {jornadaActiva.max_unidades_por_familia} unidades / familia
                     </span>
                   )}
+                  {jornadaActiva?.fecha_inicio && (() => {
+                    const fIni = (jornadaActiva.fecha_inicio || '').trim();
+                    const esPendiente = fIni.toLowerCase().includes('definir') || fIni.toLowerCase().includes('espera') || !fIni;
+                    if (esPendiente) {
+                      return (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-medium border border-amber-500/30 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          <span>Fecha por confirmar por distribuidora</span>
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-medium border border-purple-500/30">
+                        📅 {fIni}{jornadaActiva.fecha_fin ? ` al ${jornadaActiva.fecha_fin}` : ''}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <h3 className="text-sm sm:text-base font-bold text-white">
                   Aportes Comunitarios y Declaración de Pagos de Servicios

@@ -424,9 +424,24 @@ export default function ModalServicios({ onClose, tasaBcv = 875.65 }) {
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
                       Jornada Activa
                     </span>
-                    <span className="text-[11px] text-slate-300 font-medium">
-                      Cierre de recepción: <strong>{jornadaActiva.fecha_cierre}</strong>
-                    </span>
+                    {(() => {
+                      const fIni = (jornadaActiva.fecha_inicio || '').trim();
+                      const fCierre = jornadaActiva.fecha_cierre || jornadaActiva.fecha_fin;
+                      const esPendiente = fIni.toLowerCase().includes('definir') || fIni.toLowerCase().includes('espera') || !fIni;
+                      if (esPendiente) {
+                        return (
+                          <span className="text-[11px] text-amber-300 font-semibold flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5" />
+                            <span>Fecha: A la espera de confirmación de la empresa</span>
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="text-[11px] text-slate-300 font-medium">
+                          Fecha: <strong>{fIni}</strong>{fCierre ? <> · Cierre: <strong>{fCierre}</strong></> : null}
+                        </span>
+                      );
+                    })()}
                   </div>
                   <h3 className="text-sm sm:text-base font-extrabold text-white">
                     {jornadaActiva.titulo}

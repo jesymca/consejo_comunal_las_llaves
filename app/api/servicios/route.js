@@ -150,14 +150,19 @@ export async function GET(request) {
 
     // 2. Lista de Jornadas de Servicios
     if (action === 'jornadas') {
-      const res = await db.execute('SELECT * FROM jornadas_servicios ORDER BY id DESC');
+      const res = await db.execute(`
+        SELECT j.*, j.fecha_cierre as fecha_fin,
+               (SELECT COUNT(*) FROM jornadas_solicitudes s WHERE s.jornada_id = j.id) as total_solicitudes
+        FROM jornadas_servicios j
+        ORDER BY j.id DESC
+      `);
       return NextResponse.json({ jornadas: res.rows });
     }
 
     // 3. Jornada Activa para que los vecinos soliciten
     if (action === 'jornada_activa') {
       const cat = searchParams.get('categoria') || '';
-      let sql = "SELECT * FROM jornadas_servicios WHERE UPPER(estado) IN ('ABIERTA', 'ACTIVA')";
+      let sql = "SELECT *, fecha_cierre as fecha_fin FROM jornadas_servicios WHERE UPPER(estado) IN ('ABIERTA', 'ACTIVA', 'EN_ESPERA')";
       const args = [];
       if (cat) {
         sql += " AND UPPER(categoria) = ?";
@@ -642,14 +647,129 @@ export async function POST(request) {
       return NextResponse.json({ success: true, message: 'Jornada creada y abierta exitosamente' });
     }
 
-    // 4. Cambiar Estado de la Jornada (ACTIVA, CERRADA)
+    // 4. Editar Jornada de Servicios Existente
+    if (action === 'editar_jornada') {
+      const { id, titulo, categoria, descripcion, fecha_inicio, fecha_cierre, fecha_fin, max_unidades_por_familia, estado, items } = body;
+      if (!id || !titulo || !titulo.trim()) {
+        return NextResponse.json({ error: 'ID y Título de la jornada son obligatorios' }, { status: 400 });
+      }
+
+      const fInicio = (fecha_inicio || '').trim() || 'A la espera de asignación de fecha';
+      const fCierre = fecha_cierre || fecha_fin || '';
+      let estFinal = (estado || 'ACTIVA').toUpperCase();
+      if (estFinal === 'ABIERTA') estFinal = 'ACTIVA';
+
+      let updateSql = `UPDATE jornadas_servicios
+                       SET titulo = ?, categoria = ?, descripcion = ?, fecha_inicio = ?, fecha_cierre = ?,
+                           max_unidades_por_familia = ?, estado = ?, updated_at = ?`;
+      const updateArgs = [
+        titulo.trim(),
+        (categoria || 'GAS').toUpperCase(),
+        descripcion || '',
+        fInicio,
+        fCierre,
+        Number(max_unidades_por_familia) || 2,
+        estFinal,
+        now,
+      ];
+
+      if (items && Array.isArray(items) && items.length > 0) {
+        updateSql += `, items_json = ?`;
+        updateArgs.push(JSON.stringify(items));
+      }
+
+      updateSql += ` WHERE id = ?`;
+      updateArgs.push(Number(id));
+
+      await db.execute({ sql: updateSql, args: updateArgs });
+
+      await registrarAuditoria({
+        tipo_evento: 'JORNADA_SERVICIO_EDITADA',
+        usuario_id: currentUser.id,
+        usuario_nombre: currentUser.nombre,
+        request,
+        detalles: {
+          jornada_id: id,
+          titulo,
+          fecha_inicio: fInicio,
+          fecha_cierre: fCierre,
+          estado: estFinal,
+          max_unidades_por_familia,
+          accion: `Modificó jornada #${id} ("${titulo}"): Fechas [${fInicio} a ${fCierre || 'N/A'}], Estado [${estFinal}]`
+        }
+      });
+
+      return NextResponse.json({ success: true, message: 'Jornada actualizada exitosamente' });
+    }
+
+    // 5. Eliminar Jornada de Servicios
+    if (action === 'eliminar_jornada') {
+      const { id, forzar } = body;
+      if (!id) {
+        return NextResponse.json({ error: 'ID de la jornada es obligatorio' }, { status: 400 });
+      }
+
+      // Verificar si tiene solicitudes declaradas por vecinos
+      const checkSol = await db.execute({
+        sql: 'SELECT COUNT(*) as total FROM jornadas_solicitudes WHERE jornada_id = ?',
+        args: [Number(id)]
+      });
+      const totalSol = Number(checkSol.rows[0]?.total || 0);
+
+      if (totalSol > 0 && !forzar) {
+        return NextResponse.json({
+          error: `Esta jornada cuenta con ${totalSol} aporte(s) o solicitud(es) registrada(s) por vecinos. Para no comprometer la contraloría comunal, se recomienda Desactivarla/Cerrarla en lugar de eliminarla. Si realmente desea borrarla con todo su historial, active la confirmación forzada.`,
+          requiere_confirmacion: true,
+          total_solicitudes: totalSol
+        }, { status: 400 });
+      }
+
+      const infoJor = await db.execute({
+        sql: 'SELECT titulo FROM jornadas_servicios WHERE id = ?',
+        args: [Number(id)]
+      });
+      const tituloJor = infoJor.rows[0]?.titulo || `Jornada #${id}`;
+
+      if (totalSol > 0 && forzar) {
+        await db.execute({
+          sql: 'DELETE FROM jornadas_solicitudes WHERE jornada_id = ?',
+          args: [Number(id)]
+        });
+      }
+
+      await db.execute({
+        sql: 'DELETE FROM jornadas_servicios WHERE id = ?',
+        args: [Number(id)]
+      });
+
+      await registrarAuditoria({
+        tipo_evento: 'JORNADA_SERVICIO_ELIMINADA',
+        usuario_id: currentUser.id,
+        usuario_nombre: currentUser.nombre,
+        request,
+        detalles: {
+          jornada_id: id,
+          titulo: tituloJor,
+          solicitudes_afectadas: totalSol,
+          accion: `Eliminó la jornada comunitaria #${id} ("${tituloJor}") con ${totalSol} solicitudes asociadas`
+        }
+      });
+
+      return NextResponse.json({ success: true, message: 'Jornada eliminada exitosamente' });
+    }
+
+    // 6. Cambiar Estado de la Jornada (ACTIVA, EN_ESPERA, CERRADA)
     if (action === 'cambiar_estado_jornada') {
       const { id, estado } = body;
       if (!id || !estado) {
         return NextResponse.json({ error: 'ID y Estado son obligatorios' }, { status: 400 });
       }
 
-      const nuevoEstado = (estado.toUpperCase() === 'ACTIVA' || estado.toUpperCase() === 'ABIERTA') ? 'ACTIVA' : 'CERRADA';
+      let nuevoEstado = estado.toUpperCase();
+      if (nuevoEstado === 'ABIERTA') nuevoEstado = 'ACTIVA';
+      if (nuevoEstado !== 'ACTIVA' && nuevoEstado !== 'EN_ESPERA' && nuevoEstado !== 'CERRADA') {
+        nuevoEstado = 'CERRADA';
+      }
 
       await db.execute({
         sql: 'UPDATE jornadas_servicios SET estado = ?, updated_at = ? WHERE id = ?',

@@ -9,7 +9,8 @@ import {
   Calendar, Clock, UserCheck, ShieldAlert, Sun, Moon, Image as ImageIcon,
   ListPlus, Store, FileCheck, Printer, Activity, Globe, Laptop, Smartphone,
   ChevronDown, ChevronRight, User, Shield, Flame, Building2, CreditCard,
-  Gift, Layers, CheckSquare, Sparkles, Hash, Copy
+  Gift, Layers, CheckSquare, Sparkles, Hash, Copy,
+  UserX, Ban, Phone, Mail
 } from 'lucide-react';
 import { 
   VEREDAS, CASAS_POR_VEREDA, getCasasPorVereda, BANCOS_VENEZUELA, CALIDADES_TENENCIA,
@@ -392,14 +393,16 @@ export default function Dashboard({ user, onLogout }) {
     activo: 1,
   });
   const [modalNuevaJornada, setModalNuevaJornada] = useState(false);
+  const [jornadaEditando, setJornadaEditando] = useState(null);
   const [jornadaForm, setJornadaForm] = useState({
     titulo: '',
     descripcion: '',
-    tipo_servicio: 'GAS',
+    categoria: 'GAS',
     fecha_inicio: new Date().toISOString().split('T')[0],
     fecha_fin: '',
+    fecha_por_definir: false,
     max_unidades_por_familia: 2,
-    servicios_permitidos: [],
+    estado: 'ACTIVA',
   });
   const [pagosSubTab, setPagosSubTab] = useState('documentos'); // 'documentos' | 'servicios'
   const [configSubTab, setConfigSubTab] = useState('todo'); // 'todo' | 'gas' | 'jornadas' | 'banco' | 'cupo' | 'general' | 'tarifas' | 'territorio'
@@ -870,6 +873,68 @@ export default function Dashboard({ user, onLogout }) {
     }
   };
 
+  const toggleActivoUsuario = async (u) => {
+    if (u.username === 'CIENCIA_TECNOLOGIA') {
+      toast.error('La cuenta principal de CIENCIA_TECNOLOGIA no puede ser inhabilitada');
+      return;
+    }
+    if (Number(u.id) === Number(user?.id)) {
+      toast.error('No puedes inhabilitar tu propia cuenta en uso');
+      return;
+    }
+    const nuevoEstado = !u.activo;
+    const accionTexto = nuevoEstado ? 'HABILITAR el acceso al' : 'INHABILITAR el acceso al';
+    if (!confirm(`¿Estás seguro de que deseas ${accionTexto} usuario ${u.username} (${u.nombre})?`)) return;
+
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_user',
+          userId: u.id,
+          activo: nuevoEstado,
+        }),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        toast.success(nuevoEstado ? `Usuario ${u.username} habilitado con éxito` : `Usuario ${u.username} inhabilitado correctamente`);
+        cargarUsuarios();
+      } else {
+        toast.error(d.error || 'Error al actualizar estado del usuario');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Error de red al actualizar estado del usuario');
+    }
+  };
+
+  const eliminarUsuario = async (u) => {
+    if (u.username === 'CIENCIA_TECNOLOGIA') {
+      toast.error('La cuenta principal de CIENCIA_TECNOLOGIA no puede ser eliminada');
+      return;
+    }
+    if (Number(u.id) === Number(user?.id)) {
+      toast.error('No puedes eliminar tu propia cuenta en sesión activa');
+      return;
+    }
+    if (!confirm(`¿Confirmas que deseas ELIMINAR definitivamente al usuario ${u.username} (${u.nombre})? Esta acción revocará todos sus accesos de forma permanente.`)) return;
+
+    try {
+      const res = await fetch(`/api/auth?userId=${u.id}`, { method: 'DELETE' });
+      const d = await res.json();
+      if (res.ok) {
+        toast.success(`Usuario ${u.username} eliminado exitosamente`);
+        cargarUsuarios();
+      } else {
+        toast.error(d.error || 'Error al eliminar usuario');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Error de red al eliminar usuario');
+    }
+  };
+
   const cargarAuditoria = async (
     fIni = auditFechaInicio,
     fFin = auditFechaFin,
@@ -1150,41 +1215,116 @@ export default function Dashboard({ user, onLogout }) {
     }
   };
 
-  const guardarNuevaJornada = async (e) => {
+  const abrirModalNuevaJornada = () => {
+    setJornadaEditando(null);
+    setJornadaForm({
+      titulo: '',
+      descripcion: '',
+      categoria: 'GAS',
+      fecha_inicio: new Date().toISOString().split('T')[0],
+      fecha_fin: '',
+      fecha_por_definir: false,
+      max_unidades_por_familia: 2,
+      estado: 'ACTIVA',
+    });
+    setModalNuevaJornada(true);
+  };
+
+  const abrirModalEditarJornada = (jorn) => {
+    setJornadaEditando(jorn);
+    const fIni = (jorn.fecha_inicio || '').trim();
+    const esPorDefinir = fIni.toLowerCase().includes('definir') || fIni.toLowerCase().includes('espera') || !fIni;
+    setJornadaForm({
+      id: jorn.id,
+      titulo: jorn.titulo || '',
+      descripcion: jorn.descripcion || '',
+      categoria: jorn.categoria || 'GAS',
+      fecha_inicio: esPorDefinir ? '' : fIni,
+      fecha_fin: jorn.fecha_cierre || jorn.fecha_fin || '',
+      fecha_por_definir: esPorDefinir,
+      max_unidades_por_familia: Number(jorn.max_unidades_por_familia) || 2,
+      estado: jorn.estado || 'ACTIVA',
+    });
+    setModalNuevaJornada(true);
+  };
+
+  const guardarJornada = async (e) => {
     if (e) e.preventDefault();
     if (!jornadaForm.titulo?.trim()) {
       toast.error('El título de la jornada es obligatorio');
       return;
     }
+
+    const fechaInicioFinal = jornadaForm.fecha_por_definir
+      ? 'A la espera de asignación de fecha'
+      : (jornadaForm.fecha_inicio || new Date().toISOString().split('T')[0]);
+
+    try {
+      const action = jornadaEditando ? 'editar_jornada' : 'crear_jornada';
+      const payload = {
+        action,
+        ...(jornadaEditando ? { id: jornadaEditando.id } : {}),
+        titulo: jornadaForm.titulo.trim(),
+        categoria: jornadaForm.categoria || 'GAS',
+        descripcion: jornadaForm.descripcion || '',
+        fecha_inicio: fechaInicioFinal,
+        fecha_cierre: jornadaForm.fecha_fin || '',
+        fecha_fin: jornadaForm.fecha_fin || '',
+        max_unidades_por_familia: Number(jornadaForm.max_unidades_por_familia) || 2,
+        estado: jornadaForm.estado || 'ACTIVA',
+      };
+
+      const res = await fetch('/api/servicios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(jornadaEditando ? '¡Jornada actualizada exitosamente!' : '¡Jornada creada y activada exitosamente!');
+        setModalNuevaJornada(false);
+        setJornadaEditando(null);
+        cargarJornadas();
+        try { window.dispatchEvent(new CustomEvent('jornada_updated')); } catch (e) {}
+      } else {
+        toast.error(data.error || 'Error al guardar la jornada');
+      }
+    } catch (err) {
+      toast.error('Error de conexión: ' + err.message);
+    }
+  };
+
+  const eliminarJornada = async (jorn) => {
+    const numSol = Number(jorn.total_solicitudes || 0);
+    const mensaje = numSol > 0
+      ? `ATENCIÓN: La jornada "${jorn.titulo}" tiene ${numSol} aporte(s) registrados por vecinos.\n\n¿Desea eliminarla definitivamente con todo su historial? (Si prefiere conservarla en auditoría, puede simplemente Desactivarla)`
+      : `¿Está seguro de eliminar permanentemente la jornada "${jorn.titulo}"?`;
+
+    if (!window.confirm(mensaje)) return;
+
     try {
       const res = await fetch('/api/servicios', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'crear_jornada',
-          ...jornadaForm,
+          action: 'eliminar_jornada',
+          id: jorn.id,
+          forzar: true,
         }),
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success('¡Jornada de servicios creada y activada exitosamente!');
-        setModalNuevaJornada(false);
-        setJornadaForm({
-          titulo: '',
-          descripcion: '',
-          tipo_servicio: 'GAS',
-          fecha_inicio: new Date().toISOString().split('T')[0],
-          fecha_fin: '',
-          max_unidades_por_familia: 2,
-          servicios_permitidos: [],
-        });
+        toast.success('Jornada eliminada exitosamente');
+        if (jornadaSeleccionadaId === jorn.id) {
+          setJornadaSeleccionadaId(null);
+        }
         cargarJornadas();
         try { window.dispatchEvent(new CustomEvent('jornada_updated')); } catch (e) {}
       } else {
-        toast.error(data.error || 'Error al crear la jornada');
+        toast.error(data.error || 'Error al eliminar la jornada');
       }
     } catch (err) {
-      toast.error('Error de conexión: ' + err.message);
+      toast.error('Error de conexión al eliminar');
     }
   };
 
@@ -5393,44 +5533,49 @@ export default function Dashboard({ user, onLogout }) {
         {/* TAB: USUARIOS Y PERMISOS (SUPER ADMIN) */}
         {currentTab === 'usuarios' && user?.rol === 'SUPER_ADMIN' && (
           <div className="space-y-5 animate-in fade-in">
-            <div className="flex items-center justify-between">
+            {/* Cabecera */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
               <div>
-                <h1 className="text-2xl font-extrabold text-white">Gestión de Usuarios y Vocerías</h1>
-                <p className="text-xs text-slate-400">Control de acceso administrado por SUPER_ADMIN (CIENCIA_TECNOLOGIA)</p>
+                <h1 className="text-xl sm:text-2xl font-extrabold text-white flex items-center gap-2">
+                  <Users className="w-6 h-6 text-blue-400" />
+                  <span>Gestión de Usuarios y Vocerías</span>
+                </h1>
+                <p className="text-xs text-slate-400">Control integral de accesos, vocerías comunitarias y asignación granular de permisos</p>
               </div>
               <button
                 onClick={abrirModalCrearUsuario}
-                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition flex items-center gap-1.5 shadow-lg shadow-blue-600/20"
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 active:scale-95"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus className="w-4 h-4" />
                 <span>Nuevo Vocero / Administrador</span>
               </button>
             </div>
 
-            <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-xl">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-950/80 text-slate-400 border-b border-slate-800 uppercase font-semibold">
-                  <tr>
-                    <th className="px-4 py-3">Usuario</th>
-                    <th className="px-4 py-3">Nombre</th>
-                    <th className="px-4 py-3">Rol</th>
-                    <th className="px-4 py-3">Comisión</th>
-                    <th className="px-4 py-3">Perfil de Acceso</th>
-                    <th className="px-4 py-3">Estado</th>
-                    <th className="px-4 py-3 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {usuarios.map((u) => {
-                    const uPerms = typeof u.permisos === 'string' ? JSON.parse(u.permisos || '{}') : (u.permisos || {});
-                    const esCensista = uPerms.censo_masivo && !uPerms.firmas && !uPerms.modelador;
-                    const esEmisorDocs = uPerms.docs_emitir && !uPerms.firmas && !uPerms.censo_masivo;
-                    
-                    return (
-                      <tr key={u.id} className="hover:bg-slate-850/40 transition">
-                        <td className="px-4 py-3 font-mono font-bold text-white">{u.username}</td>
-                        <td className="px-4 py-3 font-semibold text-slate-300">{u.nombre}</td>
-                        <td className="px-4 py-3">
+            {/* Aviso informativo en pantallas móviles */}
+            <div className="sm:hidden flex items-center justify-between px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-[11px] text-slate-400">
+              <span className="flex items-center gap-1.5 font-medium text-blue-400">
+                <Smartphone className="w-3.5 h-3.5" />
+                Vista móvil con acciones rápidas y edición directa
+              </span>
+              <span className="text-slate-500 font-mono text-[10px]">{usuarios.length} registrados</span>
+            </div>
+
+            {/* VISTA 1: TARJETAS RESPONSIVE PARA CELULARES (sm:hidden) */}
+            <div className="sm:hidden space-y-3">
+              {usuarios.map((u) => {
+                const uPerms = typeof u.permisos === 'string' ? JSON.parse(u.permisos || '{}') : (u.permisos || {});
+                const esCensista = uPerms.censo_masivo && !uPerms.firmas && !uPerms.modelador;
+                const esEmisorDocs = uPerms.docs_emitir && !uPerms.firmas && !uPerms.censo_masivo;
+                const esRoot = u.username === 'CIENCIA_TECNOLOGIA';
+                const esSelf = Number(u.id) === Number(user?.id);
+
+                return (
+                  <div key={u.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg space-y-3">
+                    {/* Encabezado */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-sm text-white tracking-wide">{u.username}</span>
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                             u.rol === 'SUPER_ADMIN' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
                             u.rol === 'ADMIN' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20' :
@@ -5438,72 +5583,233 @@ export default function Dashboard({ user, onLogout }) {
                           }`}>
                             {u.rol}
                           </span>
-                        </td>
-                        <td className="px-4 py-3 text-slate-400">{u.comision || 'Comisión General'}</td>
-                        <td className="px-4 py-3">
-                          {u.rol === 'SUPER_ADMIN' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-300">
-                              <ShieldCheck className="w-3 h-3 text-purple-400" /> Control Total
-                            </span>
-                          ) : esCensista ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
-                              <ClipboardList className="w-3 h-3" /> Digitalizador Censo
-                            </span>
-                          ) : esEmisorDocs ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/20">
-                              <FileText className="w-3 h-3" /> Emisor de Constancias
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300">
-                              Personalizado
+                        </div>
+                        <h4 className="text-xs font-semibold text-slate-300 mt-0.5">{u.nombre}</h4>
+                      </div>
+
+                      {/* Estado */}
+                      {u.activo ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                          Activo
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30 shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                          Inactivo
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Resumen Vocería y Perfil */}
+                    <div className="grid grid-cols-2 gap-2 p-2.5 rounded-xl bg-slate-950/70 border border-slate-800/80 text-[11px]">
+                      <div>
+                        <span className="text-[10px] text-slate-500 block uppercase font-bold">Comisión</span>
+                        <span className="text-slate-300 font-medium truncate block">{u.comision || 'Comisión General'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block uppercase font-bold">Perfil</span>
+                        <span className="text-slate-300 font-medium truncate block">
+                          {u.rol === 'SUPER_ADMIN' ? 'Control Total' : esCensista ? 'Digitalizador' : esEmisorDocs ? 'Emisor Docs' : 'Personalizado'}
+                        </span>
+                      </div>
+                      {(u.email || u.telefono) && (
+                        <div className="col-span-2 pt-1 border-t border-slate-800/60 flex flex-wrap gap-x-3 gap-y-1 text-slate-400 text-[10px]">
+                          {u.email && (
+                            <span className="flex items-center gap-1 truncate">
+                              <Mail className="w-3 h-3 text-slate-500" />
+                              {u.email}
                             </span>
                           )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {u.activo ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-400 font-bold">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Activo
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-rose-400 font-bold">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span> Inactivo
+                          {u.telefono && (
+                            <span className="flex items-center gap-1">
+                              <Phone className="w-3 h-3 text-slate-500" />
+                              {u.telefono}
                             </span>
                           )}
-                        </td>
-                        <td className="px-4 py-3 text-right space-x-2">
-                          <button
-                            onClick={() => abrirModalEditarUsuario(u)}
-                            className="px-2.5 py-1 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs font-bold transition inline-flex items-center gap-1"
-                            title="Editar vocero y permisos"
-                          >
-                            <Sliders className="w-3 h-3" />
-                            <span>Permisos</span>
-                          </button>
-                          {u.username !== 'CIENCIA_TECNOLOGIA' && (
-                            <button
-                              onClick={async () => {
-                                if (!confirm(`¿Confirmas que deseas eliminar el acceso al vocero ${u.username} (${u.nombre})?`)) return;
-                                const res = await fetch(`/api/auth?userId=${u.id}`, { method: 'DELETE' });
-                                if (res.ok) {
-                                  toast.success('Vocero eliminado exitosamente');
-                                  cargarUsuarios();
-                                } else {
-                                  const d = await res.json();
-                                  toast.error(d.error || 'Error al eliminar');
-                                }
-                              }}
-                              className="p-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition inline-flex items-center"
-                              title="Eliminar usuario"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Botones de Acción Móvil */}
+                    <div className="grid grid-cols-3 gap-2 pt-1">
+                      {/* Inhabilitar / Habilitar */}
+                      <button
+                        onClick={() => toggleActivoUsuario(u)}
+                        disabled={esRoot || esSelf}
+                        className={`py-2 px-1 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center gap-0.5 border ${
+                          esRoot || esSelf
+                            ? 'bg-slate-800/40 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
+                            : u.activo
+                            ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30 active:scale-95'
+                            : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30 active:scale-95'
+                        }`}
+                        title={esRoot ? 'Cuenta raíz protegida' : esSelf ? 'No puedes inhabilitarte a ti mismo' : u.activo ? 'Inhabilitar acceso' : 'Habilitar acceso'}
+                      >
+                        {u.activo ? <Ban className="w-4 h-4 text-amber-400" /> : <UserCheck className="w-4 h-4 text-emerald-400" />}
+                        <span className="text-[10px]">{u.activo ? 'Inhabilitar' : 'Habilitar'}</span>
+                      </button>
+
+                      {/* Editar y Permisos */}
+                      <button
+                        onClick={() => abrirModalEditarUsuario(u)}
+                        className="py-2 px-1 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs font-bold transition flex flex-col items-center justify-center gap-0.5 active:scale-95"
+                      >
+                        <Sliders className="w-4 h-4" />
+                        <span className="text-[10px]">Permisos</span>
+                      </button>
+
+                      {/* Eliminar */}
+                      <button
+                        onClick={() => eliminarUsuario(u)}
+                        disabled={esRoot || esSelf}
+                        className={`py-2 px-1 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center gap-0.5 border ${
+                          esRoot || esSelf
+                            ? 'bg-slate-800/40 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
+                            : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/30 active:scale-95'
+                        }`}
+                        title={esRoot ? 'Cuenta raíz protegida' : esSelf ? 'No puedes eliminarte a ti mismo' : 'Eliminar usuario'}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span className="text-[10px]">Eliminar</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* VISTA 2: TABLA CON SCROLL HORIZONTAL (hidden sm:block con overflow-x-auto) */}
+            <div className="hidden sm:block rounded-2xl bg-slate-900 border border-slate-800 shadow-xl overflow-hidden">
+              <div className="overflow-x-auto w-full">
+                <table className="w-full min-w-[780px] text-left text-xs">
+                  <thead className="bg-slate-950/80 text-slate-400 border-b border-slate-800 uppercase font-semibold">
+                    <tr>
+                      <th className="px-4 py-3">Usuario</th>
+                      <th className="px-4 py-3">Nombre y Contacto</th>
+                      <th className="px-4 py-3">Rol</th>
+                      <th className="px-4 py-3">Comisión</th>
+                      <th className="px-4 py-3">Perfil de Acceso</th>
+                      <th className="px-4 py-3">Estado</th>
+                      <th className="px-4 py-3 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {usuarios.map((u) => {
+                      const uPerms = typeof u.permisos === 'string' ? JSON.parse(u.permisos || '{}') : (u.permisos || {});
+                      const esCensista = uPerms.censo_masivo && !uPerms.firmas && !uPerms.modelador;
+                      const esEmisorDocs = uPerms.docs_emitir && !uPerms.firmas && !uPerms.censo_masivo;
+                      const esRoot = u.username === 'CIENCIA_TECNOLOGIA';
+                      const esSelf = Number(u.id) === Number(user?.id);
+                      
+                      return (
+                        <tr key={u.id} className="hover:bg-slate-850/40 transition">
+                          <td className="px-4 py-3">
+                            <span className="font-mono font-bold text-white block">{u.username}</span>
+                            {esRoot && <span className="text-[9px] text-purple-400 font-semibold">Super Admin Raíz</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="font-semibold text-slate-200 block">{u.nombre}</span>
+                            {(u.email || u.telefono) && (
+                              <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                                {u.email && <span>{u.email}</span>}
+                                {u.email && u.telefono && <span>•</span>}
+                                {u.telefono && <span>{u.telefono}</span>}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              u.rol === 'SUPER_ADMIN' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+                              u.rol === 'ADMIN' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20' :
+                              'bg-amber-500/15 text-amber-400 border border-amber-500/20'
+                            }`}>
+                              {u.rol}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-400">{u.comision || 'Comisión General'}</td>
+                          <td className="px-4 py-3">
+                            {u.rol === 'SUPER_ADMIN' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-300">
+                                <ShieldCheck className="w-3 h-3 text-purple-400" /> Control Total
+                              </span>
+                            ) : esCensista ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                                <ClipboardList className="w-3 h-3" /> Digitalizador Censo
+                              </span>
+                            ) : esEmisorDocs ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/20">
+                                <FileText className="w-3 h-3" /> Emisor de Constancias
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300">
+                                Personalizado
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {u.activo ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-400 font-bold">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Activo
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-rose-400 font-bold">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span> Inactivo
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="inline-flex items-center justify-end gap-1.5">
+                              {/* Inhabilitar / Habilitar */}
+                              <button
+                                onClick={() => toggleActivoUsuario(u)}
+                                disabled={esRoot || esSelf}
+                                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition inline-flex items-center gap-1 border ${
+                                  esRoot || esSelf
+                                    ? 'bg-slate-850 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
+                                    : u.activo
+                                    ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30'
+                                    : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                }`}
+                                title={esRoot ? 'Cuenta raíz protegida' : esSelf ? 'No puedes inhabilitarte a ti mismo' : u.activo ? 'Inhabilitar acceso' : 'Habilitar acceso'}
+                              >
+                                {u.activo ? <Ban className="w-3 h-3" /> : <UserCheck className="w-3 h-3" />}
+                                <span>{u.activo ? 'Inhabilitar' : 'Habilitar'}</span>
+                              </button>
+
+                              {/* Editar / Permisos */}
+                              <button
+                                onClick={() => abrirModalEditarUsuario(u)}
+                                className="px-2.5 py-1 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs font-bold transition inline-flex items-center gap-1"
+                                title="Editar vocero y permisos"
+                              >
+                                <Sliders className="w-3 h-3" />
+                                <span>Permisos</span>
+                              </button>
+
+                              {/* Eliminar */}
+                              {!esRoot && (
+                                <button
+                                  onClick={() => eliminarUsuario(u)}
+                                  disabled={esSelf}
+                                  className={`p-1.5 rounded-xl transition inline-flex items-center border ${
+                                    esSelf
+                                      ? 'bg-slate-850 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
+                                      : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/20'
+                                  }`}
+                                  title={esSelf ? 'No puedes eliminarte a ti mismo' : 'Eliminar usuario'}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -6169,7 +6475,7 @@ export default function Dashboard({ user, onLogout }) {
 
                 <button
                   type="button"
-                  onClick={() => setModalNuevaJornada(true)}
+                  onClick={abrirModalNuevaJornada}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs shadow-md shadow-purple-600/20 transition shrink-0"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -6190,33 +6496,75 @@ export default function Dashboard({ user, onLogout }) {
                 <div className="space-y-3">
                   {jornadas.map((jorn) => {
                     const isActiva = (jorn.estado === 'ACTIVA' || jorn.estado === 'ABIERTA');
+                    const isEnEspera = jorn.estado === 'EN_ESPERA';
+                    const fIniStr = (jorn.fecha_inicio || '').trim();
+                    const esFechaPendiente = isEnEspera || fIniStr.toLowerCase().includes('definir') || fIniStr.toLowerCase().includes('espera') || !fIniStr;
+
                     return (
                       <div
                         key={jorn.id}
                         className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-slate-750 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
                       >
-                        <div className="space-y-1">
+                        <div className="space-y-1.5 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/25">
+                              {jorn.categoria || 'GAS'}
+                            </span>
                             <h4 className="font-extrabold text-white text-sm">{jorn.titulo}</h4>
                             <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold ${
                               isActiva
                                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : isEnEspera
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                                 : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
                             }`}>
-                              {isActiva ? '● ACTIVA (Visible en Portal Vecinos)' : '○ DESACTIVADA (Oculta en Portal)'}
+                              {isActiva ? '● ACTIVA (Visible en Portal)' : isEnEspera ? '⏳ EN ESPERA DE ASIGNACIÓN DE FECHA' : '○ DESACTIVADA / CERRADA (Oculta)'}
                             </span>
                             <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-500/15 text-amber-300 border border-amber-500/30">
                               Máx {jorn.max_unidades_por_familia} unid / familia censada
                             </span>
+                            {Number(jorn.total_solicitudes) > 0 && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                                {jorn.total_solicitudes} aporte(s)
+                              </span>
+                            )}
                           </div>
-                          <p className="text-slate-400 text-[11px]">
-                            Inicio: <strong className="text-slate-200">{jorn.fecha_inicio}</strong>
-                            {jorn.fecha_fin && <> · Cierre: <strong className="text-slate-200">{jorn.fecha_fin}</strong></>}
-                            {jorn.descripcion && <> · {jorn.descripcion}</>}
-                          </p>
+
+                          <div className="text-slate-400 text-[11px] flex flex-wrap items-center gap-x-3 gap-y-1">
+                            {esFechaPendiente ? (
+                              <span className="inline-flex items-center gap-1 text-amber-300 font-semibold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                                <Clock className="w-3 h-3" />
+                                <span>Fecha: A la espera de confirmación por la empresa distribuidora</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-slate-300">
+                                <Calendar className="w-3 h-3 text-purple-400" />
+                                <span>Fecha Programada: <strong className="text-white">{jorn.fecha_inicio}</strong></span>
+                                {jorn.fecha_fin && <> · Cierre: <strong className="text-white">{jorn.fecha_fin}</strong></>}
+                              </span>
+                            )}
+                          </div>
+
+                          {jorn.descripcion && (
+                            <p className="text-slate-400 text-[11px] bg-slate-900/60 p-2 rounded-xl border border-slate-850">
+                              {jorn.descripcion}
+                            </p>
+                          )}
                         </div>
 
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                          {/* Botón Editar Jornada */}
+                          <button
+                            type="button"
+                            onClick={() => abrirModalEditarJornada(jorn)}
+                            className="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold border border-amber-500/30 transition flex items-center gap-1"
+                            title="Modificar fecha, reprogramar por adelanto/demora, cupo o descripción"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                            <span>Editar</span>
+                          </button>
+
+                          {/* Botón Ver Aportes */}
                           <button
                             type="button"
                             onClick={() => {
@@ -6224,22 +6572,33 @@ export default function Dashboard({ user, onLogout }) {
                               setPagosSubTab('servicios');
                               navigateTo('pagos');
                             }}
-                            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5"
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-semibold border border-slate-700 transition flex items-center gap-1"
                           >
                             <Eye className="w-3.5 h-3.5 text-blue-400" />
-                            <span>Ver Aportes</span>
+                            <span>Aportes</span>
                           </button>
 
+                          {/* Botón Toggle Estado */}
                           <button
                             type="button"
                             onClick={() => cambiarEstadoJornada(jorn.id, isActiva ? 'CERRADA' : 'ACTIVA')}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 ${
                               isActiva
                                 ? 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border border-rose-500/30'
                                 : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/30'
                             }`}
                           >
-                            <span>{isActiva ? 'Desactivar Jornada (Ocultar)' : 'Activar Jornada (Mostrar)'}</span>
+                            <span>{isActiva ? 'Pausar' : 'Activar'}</span>
+                          </button>
+
+                          {/* Botón Eliminar Jornada */}
+                          <button
+                            type="button"
+                            onClick={() => eliminarJornada(jorn)}
+                            className="p-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition"
+                            title="Eliminar convocatoria de jornada"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
@@ -8401,6 +8760,8 @@ export default function Dashboard({ user, onLogout }) {
                 const password = formData.get('password');
                 const rol = formData.get('rol');
                 const comision = formData.get('comision');
+                const email = formData.get('email');
+                const telefono = formData.get('telefono');
                 const activo = formData.get('activo') === '1';
 
                 if (usuarioEditando) {
@@ -8411,6 +8772,8 @@ export default function Dashboard({ user, onLogout }) {
                     nombre,
                     rol,
                     comision,
+                    email: email?.trim() || null,
+                    telefono: telefono?.trim() || null,
                     activo,
                     permisos: permisosForm,
                   };
@@ -8448,6 +8811,8 @@ export default function Dashboard({ user, onLogout }) {
                       nombre,
                       rol,
                       comision,
+                      email: email?.trim() || null,
+                      telefono: telefono?.trim() || null,
                       permisos: permisosForm,
                     }),
                   });
@@ -8527,27 +8892,56 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
 
                 <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Correo Electrónico (Email)</label>
+                  <input
+                    type="email"
+                    name="email"
+                    defaultValue={usuarioEditando?.email || ''}
+                    placeholder="correo@ejemplo.com"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Teléfono / WhatsApp</label>
+                  <input
+                    name="telefono"
+                    defaultValue={usuarioEditando?.telefono || ''}
+                    placeholder="Ej: 0412-1234567"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-slate-300 font-semibold mb-1">Nivel / Rol</label>
                   <select
                     name="rol"
                     defaultValue={usuarioEditando?.rol || 'VOCERO'}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white"
+                    disabled={usuarioEditando?.username === 'CIENCIA_TECNOLOGIA'}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white disabled:opacity-50"
                   >
                     <option value="VOCERO">VOCERO (Nivel estándar restringible)</option>
                     <option value="ADMIN">ADMIN (Nivel administrativo)</option>
+                    {usuarioEditando?.rol === 'SUPER_ADMIN' && (
+                      <option value="SUPER_ADMIN">SUPER_ADMIN (Acceso Total)</option>
+                    )}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Estado de la Cuenta</label>
+                  <label className="block text-slate-300 font-semibold mb-1">Estado de Acceso</label>
                   <select
                     name="activo"
                     defaultValue={usuarioEditando ? (usuarioEditando.activo ? '1' : '0') : '1'}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white"
+                    disabled={usuarioEditando?.username === 'CIENCIA_TECNOLOGIA'}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white disabled:opacity-50"
                   >
-                    <option value="1">Cuenta Activa (Permite iniciar sesión)</option>
-                    <option value="0">Cuenta Deshabilitada / Inactiva</option>
+                    <option value="1">Habilitado (Permite iniciar sesión)</option>
+                    <option value="0">Inhabilitado (Bloquea acceso al sistema)</option>
                   </select>
+                  {usuarioEditando?.username === 'CIENCIA_TECNOLOGIA' && (
+                    <span className="text-[10px] text-purple-400">La cuenta raíz principal no se puede inhabilitar.</span>
+                  )}
                 </div>
               </div>
 
@@ -8935,30 +9329,38 @@ export default function Dashboard({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL CREAR NUEVA JORNADA DE SERVICIOS */}
+      {/* MODAL CREAR / EDITAR CONVOCATORIA DE JORNADA DE SERVICIOS */}
       {modalNuevaJornada && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative text-xs">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative text-xs max-h-[90vh] overflow-y-auto">
             <button
-              onClick={() => setModalNuevaJornada(false)}
+              onClick={() => { setModalNuevaJornada(false); setJornadaEditando(null); }}
               className="absolute top-4 right-4 text-slate-400 hover:text-white"
             >
               <X className="w-5 h-5" />
             </button>
 
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-3 bg-blue-500/20 text-blue-400 rounded-2xl border border-blue-500/30">
-                <Calendar className="w-6 h-6" />
+              <div className={`p-3 rounded-2xl border ${
+                jornadaEditando ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+              }`}>
+                {jornadaEditando ? <Edit className="w-6 h-6" /> : <Calendar className="w-6 h-6" />}
               </div>
               <div>
-                <h3 className="text-lg font-extrabold text-white">Nueva Convocatoria de Jornada</h3>
-                <p className="text-slate-400 text-xs">Distribución de gas o servicios con límite por familia censada</p>
+                <h3 className="text-lg font-extrabold text-white">
+                  {jornadaEditando ? 'Editar Convocatoria de Jornada' : 'Nueva Convocatoria de Jornada'}
+                </h3>
+                <p className="text-slate-400 text-xs">
+                  {jornadaEditando
+                    ? 'Modifica fechas (adelanto/demora por la empresa), límite o instrucciones'
+                    : 'Distribución de gas o servicios con límite por familia censada'}
+                </p>
               </div>
             </div>
 
-            <form onSubmit={guardarNuevaJornada} className="space-y-4">
+            <form onSubmit={guardarJornada} className="space-y-4">
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Título de la Jornada</label>
+                <label className="block text-slate-300 font-semibold mb-1">Título de la Jornada *</label>
                 <input
                   type="text"
                   required
@@ -8971,24 +9373,87 @@ export default function Dashboard({ user, onLogout }) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Fecha de Inicio</label>
-                  <input
-                    type="date"
-                    required
-                    value={jornadaForm.fecha_inicio}
-                    onChange={(e) => setJornadaForm({ ...jornadaForm, fecha_inicio: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs"
-                  />
+                  <label className="block text-slate-300 font-semibold mb-1">Categoría del Servicio</label>
+                  <select
+                    value={jornadaForm.categoria || 'GAS'}
+                    onChange={(e) => setJornadaForm({ ...jornadaForm, categoria: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs font-semibold"
+                  >
+                    <option value="GAS">GAS (GLP Doméstico)</option>
+                    <option value="AGUA">AGUA (Cisterna / Potable)</option>
+                    <option value="ALIMENTOS">ALIMENTOS (Bolsa / Proteínas)</option>
+                    <option value="OTRO">OTRO SERVICIO</option>
+                  </select>
                 </div>
+
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Fecha de Cierre (Opcional)</label>
-                  <input
-                    type="date"
-                    value={jornadaForm.fecha_fin}
-                    onChange={(e) => setJornadaForm({ ...jornadaForm, fecha_fin: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs"
-                  />
+                  <label className="block text-slate-300 font-semibold mb-1">Estado de la Convocatoria</label>
+                  <select
+                    value={jornadaForm.estado || 'ACTIVA'}
+                    onChange={(e) => setJornadaForm({ ...jornadaForm, estado: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs font-semibold"
+                  >
+                    <option value="ACTIVA">● ACTIVA (Visible para los Vecinos)</option>
+                    <option value="EN_ESPERA">⏳ EN ESPERA (Visible - Fecha por confirmar)</option>
+                    <option value="CERRADA">○ DESACTIVADA / CERRADA (Oculta)</option>
+                  </select>
                 </div>
+              </div>
+
+              {/* Control Flexible de Fechas: Por Definir / En Espera de la Empresa */}
+              <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-purple-500/20 space-y-2.5">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={jornadaForm.fecha_por_definir}
+                    onChange={(e) => setJornadaForm({ ...jornadaForm, fecha_por_definir: e.target.checked })}
+                    className="w-4 h-4 rounded text-purple-600 bg-slate-900 border-slate-700 focus:ring-purple-500"
+                  />
+                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>A la espera de asignación de fecha por la empresa distribuidora</span>
+                  </span>
+                </label>
+                <p className="text-[11px] text-slate-400 pl-6 leading-relaxed">
+                  Activa esta casilla si GasDrácula / PDVSA Gas Comunal aún no ha confirmado la fecha exacta de despacho o si la jornada quedó en espera de reprogramación. Se notificará a los vecinos como &quot;A la espera de confirmación&quot;.
+                </p>
+
+                {!jornadaForm.fecha_por_definir ? (
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-850">
+                    <div>
+                      <label className="block text-slate-300 font-semibold mb-1">Fecha Programada de Inicio *</label>
+                      <input
+                        type="date"
+                        required={!jornadaForm.fecha_por_definir}
+                        value={jornadaForm.fecha_inicio}
+                        onChange={(e) => setJornadaForm({ ...jornadaForm, fecha_inicio: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white text-xs"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">
+                        Si la empresa adelanta o demora, ajusta esta fecha
+                      </span>
+                    </div>
+                    <div>
+                      <label className="block text-slate-300 font-semibold mb-1">Fecha de Cierre (Opcional)</label>
+                      <input
+                        type="date"
+                        value={jornadaForm.fecha_fin}
+                        onChange={(e) => setJornadaForm({ ...jornadaForm, fecha_fin: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white text-xs"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">
+                        Límite para recepción de aportes
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-[11px] flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>
+                      Jornada registrada sin fecha fija. Podrás editarla en cualquier momento para colocar la fecha oficial tan pronto la empresa la suministre.
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Límite Máximo de Unidades por Familia del Censo */}
@@ -9016,10 +9481,10 @@ export default function Dashboard({ user, onLogout }) {
               </div>
 
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Descripción / Instrucciones de Entrega</label>
+                <label className="block text-slate-300 font-semibold mb-1">Descripción / Observaciones / Lugar de Acopio</label>
                 <textarea
                   rows="2"
-                  placeholder="Lugar de acopio de cilindros, requisitos de pago..."
+                  placeholder="Lugar de entrega de cilindros vacíos, observaciones de adelanto o retraso de la empresa..."
                   value={jornadaForm.descripcion}
                   onChange={(e) => setJornadaForm({ ...jornadaForm, descripcion: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs resize-none"
@@ -9029,17 +9494,21 @@ export default function Dashboard({ user, onLogout }) {
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setModalNuevaJornada(false)}
+                  onClick={() => { setModalNuevaJornada(false); setJornadaEditando(null); }}
                   className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold transition"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold shadow-lg shadow-blue-600/20 transition flex items-center gap-1.5"
+                  className={`px-5 py-2 rounded-xl font-extrabold shadow-lg transition flex items-center gap-1.5 text-white ${
+                    jornadaEditando
+                      ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20'
+                      : 'bg-purple-600 hover:bg-purple-500 shadow-purple-600/20'
+                  }`}
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>Publicar Jornada</span>
+                  {jornadaEditando ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                  <span>{jornadaEditando ? 'Guardar Cambios de Jornada' : 'Publicar Jornada'}</span>
                 </button>
               </div>
             </form>

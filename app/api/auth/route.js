@@ -284,6 +284,14 @@ export async function PUT(request) {
       if (prevRes.rows.length === 0) return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
       const prevUser = prevRes.rows[0];
 
+      if (prevUser.username === 'CIENCIA_TECNOLOGIA' && activo !== undefined && !activo) {
+        return NextResponse.json({ error: 'La cuenta principal de CIENCIA_TECNOLOGIA no puede ser inhabilitada' }, { status: 400 });
+      }
+
+      if (Number(userId) === Number(currentUser.id) && activo !== undefined && !activo) {
+        return NextResponse.json({ error: 'No puedes inhabilitar tu propia cuenta activa de sesión' }, { status: 400 });
+      }
+
       const nuevoNombre = nombre !== undefined ? nombre.trim() : prevUser.nombre;
       const nuevoRol = rol !== undefined ? rol : prevUser.rol;
       const nuevaComision = comision !== undefined ? comision : prevUser.comision;
@@ -365,6 +373,10 @@ export async function DELETE(request) {
 
     if (check.rows[0].username === 'CIENCIA_TECNOLOGIA') {
       return NextResponse.json({ error: 'No se puede eliminar la cuenta principal del SUPER_ADMIN' }, { status: 403 });
+    }
+
+    if (Number(userId) === Number(currentUser.id)) {
+      return NextResponse.json({ error: 'No puedes eliminar tu propia cuenta en sesión activa' }, { status: 400 });
     }
 
     await db.execute({
