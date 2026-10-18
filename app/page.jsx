@@ -33,6 +33,8 @@ export default function HomePage() {
   // Validador query
   const [validadorCodigo, setValidadorCodigo] = useState('');
   const [config, setConfig] = useState(null);
+  const [jornadaActiva, setJornadaActiva] = useState(null);
+  const [hasActiveJornada, setHasActiveJornada] = useState(false);
 
   // 1. Escuchar cambios de hash (#dashboard, #validar, #inicio, #vecinos, etc.)
   useEffect(() => {
@@ -56,9 +58,28 @@ export default function HomePage() {
     return () => window.removeEventListener('hashchange', handleHash);
   }, []);
 
-  // 2. Verificar sesión activa y configuración al cargar
+  // 2. Verificar sesión activa, configuración y jornadas al cargar
+  const verificarJornadaActiva = async () => {
+    try {
+      const res = await fetch('/api/servicios?action=jornada_activa');
+      const data = await res.json();
+      if (data && data.jornada && (data.jornada.estado === 'ACTIVA' || data.jornada.estado === 'ABIERTA')) {
+        setJornadaActiva(data.jornada);
+        setHasActiveJornada(true);
+      } else {
+        setJornadaActiva(null);
+        setHasActiveJornada(false);
+      }
+    } catch {
+      setJornadaActiva(null);
+      setHasActiveJornada(false);
+    }
+  };
+
   useEffect(() => {
     checkSession();
+    verificarJornadaActiva();
+
     fetch('/api/dolar')
       .then(r => r.json())
       .then(d => { if (d.promedio) setTasaBcv(d.promedio); })
@@ -74,8 +95,17 @@ export default function HomePage() {
         setConfig(prev => ({ ...(prev || {}), ...e.detail }));
       }
     };
+
+    const handleJornadaUpdate = () => {
+      verificarJornadaActiva();
+    };
+
     window.addEventListener('config_updated', handleConfigUpdate);
-    return () => window.removeEventListener('config_updated', handleConfigUpdate);
+    window.addEventListener('jornada_updated', handleJornadaUpdate);
+    return () => {
+      window.removeEventListener('config_updated', handleConfigUpdate);
+      window.removeEventListener('jornada_updated', handleJornadaUpdate);
+    };
   }, []);
 
   const checkSession = async () => {
@@ -157,6 +187,7 @@ export default function HomePage() {
       <Navbar
         user={user}
         config={config}
+        hasActiveJornada={hasActiveJornada}
         onOpenLogin={() => setModalLoginOpen(true)}
         onOpenServicios={() => setModalServiciosOpen(true)}
         onLogout={handleLogout}
@@ -182,6 +213,8 @@ export default function HomePage() {
                 onBuscarCedula={handleBuscarCedula}
                 onOpenRegistro={handleOpenRegistro}
                 onOpenServicios={() => setModalServiciosOpen(true)}
+                hasActiveJornada={hasActiveJornada}
+                jornadaActiva={jornadaActiva}
                 vecinoBuscado={vecinoBuscado}
                 isSearching={isSearching}
                 tasaBcv={tasaBcv}

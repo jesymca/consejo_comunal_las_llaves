@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, FileText, CheckCircle2, UserCheck, Lock, LogOut, Sun, Moon, Download, Flame } from 'lucide-react';
 
-export default function Navbar({ user, config: initialConfig, onOpenLogin, onLogout, onNavigateHash, onOpenServicios }) {
+export default function Navbar({ user, config: initialConfig, onOpenLogin, onLogout, onNavigateHash, onOpenServicios, hasActiveJornada }) {
   const [theme, setTheme] = useState('dark');
   const [siturCodigo, setSiturCodigo] = useState(initialConfig?.situr_codigo || '08-11-04-001-0033');
 
@@ -118,14 +118,16 @@ export default function Navbar({ user, config: initialConfig, onOpenLogin, onLog
             <span>Tramitar</span>
           </button>
 
-          <button
-            onClick={onOpenServicios}
-            className="inline-flex items-center justify-center gap-1 text-[10.5px] sm:text-xs font-semibold px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 transition shadow-sm shrink-0 whitespace-nowrap"
-          >
-            <Flame className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="hidden xs:inline">Servicios / Gas</span>
-            <span className="xs:hidden">Gas</span>
-          </button>
+          {hasActiveJornada && (
+            <button
+              onClick={onOpenServicios}
+              className="inline-flex items-center justify-center gap-1 text-[10.5px] sm:text-xs font-semibold px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 transition shadow-sm shrink-0 whitespace-nowrap"
+            >
+              <Flame className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="hidden xs:inline">Servicios / Gas</span>
+              <span className="xs:hidden">Gas</span>
+            </button>
+          )}
 
           <button
             onClick={() => onNavigateHash('validar')}

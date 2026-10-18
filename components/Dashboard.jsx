@@ -402,6 +402,7 @@ export default function Dashboard({ user, onLogout }) {
     servicios_permitidos: [],
   });
   const [pagosSubTab, setPagosSubTab] = useState('documentos'); // 'documentos' | 'servicios'
+  const [configSubTab, setConfigSubTab] = useState('todo'); // 'todo' | 'gas' | 'jornadas' | 'banco' | 'cupo' | 'general' | 'tarifas' | 'territorio'
   const [filtroServicioBusqueda, setFiltroServicioBusqueda] = useState('');
   const [filtroServicioEstado, setFiltroServicioEstado] = useState('TODOS');
   const [reciboModalServicio, setReciboModalServicio] = useState(null);
@@ -1042,7 +1043,7 @@ export default function Dashboard({ user, onLogout }) {
     try {
       const res = await fetch('/api/servicios?action=catalogo');
       const data = await res.json();
-      setServiciosCatalogo(data.servicios || []);
+      setServiciosCatalogo(data.servicios || data.catalogo || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -1089,19 +1090,29 @@ export default function Dashboard({ user, onLogout }) {
       toast.error('El nombre del servicio es obligatorio');
       return;
     }
+    const precioBase = Number(servicioForm.costo_base_usd !== undefined ? servicioForm.costo_base_usd : (servicioForm.precio_usd || 1.0));
+    const alicuota = Number(servicioForm.alicuota_autogestion_usd || 0);
+
     try {
       const action = servicioEditando ? 'editar_servicio' : 'crear_servicio';
       const res = await fetch('/api/servicios', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, ...servicioForm }),
+        body: JSON.stringify({
+          action,
+          ...servicioForm,
+          precio_usd: precioBase,
+          costo_base_usd: precioBase,
+          alicuota_autogestion_usd: alicuota,
+        }),
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success(servicioEditando ? 'Servicio actualizado' : 'Servicio creado exitosamente');
+        toast.success(servicioEditando ? 'Cilindro / Precio actualizado exitosamente' : 'Modelo de cilindro registrado');
         setModalServicio(false);
         setServicioEditando(null);
         cargarServiciosCatalogo();
+        try { window.dispatchEvent(new CustomEvent('jornada_updated')); } catch (e) {}
       } else {
         toast.error(data.error || 'Error al guardar servicio');
       }
@@ -1113,6 +1124,7 @@ export default function Dashboard({ user, onLogout }) {
   const toggleActivoServicio = async (serv) => {
     try {
       const nuevoActivo = serv.activo ? 0 : 1;
+      const precioBase = Number(serv.costo_base_usd !== undefined ? serv.costo_base_usd : (serv.precio_usd || 1.0));
       const res = await fetch('/api/servicios', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1120,16 +1132,18 @@ export default function Dashboard({ user, onLogout }) {
           action: 'editar_servicio',
           id: serv.id,
           nombre: serv.nombre,
-          categoria: serv.categoria,
-          costo_base_usd: serv.costo_base_usd,
-          alicuota_autogestion_usd: serv.alicuota_autogestion_usd,
-          descripcion: serv.descripcion,
+          categoria: serv.categoria || 'GAS',
+          precio_usd: precioBase,
+          costo_base_usd: precioBase,
+          alicuota_autogestion_usd: Number(serv.alicuota_autogestion_usd || 0),
+          descripcion: serv.descripcion || '',
           activo: nuevoActivo,
         }),
       });
       if (res.ok) {
-        toast.success(`Servicio ${nuevoActivo ? 'activado' : 'desactivado'}`);
+        toast.success(`Modelo ${nuevoActivo ? 'activado' : 'desactivado'}`);
         cargarServiciosCatalogo();
+        try { window.dispatchEvent(new CustomEvent('jornada_updated')); } catch (e) {}
       }
     } catch (err) {
       toast.error('Error al actualizar servicio');
@@ -1153,7 +1167,7 @@ export default function Dashboard({ user, onLogout }) {
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success('¡Jornada de servicios creada exitosamente!');
+        toast.success('¡Jornada de servicios creada y activada exitosamente!');
         setModalNuevaJornada(false);
         setJornadaForm({
           titulo: '',
@@ -1165,6 +1179,7 @@ export default function Dashboard({ user, onLogout }) {
           servicios_permitidos: [],
         });
         cargarJornadas();
+        try { window.dispatchEvent(new CustomEvent('jornada_updated')); } catch (e) {}
       } else {
         toast.error(data.error || 'Error al crear la jornada');
       }
@@ -1180,11 +1195,14 @@ export default function Dashboard({ user, onLogout }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'cambiar_estado_jornada', id, estado }),
       });
+      const data = await res.json();
       if (res.ok) {
-        toast.success(`Jornada actualizada a ${estado}`);
+        const esAct = estado === 'ACTIVA' || estado === 'ABIERTA';
+        toast.success(`Jornada ${esAct ? 'ACTIVADA (Ahora visible en el portal para los vecinos)' : 'DESACTIVADA (Oculta en el portal para los vecinos)'}`);
         cargarJornadas();
+        try { window.dispatchEvent(new CustomEvent('jornada_updated', { detail: { id, estado } })); } catch (e) {}
       } else {
-        toast.error('Error al cambiar estado de jornada');
+        toast.error(data.error || 'Error al cambiar estado de jornada');
       }
     } catch (err) {
       toast.error('Error de conexión');
@@ -2877,7 +2895,20 @@ export default function Dashboard({ user, onLogout }) {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {user?.rol === 'SUPER_ADMIN' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfigSubTab('gas');
+                            navigateTo('configuracion');
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold flex items-center gap-1.5 border border-amber-500/30 transition shadow-sm"
+                        >
+                          <Flame className="w-3.5 h-3.5 text-amber-400" />
+                          <span>⚙️ Precios y Cilindros de Gas</span>
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
@@ -5485,6 +5516,37 @@ export default function Dashboard({ user, onLogout }) {
               <p className="text-xs text-slate-400">Parámetros institucionales, vigencia de constancias y aportes</p>
             </div>
 
+            {/* Barra de Sub-pestañas de Configuración */}
+            <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pb-1">
+              {[
+                { id: 'todo', label: 'Ver Todo' },
+                { id: 'gas', label: '🔥 Cilindros de Gas y Precios', highlight: true },
+                { id: 'jornadas', label: '📅 Jornadas Comunales' },
+                { id: 'banco', label: '🏦 Cuenta Bancaria' },
+                { id: 'cupo', label: '🎁 Cupo Gratuito' },
+                { id: 'general', label: '⚙️ General y Sello' },
+                { id: 'tarifas', label: '📄 Tarifas Constancias' },
+                { id: 'territorio', label: '🗺️ Territorio / Veredas' },
+              ].map((sub) => (
+                <button
+                  key={sub.id}
+                  type="button"
+                  onClick={() => setConfigSubTab(sub.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+                    configSubTab === sub.id
+                      ? sub.highlight
+                        ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/30'
+                        : 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                      : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'
+                  }`}
+                >
+                  <span>{sub.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* SECCIÓN GENERAL Y SELLO OFICIAL */}
+            {(configSubTab === 'todo' || configSubTab === 'general') && (
             <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 text-xs">
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">Nombre del Consejo Comunal</label>
@@ -5667,8 +5729,10 @@ export default function Dashboard({ user, onLogout }) {
                 Guardar Parámetros
               </button>
             </div>
+            )}
 
             {/* SECCIÓN 1: COORDENADAS BANCARIAS OFICIALES DEL CONSEJO COMUNAL */}
+            {(configSubTab === 'todo' || configSubTab === 'banco') && (
             <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-3">
@@ -5791,8 +5855,10 @@ export default function Dashboard({ user, onLogout }) {
                 </button>
               </div>
             </div>
+            )}
 
             {/* SECCIÓN 2: SUBVENCIÓN SOCIAL COMUNITARIA (CUPO DE DOCUMENTOS GRATUITOS CON CONTADOR REGRESIVO) */}
+            {(configSubTab === 'todo' || configSubTab === 'cupo') && (
             <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-3">
@@ -5939,8 +6005,10 @@ export default function Dashboard({ user, onLogout }) {
                 </button>
               </div>
             </div>
+            )}
 
-            {/* SECCIÓN 3: CATÁLOGO DE SERVICIOS COMUNITARIOS Y ALÍCUOTAS DE AUTOGESTIÓN */}
+            {/* SECCIÓN 3: CATÁLOGO DE CILINDROS DE GAS COMUNAL Y PRECIOS */}
+            {(configSubTab === 'todo' || configSubTab === 'gas') && (
             <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-3">
@@ -5949,13 +6017,13 @@ export default function Dashboard({ user, onLogout }) {
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-white flex items-center gap-2">
-                      <span>Catálogo de Servicios Comunitarios y Alícuotas</span>
+                      <span>🔥 Modelos de Cilindros de Gas y Precios Oficiales</span>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                        {serviciosCatalogo.length} Servicios
+                        {serviciosCatalogo.length} Modelos Registrados
                       </span>
                     </h3>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      Configuración de precios de Gas Comunal, CLAP y alícuota de autogestión (Art. 51 Num. 3 LOCC).
+                      Configuración de precios de Gas Comunal (10kg, 18kg, 43kg), costo proveedor y alícuota de autogestión (Art. 51 Num. 3 LOCC).
                     </p>
                   </div>
                 </div>
@@ -5969,6 +6037,7 @@ export default function Dashboard({ user, onLogout }) {
                       nombre: '',
                       categoria: 'GAS',
                       costo_base_usd: 1.0,
+                      precio_usd: 1.0,
                       alicuota_autogestion_usd: 0.5,
                       descripcion: '',
                       activo: 1,
@@ -5978,7 +6047,7 @@ export default function Dashboard({ user, onLogout }) {
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow-md shadow-amber-500/20 transition shrink-0"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>+ Agregar Servicio</span>
+                  <span>+ Agregar Modelo de Bombona</span>
                 </button>
               </div>
 
@@ -5989,12 +6058,14 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
               ) : serviciosCatalogo.length === 0 ? (
                 <div className="p-6 text-center text-xs text-slate-400 bg-slate-950/60 rounded-2xl border border-slate-800">
-                  No hay servicios registrados. Haz clic en "+ Agregar Servicio" para registrar bombonas de gas u otros productos.
+                  No hay cilindros registrados. Haz clic en "+ Agregar Modelo de Bombona" para registrar bombonas de 10kg, 18kg o 43kg.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {serviciosCatalogo.map((serv) => {
-                    const totalUsd = Number(serv.costo_base_usd || 0) + Number(serv.alicuota_autogestion_usd || 0);
+                    const precioBase = Number(serv.costo_base_usd !== undefined ? serv.costo_base_usd : (serv.precio_usd || 0));
+                    const alicuota = Number(serv.alicuota_autogestion_usd || 0);
+                    const totalUsd = precioBase + alicuota;
                     const totalBs = totalUsd * Number(tasaBcv);
                     return (
                       <div
@@ -6020,15 +6091,15 @@ export default function Dashboard({ user, onLogout }) {
 
                           <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
                             <div className="flex justify-between text-[11px] text-slate-300">
-                              <span>Costo Proveedor:</span>
-                              <span className="font-mono">${Number(serv.costo_base_usd || 0).toFixed(2)} USD</span>
+                              <span>Costo Base / Proveedor:</span>
+                              <span className="font-mono font-bold text-white">${precioBase.toFixed(2)} USD</span>
                             </div>
                             <div className="flex justify-between text-[11px] text-amber-300">
                               <span>Alícuota Autogestión:</span>
-                              <span className="font-mono font-bold">+${Number(serv.alicuota_autogestion_usd || 0).toFixed(2)} USD</span>
+                              <span className="font-mono font-bold">+${alicuota.toFixed(2)} USD</span>
                             </div>
                             <div className="flex justify-between pt-1 border-t border-slate-800 font-bold text-white">
-                              <span>Total a Declarar:</span>
+                              <span>Total Vecino:</span>
                               <div className="text-right">
                                 <span className="font-bold text-emerald-400 block">${totalUsd.toFixed(2)} USD</span>
                                 <span className="text-[10px] text-slate-400 font-mono">≈ Bs. {totalBs.toFixed(2)}</span>
@@ -6043,7 +6114,7 @@ export default function Dashboard({ user, onLogout }) {
                             onClick={() => toggleActivoServicio(serv)}
                             className="text-[11px] font-semibold text-slate-400 hover:text-white transition"
                           >
-                            {serv.activo ? 'Desactivar' : 'Activar'}
+                            {serv.activo ? 'Pausar' : 'Activar'}
                           </button>
                           <button
                             type="button"
@@ -6053,17 +6124,18 @@ export default function Dashboard({ user, onLogout }) {
                                 id: serv.id,
                                 nombre: serv.nombre,
                                 categoria: serv.categoria || 'GAS',
-                                costo_base_usd: serv.costo_base_usd,
-                                alicuota_autogestion_usd: serv.alicuota_autogestion_usd,
+                                costo_base_usd: precioBase,
+                                precio_usd: precioBase,
+                                alicuota_autogestion_usd: alicuota,
                                 descripcion: serv.descripcion || '',
-                                activo: serv.activo,
+                                activo: serv.activo !== undefined ? serv.activo : 1,
                               });
                               setModalServicio(true);
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-bold transition flex items-center gap-1 border border-slate-700"
+                            className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold transition flex items-center gap-1 border border-amber-500/30"
                           >
                             <Edit className="w-3 h-3" />
-                            <span>Editar</span>
+                            <span>Configurar Precio</span>
                           </button>
                         </div>
                       </div>
@@ -6072,8 +6144,10 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
               )}
             </div>
+            )}
 
             {/* SECCIÓN 4: CONVOCATORIAS DE JORNADAS DE SERVICIOS (DISTRIBUCIÓN DE GAS Y OTROS) */}
+            {(configSubTab === 'todo' || configSubTab === 'jornadas') && (
             <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-3">
@@ -6114,65 +6188,70 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {jornadas.map((jorn) => (
-                    <div
-                      key={jorn.id}
-                      className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-slate-750 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-extrabold text-white text-sm">{jorn.titulo}</h4>
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold ${
-                            jorn.estado === 'ACTIVA'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : 'bg-slate-800 text-slate-400'
-                          }`}>
-                            {jorn.estado}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                            Máx {jorn.max_unidades_por_familia} unid / familia censada
-                          </span>
+                  {jornadas.map((jorn) => {
+                    const isActiva = (jorn.estado === 'ACTIVA' || jorn.estado === 'ABIERTA');
+                    return (
+                      <div
+                        key={jorn.id}
+                        className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-slate-750 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-extrabold text-white text-sm">{jorn.titulo}</h4>
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold ${
+                              isActiva
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+                            }`}>
+                              {isActiva ? '● ACTIVA (Visible en Portal Vecinos)' : '○ DESACTIVADA (Oculta en Portal)'}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                              Máx {jorn.max_unidades_por_familia} unid / familia censada
+                            </span>
+                          </div>
+                          <p className="text-slate-400 text-[11px]">
+                            Inicio: <strong className="text-slate-200">{jorn.fecha_inicio}</strong>
+                            {jorn.fecha_fin && <> · Cierre: <strong className="text-slate-200">{jorn.fecha_fin}</strong></>}
+                            {jorn.descripcion && <> · {jorn.descripcion}</>}
+                          </p>
                         </div>
-                        <p className="text-slate-400 text-[11px]">
-                          Inicio: <strong className="text-slate-200">{jorn.fecha_inicio}</strong>
-                          {jorn.fecha_fin && <> · Cierre: <strong className="text-slate-200">{jorn.fecha_fin}</strong></>}
-                          {jorn.descripcion && <> · {jorn.descripcion}</>}
-                        </p>
-                      </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setJornadaSeleccionadaId(jorn.id);
-                            setPagosSubTab('servicios');
-                            navigateTo('pagos');
-                          }}
-                          className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-blue-400" />
-                          <span>Ver Aportes</span>
-                        </button>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setJornadaSeleccionadaId(jorn.id);
+                              setPagosSubTab('servicios');
+                              navigateTo('pagos');
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-blue-400" />
+                            <span>Ver Aportes</span>
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => cambiarEstadoJornada(jorn.id, jorn.estado === 'ACTIVA' ? 'CERRADA' : 'ACTIVA')}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 ${
-                            jorn.estado === 'ACTIVA'
-                              ? 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30'
-                              : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/30'
-                          }`}
-                        >
-                          <span>{jorn.estado === 'ACTIVA' ? 'Cerrar Jornada' : 'Activar Jornada'}</span>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => cambiarEstadoJornada(jorn.id, isActiva ? 'CERRADA' : 'ACTIVA')}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                              isActiva
+                                ? 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border border-rose-500/30'
+                                : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/30'
+                            }`}
+                          >
+                            <span>{isActiva ? 'Desactivar Jornada (Ocultar)' : 'Activar Jornada (Mostrar)'}</span>
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
+            )}
 
             {/* SECCIÓN: VALORES Y GRATUIDAD POR TIPO DE DOCUMENTO */}
+            {(configSubTab === 'todo' || configSubTab === 'tarifas') && (
             <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-3">
@@ -6296,8 +6375,10 @@ export default function Dashboard({ user, onLogout }) {
                 </button>
               </div>
             </div>
+            )}
 
             {/* SECCIÓN: PRESETS OFICIALES (LOGOS E IMÁGENES DEL SISTEMA & MODELADOR) */}
+            {(configSubTab === 'todo' || configSubTab === 'general') && (
             <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-3">
@@ -6388,8 +6469,10 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
               )}
             </div>
+            )}
 
             {/* SECCIÓN: CATÁLOGOS OFICIALES Y SISTEMA DE SELECCIONES (PARENTESCO, INSTRUCCIÓN, SALUD) */}
+            {(configSubTab === 'todo' || configSubTab === 'general') && (
             <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-3">
@@ -6587,11 +6670,15 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
               )}
             </div>
+            )}
 
             {/* SECCIÓN: CONFIGURADOR TERRITORIAL (VEREDAS A–O Y CASAS) */}
-            <ConfiguradorTerritorio />
+            {(configSubTab === 'todo' || configSubTab === 'territorio') && (
+              <ConfiguradorTerritorio />
+            )}
 
             {/* ZONA DE PELIGRO / PASE A PRODUCCIÓN */}
+            {(configSubTab === 'todo' || configSubTab === 'general') && (
             <div className="p-6 rounded-3xl bg-red-950/20 border border-red-500/30 space-y-3">
               <div className="flex items-start gap-3">
                 <div className="p-2.5 bg-red-500/10 rounded-xl text-red-400 mt-0.5">
@@ -6632,6 +6719,7 @@ export default function Dashboard({ user, onLogout }) {
                 </button>
               </div>
             </div>
+            )}
           </div>
         )}
 

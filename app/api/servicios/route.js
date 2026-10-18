@@ -137,8 +137,15 @@ export async function GET(request) {
 
     // 1. Catálogo completo de servicios
     if (action === 'catalogo') {
-      const res = await db.execute('SELECT * FROM servicios_catalogo WHERE activo = 1 ORDER BY categoria ASC, id ASC');
-      return NextResponse.json({ catalogo: res.rows });
+      const res = await db.execute('SELECT *, precio_usd as costo_base_usd FROM servicios_catalogo ORDER BY categoria ASC, id ASC');
+      const rows = res.rows.map(r => ({
+        ...r,
+        precio_usd: Number(r.precio_usd || 0),
+        costo_base_usd: Number(r.precio_usd || 0),
+        alicuota_autogestion_usd: Number(r.alicuota_autogestion_usd || 0),
+        activo: Number(r.activo)
+      }));
+      return NextResponse.json({ catalogo: rows, servicios: rows });
     }
 
     // 2. Lista de Jornadas de Servicios
@@ -150,15 +157,64 @@ export async function GET(request) {
     // 3. Jornada Activa para que los vecinos soliciten
     if (action === 'jornada_activa') {
       const cat = searchParams.get('categoria') || '';
-      let sql = "SELECT * FROM jornadas_servicios WHERE estado = 'ABIERTA'";
+      let sql = "SELECT * FROM jornadas_servicios WHERE UPPER(estado) IN ('ABIERTA', 'ACTIVA')";
       const args = [];
       if (cat) {
-        sql += " AND categoria = ?";
+        sql += " AND UPPER(categoria) = ?";
         args.push(cat.toUpperCase());
       }
       sql += " ORDER BY id DESC LIMIT 1";
       const res = await db.execute({ sql, args });
-      return NextResponse.json({ jornada: res.rows[0] || null });
+      const jornada = res.rows[0] || null;
+
+      if (jornada) {
+        // Enlazar con los precios vigentes del catálogo
+        const catRes = await db.execute('SELECT * FROM servicios_catalogo WHERE activo = 1');
+        const catMap = new Map();
+        catRes.rows.forEach(c => {
+          catMap.set(c.codigo, c);
+          catMap.set(String(c.id), c);
+        });
+
+        let items = [];
+        try {
+          items = typeof jornada.items_json === 'string' ? JSON.parse(jornada.items_json) : (jornada.items_json || []);
+        } catch (e) {
+          items = [];
+        }
+
+        if (items.length > 0) {
+          items = items.map(it => {
+            const match = catMap.get(it.codigo) || catMap.get(String(it.id));
+            if (match) {
+              return {
+                ...it,
+                nombre: match.nombre || it.nombre,
+                precio_usd: Number(match.precio_usd),
+                costo_base_usd: Number(match.precio_usd),
+                alicuota_autogestion_usd: Number(match.alicuota_autogestion_usd),
+              };
+            }
+            return it;
+          });
+        } else {
+          items = catRes.rows
+            .filter(c => !cat || c.categoria?.toUpperCase() === cat.toUpperCase())
+            .map(c => ({
+              id: c.id,
+              codigo: c.codigo,
+              nombre: c.nombre,
+              precio_usd: Number(c.precio_usd),
+              costo_base_usd: Number(c.precio_usd),
+              alicuota_autogestion_usd: Number(c.alicuota_autogestion_usd),
+            }));
+        }
+
+        jornada.items_json = JSON.stringify(items);
+        return NextResponse.json({ activa: true, jornada });
+      }
+
+      return NextResponse.json({ activa: false, jornada: null });
     }
 
     // 4. Solicitudes de una Jornada (para administración)
@@ -427,8 +483,9 @@ export async function POST(request) {
 
     // 1. Crear nuevo Servicio en el Catálogo
     if (action === 'crear_servicio') {
-      const { codigo, categoria, nombre, descripcion, precio_usd, alicuota_autogestion_usd } = body;
-      if (!nombre || !precio_usd) {
+      const { codigo, categoria, nombre, descripcion, precio_usd, costo_base_usd, alicuota_autogestion_usd } = body;
+      const precioFinal = precio_usd !== undefined ? precio_usd : costo_base_usd;
+      if (!nombre || precioFinal === undefined || precioFinal === null) {
         return NextResponse.json({ error: 'Nombre y Precio en USD son obligatorios' }, { status: 400 });
       }
 
@@ -442,7 +499,7 @@ export async function POST(request) {
           (categoria || 'GAS').toUpperCase(),
           nombre,
           descripcion || '',
-          Number(precio_usd),
+          Number(precioFinal),
           Number(alicuota_autogestion_usd || 0),
           now,
           now
@@ -454,7 +511,7 @@ export async function POST(request) {
         usuario_id: currentUser.id,
         usuario_nombre: currentUser.nombre,
         request,
-        detalles: { accion: `Creó servicio "${nombre}" en catálogo con costo $${precio_usd}` }
+        detalles: { accion: `Creó servicio "${nombre}" en catálogo con costo $${precioFinal} y alícuota $${alicuota_autogestion_usd || 0}` }
       });
 
       return NextResponse.json({ success: true, message: 'Servicio creado exitosamente en el catálogo' });
@@ -462,7 +519,8 @@ export async function POST(request) {
 
     // 2. Editar Servicio del Catálogo
     if (action === 'editar_servicio') {
-      const { id, nombre, categoria, descripcion, precio_usd, alicuota_autogestion_usd, activo } = body;
+      const { id, nombre, categoria, descripcion, precio_usd, costo_base_usd, alicuota_autogestion_usd, activo } = body;
+      const precioFinal = precio_usd !== undefined ? precio_usd : costo_base_usd;
       if (!id || !nombre) {
         return NextResponse.json({ error: 'ID y Nombre son obligatorios' }, { status: 400 });
       }
@@ -475,7 +533,7 @@ export async function POST(request) {
           nombre,
           (categoria || 'GAS').toUpperCase(),
           descripcion || '',
-          Number(precio_usd),
+          Number(precioFinal !== undefined ? precioFinal : 1.0),
           Number(alicuota_autogestion_usd || 0),
           activo !== undefined ? (activo ? 1 : 0) : 1,
           now,
@@ -499,7 +557,7 @@ export async function POST(request) {
         sql: `INSERT INTO jornadas_servicios (
           codigo, titulo, categoria, descripcion, fecha_inicio, fecha_cierre,
           estado, max_unidades_por_familia, items_json, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'ABIERTA', ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, 'ACTIVA', ?, ?, ?, ?)`,
         args: [
           codJornada,
           titulo,
@@ -531,19 +589,33 @@ export async function POST(request) {
       return NextResponse.json({ success: true, message: 'Jornada creada y abierta exitosamente' });
     }
 
-    // 4. Cambiar Estado de la Jornada (ABIERTA, EN_PROCESO, CERRADA)
+    // 4. Cambiar Estado de la Jornada (ACTIVA, CERRADA)
     if (action === 'cambiar_estado_jornada') {
       const { id, estado } = body;
       if (!id || !estado) {
         return NextResponse.json({ error: 'ID y Estado son obligatorios' }, { status: 400 });
       }
 
+      const nuevoEstado = (estado.toUpperCase() === 'ACTIVA' || estado.toUpperCase() === 'ABIERTA') ? 'ACTIVA' : 'CERRADA';
+
       await db.execute({
         sql: 'UPDATE jornadas_servicios SET estado = ?, updated_at = ? WHERE id = ?',
-        args: [estado.toUpperCase(), now, Number(id)]
+        args: [nuevoEstado, now, Number(id)]
       });
 
-      return NextResponse.json({ success: true, message: `Jornada cambiada a estado ${estado}` });
+      await registrarAuditoria({
+        tipo_evento: 'ESTADO_JORNADA_SERVICIO_ACTUALIZADO',
+        usuario_id: currentUser.id,
+        usuario_nombre: currentUser.nombre,
+        request,
+        detalles: {
+          jornada_id: id,
+          nuevo_estado: nuevoEstado,
+          accion: `Cambió estado de jornada #${id} a ${nuevoEstado}`
+        }
+      });
+
+      return NextResponse.json({ success: true, message: `Jornada cambiada a estado ${nuevoEstado}`, nuevo_estado: nuevoEstado });
     }
 
     // 5. Cambiar Estado de una Declaración de Aporte de Vecino (VERIFICADO, ENTREGADO, RECHAZADO)

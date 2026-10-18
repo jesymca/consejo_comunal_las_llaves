@@ -8,6 +8,8 @@ export default function HeroAndActions({
   onBuscarCedula,
   onOpenRegistro,
   onOpenServicios,
+  hasActiveJornada,
+  jornadaActiva,
   vecinoBuscado,
   isSearching,
   tasaBcv,
@@ -148,8 +150,8 @@ export default function HeroAndActions({
 
         </div>
 
-        {/* Banner de Jornadas de Servicios / Gas Comunal y Aportes */}
-        {onOpenServicios && (
+        {/* Banner de Jornadas de Servicios / Gas Comunal y Aportes (Sólo visible si la jornada está ACTIVA en Configuración) */}
+        {hasActiveJornada && onOpenServicios && (
           <div className="max-w-4xl mx-auto p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-amber-950/40 via-slate-900/90 to-amber-950/30 border border-amber-500/40 shadow-xl text-left flex flex-col sm:flex-row items-center justify-between gap-4 mb-8">
             <div className="flex items-start gap-3.5">
               <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 mt-0.5">
@@ -160,13 +162,20 @@ export default function HeroAndActions({
                   <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
                     Servicios Comunales · LOCC Art. 51
                   </span>
-                  <span className="text-[11px] text-amber-200/90 font-semibold">Jornada Activa de Gas & Servicios</span>
+                  <span className="text-[11px] text-amber-200/90 font-semibold">
+                    {jornadaActiva?.titulo || 'Jornada Activa de Gas Comunal'}
+                  </span>
+                  {jornadaActiva?.max_unidades_por_familia && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">
+                      Máx. {jornadaActiva.max_unidades_por_familia} unidades / familia
+                    </span>
+                  )}
                 </div>
                 <h3 className="text-sm sm:text-base font-bold text-white">
                   Aportes Comunitarios y Declaración de Pagos de Servicios
                 </h3>
                 <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
-                  Participa en las jornadas comunales de Gas (bombonas de 10kg, 18kg, 43kg), declara tus transferencias / pago móvil bancario y consulta el historial consolidado de tus aportes.
+                  Participa en la jornada de distribución de gas doméstico, declara tu transferencia bancaria o pago móvil y obtén tu comprobante digital de autogestión.
                 </p>
               </div>
             </div>
