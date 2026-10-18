@@ -168,47 +168,84 @@ export async function GET(request) {
       const jornada = res.rows[0] || null;
 
       if (jornada) {
-        // Enlazar con los precios vigentes del catálogo
-        const catRes = await db.execute('SELECT * FROM servicios_catalogo WHERE activo = 1');
-        const catMap = new Map();
+        // Enlazar EXCLUSIVAMENTE con los modelos activos vigentes del catálogo (activo = 1)
+        const catRes = await db.execute('SELECT * FROM servicios_catalogo WHERE activo = 1 ORDER BY id ASC');
+        const catByCodigo = new Map();
+        const catById = new Map();
         catRes.rows.forEach(c => {
-          catMap.set(c.codigo, c);
-          catMap.set(String(c.id), c);
+          if (c.codigo) catByCodigo.set(String(c.codigo).toUpperCase().trim(), c);
+          catById.set(String(c.id), c);
         });
 
-        let items = [];
+        let rawItems = [];
         try {
-          items = typeof jornada.items_json === 'string' ? JSON.parse(jornada.items_json) : (jornada.items_json || []);
+          rawItems = typeof jornada.items_json === 'string' ? JSON.parse(jornada.items_json) : (jornada.items_json || []);
         } catch (e) {
-          items = [];
+          rawItems = [];
         }
 
-        if (items.length > 0) {
-          items = items.map(it => {
-            const match = catMap.get(it.codigo) || catMap.get(String(it.id));
-            if (match) {
-              return {
-                ...it,
-                nombre: match.nombre || it.nombre,
-                precio_usd: Number(match.precio_usd),
-                costo_base_usd: Number(match.precio_usd),
-                alicuota_autogestion_usd: Number(match.alicuota_autogestion_usd),
-              };
+        const seenKeys = new Set();
+        const items = [];
+
+        // 1. Filtrar los items de la jornada:
+        // OBLIGATORIO: Solo incluir items que existan y estén ACTIVOS en servicios_catalogo (activo = 1)
+        // OBLIGATORIO: Si el item tiene código, buscar ÚNICAMENTE por código en el catálogo.
+        // NUNCA usar id como fallback si tiene código para evitar que un ID desactualizado coincida con otro cilindro.
+        if (Array.isArray(rawItems) && rawItems.length > 0) {
+          for (const it of rawItems) {
+            let match = null;
+            if (it.codigo) {
+              match = catByCodigo.get(String(it.codigo).toUpperCase().trim());
+            } else if (it.id) {
+              match = catById.get(String(it.id));
             }
-            return it;
-          });
-        } else {
-          items = catRes.rows
-            .filter(c => !cat || c.categoria?.toUpperCase() === cat.toUpperCase())
-            .map(c => ({
-              id: c.id,
-              codigo: c.codigo,
-              nombre: c.nombre,
-              precio_usd: Number(c.precio_usd),
-              costo_base_usd: Number(c.precio_usd),
-              alicuota_autogestion_usd: Number(c.alicuota_autogestion_usd),
-            }));
+
+            // Si el item fue desactivado (activo = 0) o no existe en catálogo activo, SE DESCARTA
+            if (!match || (match.activo !== 1 && match.activo !== true && match.activo !== '1')) {
+              continue;
+            }
+
+            // Deduplicación estricta por código (o id si no tiene código)
+            const dedupeKey = String(match.codigo || match.id).toUpperCase().trim();
+            if (seenKeys.has(dedupeKey)) continue;
+            seenKeys.add(dedupeKey);
+
+            items.push({
+              id: match.id,
+              codigo: match.codigo,
+              categoria: match.categoria,
+              nombre: match.nombre,
+              descripcion: match.descripcion || '',
+              precio_usd: Number(match.precio_usd || 0),
+              costo_base_usd: Number(match.precio_usd || 0),
+              alicuota_autogestion_usd: Number(match.alicuota_autogestion_usd || 0),
+              activo: 1,
+            });
+          }
         }
+
+        // 2. Si la jornada es de una categoría particular (ej. GAS) y en el catálogo hay servicios activos adicionales de esa categoría
+        // o si items_json quedó vacío, incorporamos los cilindros activos del catálogo
+        const categoriaTarget = (jornada.categoria || cat || 'GAS').toUpperCase();
+        catRes.rows
+          .filter(c => !categoriaTarget || c.categoria?.toUpperCase() === categoriaTarget)
+          .forEach(c => {
+            const dedupeKey = String(c.codigo || c.id).toUpperCase().trim();
+            if (!seenKeys.has(dedupeKey)) {
+              seenKeys.add(dedupeKey);
+              items.push({
+                id: c.id,
+                codigo: c.codigo,
+                categoria: c.categoria,
+                nombre: c.nombre,
+                descripcion: c.descripcion || '',
+                precio_usd: Number(c.precio_usd || 0),
+                costo_base_usd: Number(c.precio_usd || 0),
+                alicuota_autogestion_usd: Number(c.alicuota_autogestion_usd || 0),
+                activo: 1,
+              });
+            }
+          });
 
         jornada.items_json = JSON.stringify(items);
         return NextResponse.json({ activa: true, jornada });
@@ -341,7 +378,8 @@ export async function POST(request) {
       }
 
       const jornada = jorRes.rows[0];
-      if (jornada.estado !== 'ABIERTA') {
+      const estJornada = (jornada.estado || '').toUpperCase();
+      if (estJornada !== 'ABIERTA' && estJornada !== 'ACTIVA') {
         return NextResponse.json({ error: 'Esta jornada de servicios no se encuentra abierta para recepción de pagos' }, { status: 400 });
       }
 
@@ -547,8 +585,23 @@ export async function POST(request) {
     // 3. Crear Nueva Jornada de Servicios
     if (action === 'crear_jornada') {
       const { titulo, categoria, descripcion, fecha_inicio, fecha_cierre, max_unidades_por_familia, items } = body;
-      if (!titulo || !items || !Array.isArray(items) || items.length === 0) {
-        return NextResponse.json({ error: 'Título y productos de la jornada son obligatorios' }, { status: 400 });
+      if (!titulo || !titulo.trim()) {
+        return NextResponse.json({ error: 'Título de la jornada es obligatorio' }, { status: 400 });
+      }
+
+      let itemsList = items;
+      if (!itemsList || !Array.isArray(itemsList) || itemsList.length === 0) {
+        const catItemsRes = await db.execute({
+          sql: 'SELECT * FROM servicios_catalogo WHERE activo = 1 AND UPPER(categoria) = ?',
+          args: [(categoria || 'GAS').toUpperCase()]
+        });
+        itemsList = catItemsRes.rows.map(c => ({
+          id: c.id,
+          codigo: c.codigo,
+          nombre: c.nombre,
+          precio_usd: Number(c.precio_usd || 0),
+          alicuota_autogestion_usd: Number(c.alicuota_autogestion_usd || 0)
+        }));
       }
 
       const codJornada = `JOR-${(categoria || 'GAS').toUpperCase()}-${Date.now().toString().slice(-6)}`;
@@ -566,7 +619,7 @@ export async function POST(request) {
           fecha_inicio || now.split('T')[0],
           fecha_cierre || new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
           Number(max_unidades_por_familia) || 2,
-          JSON.stringify(items),
+          JSON.stringify(itemsList),
           now,
           now
         ]

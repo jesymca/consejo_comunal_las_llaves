@@ -54,13 +54,20 @@ export default function ModalServicios({ onClose, tasaBcv = 875.65 }) {
 
       if (jorRes.jornada) {
         setJornadaActiva(jorRes.jornada);
-        // Inicializar cantidades en 0
+        // Inicializar cantidades en 0 únicamente para items activos
         try {
-          const items = typeof jorRes.jornada.items_json === 'string'
+          const raw = typeof jorRes.jornada.items_json === 'string'
             ? JSON.parse(jorRes.jornada.items_json)
             : (jorRes.jornada.items_json || []);
           const initCants = {};
-          items.forEach(it => { initCants[it.id || it.codigo] = 0; });
+          if (Array.isArray(raw)) {
+            raw.forEach(it => {
+              if (it && it.activo !== 0 && it.activo !== false && it.activo !== '0') {
+                const k = it.codigo || it.id;
+                initCants[k] = 0;
+              }
+            });
+          }
           setCantidades(initCants);
         } catch (e) {}
       }
@@ -103,13 +110,26 @@ export default function ModalServicios({ onClose, tasaBcv = 875.65 }) {
     }
   };
 
-  // Calcular items de la jornada
+  // Calcular items de la jornada (estrictamente activos y deduplicados)
   const itemsJornada = (() => {
     if (!jornadaActiva || !jornadaActiva.items_json) return [];
     try {
-      return typeof jornadaActiva.items_json === 'string'
+      const list = typeof jornadaActiva.items_json === 'string'
         ? JSON.parse(jornadaActiva.items_json)
         : jornadaActiva.items_json;
+      if (!Array.isArray(list)) return [];
+
+      const seen = new Set();
+      const result = [];
+      for (const it of list) {
+        if (!it) continue;
+        if (it.activo === 0 || it.activo === false || it.activo === '0') continue;
+        const key = String(it.codigo || it.id).toUpperCase().trim();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(it);
+      }
+      return result;
     } catch (e) {
       return [];
     }
@@ -137,7 +157,8 @@ export default function ModalServicios({ onClose, tasaBcv = 875.65 }) {
   const itemsParaEnviar = [];
 
   itemsJornada.forEach(it => {
-    const cant = Number(cantidades[it.id || it.codigo] || 0);
+    const itemKey = it.codigo || it.id;
+    const cant = Number(cantidades[itemKey] !== undefined ? cantidades[itemKey] : (cantidades[it.id] || 0));
     if (cant > 0) {
       const pu = Number(it.precio_usd || 0);
       const ali = Number(it.alicuota_autogestion_usd || 0);
@@ -481,50 +502,55 @@ export default function ModalServicios({ onClose, tasaBcv = 875.65 }) {
                   </div>
 
                   <div className="space-y-2">
-                    {itemsJornada.map((it) => {
-                      const idKey = it.id || it.codigo;
-                      const cant = Number(cantidades[idKey] || 0);
-                      const pu = Number(it.precio_usd || 0);
-                      const subtotalBsItem = Number((cant * pu * tasaBcv).toFixed(2));
+                    {itemsJornada.length === 0 ? (
+                      <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 text-center text-xs text-slate-400">
+                        No hay modelos de cilindros activos configurados para esta jornada.
+                      </div>
+                    ) : (
+                      itemsJornada.map((it) => {
+                        const idKey = it.codigo || it.id;
+                        const cant = Number(cantidades[idKey] !== undefined ? cantidades[idKey] : (cantidades[it.id] || 0));
+                        const pu = Number(it.precio_usd || 0);
 
-                      return (
-                        <div
-                          key={idKey}
-                          className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-3"
-                        >
-                          <div>
-                            <span className="text-xs font-bold text-white block">
-                              {it.nombre}
-                            </span>
-                            <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
-                              <span>${pu.toFixed(2)} USD</span>
-                              <span>·</span>
-                              <span>Autogestión incl.: ${Number(it.alicuota_autogestion_usd || 0).toFixed(2)}</span>
+                        return (
+                          <div
+                            key={idKey}
+                            className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-3"
+                          >
+                            <div>
+                              <span className="text-xs font-bold text-white block">
+                                {it.nombre}
+                              </span>
+                              <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                                <span>${pu.toFixed(2)} USD</span>
+                                <span>·</span>
+                                <span>Autogestión incl.: ${Number(it.alicuota_autogestion_usd || 0).toFixed(2)}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => cambiarCantidad(idKey, -1)}
+                                className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center justify-center text-sm border border-slate-700"
+                              >
+                                -
+                              </button>
+                              <span className="w-6 text-center font-bold text-xs text-white">
+                                {cant}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => cambiarCantidad(idKey, 1)}
+                                className="w-7 h-7 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold flex items-center justify-center text-sm"
+                              >
+                                +
+                              </button>
                             </div>
                           </div>
-
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => cambiarCantidad(idKey, -1)}
-                              className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center justify-center text-sm border border-slate-700"
-                            >
-                              -
-                            </button>
-                            <span className="w-6 text-center font-bold text-xs text-white">
-                              {cant}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => cambiarCantidad(idKey, 1)}
-                              className="w-7 h-7 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold flex items-center justify-center text-sm"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </div>
 
                   {/* Resumen de Costo y Tasa BCV */}
