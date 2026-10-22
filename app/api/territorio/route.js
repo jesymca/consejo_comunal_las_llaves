@@ -154,8 +154,8 @@ export async function PUT(request) {
 export async function DELETE(request) {
   try {
     const currentUser = extractUserFromRequest(request);
-    if (!currentUser || (currentUser.rol !== 'SUPER_ADMIN' && currentUser.rol !== 'ADMIN')) {
-      return NextResponse.json({ error: 'Solo administradores pueden gestionar casas' }, { status: 403 });
+    if (!currentUser || currentUser.rol !== 'SUPER_ADMIN') {
+      return NextResponse.json({ error: 'Acceso restringido: Solo el SUPER_ADMIN puede eliminar casas del territorio comunal' }, { status: 403 });
     }
     await asegurarTablaTerritorio();
     const id = new URL(request.url).searchParams.get('id');

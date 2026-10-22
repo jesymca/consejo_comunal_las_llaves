@@ -9,7 +9,7 @@ import {
   Calendar, Clock, UserCheck, ShieldAlert, Sun, Moon, Image as ImageIcon,
   ListPlus, Store, FileCheck, Printer, Activity, Globe, Laptop, Smartphone,
   ChevronDown, ChevronRight, User, Shield, Flame, Building2, CreditCard,
-  Gift, Layers, CheckSquare, Sparkles, Hash, Copy,
+  Gift, Layers, CheckSquare, Sparkles, Hash, Copy, Database,
   UserX, Ban, Phone, Mail
 } from 'lucide-react';
 import { 
@@ -130,6 +130,17 @@ export default function Dashboard({ user, onLogout }) {
   const [planillasCenso, setPlanillasCenso] = useState([]);
   const [modalCenso, setModalCenso] = useState(false);
   const [planillaActiva, setPlanillaActiva] = useState(null);
+  const [numeroPlanillaModal, setNumeroPlanillaModal] = useState('');
+
+  // Generador cliente de códigos alfanuméricos aleatorios únicos (ej: PLC-A0A0A0)
+  const generarNumeroPlanillaAlfanumericoClient = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let rand = '';
+    for (let i = 0; i < 6; i++) {
+      rand += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return `PLC-${rand}`;
+  };
   const [censoForm, setCensoForm] = useState({
     numero_planilla: '',
     fecha: new Date().toISOString().split('T')[0],
@@ -288,6 +299,27 @@ export default function Dashboard({ user, onLogout }) {
         estadisticas: false,
         auditoria: false,
       });
+    } else if (presetName === 'CONTRALORIA') {
+      // Perfil de Contraloría Social: Supervisar y Aprobar (Sin CRUD Total)
+      setPermisosForm({
+        vecinos: true,
+        censo: true,
+        documentos: true,
+        pagos: true,
+        firmas: false,
+        firmas_edit: false,
+        modelador: false,
+        modelador_edit: false,
+        estadisticas: true,
+        auditoria: true,
+        vecinos_crear: false,
+        censo_masivo: false,
+        vecinos_editar: false,
+        vecinos_aprobar: true, // Aprobar vecinos inscritos externamente
+        vecinos_eliminar: false,
+        docs_emitir: true,
+        docs_anular: false,
+      });
     } else if (presetName === 'ADMIN') {
       setPermisosForm({
         vecinos: true,
@@ -372,6 +404,11 @@ export default function Dashboard({ user, onLogout }) {
   const [resetCheckAudit, setResetCheckAudit] = useState(true);
   const [resetCargando, setResetCargando] = useState(false);
   const [mostrarPasswordUsuario, setMostrarPasswordUsuario] = useState(false);
+
+  // Estados de Respaldo Integral de Base de Datos
+  const [backupStats, setBackupStats] = useState(null);
+  const [loadingBackupStats, setLoadingBackupStats] = useState(false);
+  const [descargandoBackup, setDescargandoBackup] = useState(false);
 
   // Estados de Servicios y Jornadas Comunales (Gas, CLAP, etc.)
   const [serviciosCatalogo, setServiciosCatalogo] = useState([]);
@@ -511,7 +548,7 @@ export default function Dashboard({ user, onLogout }) {
     if (currentTab === 'modelador') cargarModelador();
     if (currentTab === 'usuarios' && user?.rol === 'SUPER_ADMIN') cargarUsuarios();
     if (currentTab === 'auditoria') cargarAuditoria();
-    if (currentTab === 'configuracion') { cargarConfiguracion(); cargarServiciosCatalogo(); cargarJornadas(); }
+    if (currentTab === 'configuracion') { cargarConfiguracion(); cargarServiciosCatalogo(); cargarJornadas(); if (user?.rol === 'SUPER_ADMIN') cargarBackupStats(); }
     if (currentTab === 'estadisticas') cargarEstadisticas();
   }, [currentTab, filtroVereda, filtroCasa, filtroEstado, filtroBusqueda]);
 
@@ -1072,8 +1109,58 @@ export default function Dashboard({ user, onLogout }) {
       cargarModelador();
       cargarPresetsImagenes();
       cargarCatalogosSistema();
+      if (user?.rol === 'SUPER_ADMIN') {
+        cargarBackupStats();
+      }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const cargarBackupStats = async () => {
+    try {
+      setLoadingBackupStats(true);
+      const res = await fetch('/api/configuracion/backup?info=1');
+      if (res.ok) {
+        const d = await res.json();
+        setBackupStats(d);
+      }
+    } catch (e) {
+      console.error('Error al obtener estadísticas de la base de datos:', e);
+    } finally {
+      setLoadingBackupStats(false);
+    }
+  };
+
+  const descargarBackup = async (formato = 'json') => {
+    try {
+      setDescargandoBackup(true);
+      toast.info(`Generando respaldo integral de la BD (${formato.toUpperCase()})...`);
+      const res = await fetch(`/api/configuracion/backup?format=${formato}`);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || 'Error al generar respaldo');
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('content-disposition') || '';
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const filename = match ? match[1] : `respaldo_cc_las_llaves_${Date.now()}.${formato}`;
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`Respaldo descargado exitosamente: ${filename}`);
+      cargarBackupStats();
+    } catch (err) {
+      toast.error(err.message || 'Error al descargar respaldo de la base de datos');
+    } finally {
+      setDescargandoBackup(false);
     }
   };
 
@@ -2375,51 +2462,68 @@ export default function Dashboard({ user, onLogout }) {
                 <p className="text-xs text-slate-400">Planillas oficiales por vivienda, registro de familias y habitantes</p>
               </div>
 
-              <button
-                onClick={async () => {
-                  try {
-                    const res = await fetch('/api/censo?proximo_numero=1').then(r => r.json());
-                    const nextNum = res.sugerido || `PLC-${String(Date.now()).slice(-4)}`;
-                    setPlanillaActiva({
-                      planilla: {
-                        numero_planilla: nextNum,
-                        fecha: new Date().toISOString().split('T')[0],
-                        empadronador_nombre: user?.nombre || '',
-                        calle_vereda_av: 'A',
-                        numero_casa: '',
-                        telefono_contacto: '',
-                        tenencia_vivienda: 'Propia',
-                        tiempo_residencia_desde: '',
-                        total_familias: 1,
-                        total_habitantes: 1,
-                        observaciones: ''
-                      },
-                      habitantes: [
-                        {
-                          numero_familia: 1,
-                          nombres_apellidos: '',
-                          cedula: '',
-                          sexo: 'M',
-                          fecha_nacimiento: '',
-                          parentesco: 'a',
-                          instruccion: 'c',
-                          profesion_ocupacion: '',
-                          salud: 'e',
-                          telefono_movil: ''
-                        }
-                      ]
-                    });
-                    setModalCenso(true);
-                  } catch (e) {
-                    setPlanillaActiva(null);
-                    setModalCenso(true);
-                  }
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition shadow-md shadow-blue-600/30"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Nueva Planilla de Censo</span>
-              </button>
+              {user?.rol !== 'CONTRALORIA' && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/censo?proximo_numero=1').then(r => r.json()).catch(() => ({}));
+                      const nextNum = res.sugerido || generarNumeroPlanillaAlfanumericoClient();
+                      setNumeroPlanillaModal(nextNum);
+                      toast.info(`Número de planilla asignado: ${nextNum}. Recuerde anotarlo en la planilla física.`);
+                      setPlanillaActiva({
+                        planilla: {
+                          numero_planilla: nextNum,
+                          fecha: new Date().toISOString().split('T')[0],
+                          empadronador_nombre: user?.nombre || '',
+                          calle_vereda_av: 'A',
+                          numero_casa: '',
+                          telefono_contacto: '',
+                          tenencia_vivienda: 'Propia',
+                          tiempo_residencia_desde: '',
+                          total_familias: 1,
+                          total_habitantes: 1,
+                          observaciones: ''
+                        },
+                        habitantes: [
+                          {
+                            numero_familia: 1,
+                            nombres_apellidos: '',
+                            cedula: '',
+                            sexo: 'M',
+                            fecha_nacimiento: '',
+                            parentesco: 'a',
+                            instruccion: 'c',
+                            profesion_ocupacion: '',
+                            salud: 'e',
+                            telefono_movil: ''
+                          }
+                        ]
+                      });
+                      setModalCenso(true);
+                    } catch (e) {
+                      const fallbackNum = generarNumeroPlanillaAlfanumericoClient();
+                      setNumeroPlanillaModal(fallbackNum);
+                      setPlanillaActiva({
+                        planilla: {
+                          numero_planilla: fallbackNum,
+                          fecha: new Date().toISOString().split('T')[0],
+                          empadronador_nombre: user?.nombre || '',
+                          calle_vereda_av: 'A',
+                          numero_casa: '',
+                          total_familias: 1,
+                          total_habitantes: 1,
+                        },
+                        habitantes: []
+                      });
+                      setModalCenso(true);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition shadow-md shadow-blue-600/30"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Nueva Planilla de Censo</span>
+                </button>
+              )}
             </div>
 
             {/* Listado de Planillas de Censo */}
@@ -2430,30 +2534,35 @@ export default function Dashboard({ user, onLogout }) {
                 <p className="text-xs text-slate-400 max-w-md mx-auto mb-4">
                   Registra la primera vivienda con sus respectivos núcleos familiares y habitantes.
                 </p>
-                <button
-                  onClick={async () => {
-                    const res = await fetch('/api/censo?proximo_numero=1').then(r => r.json()).catch(() => ({}));
-                    setPlanillaActiva({
-                      planilla: {
-                        numero_planilla: res.sugerido || 'PLC-0001',
-                        fecha: new Date().toISOString().split('T')[0],
-                        empadronador_nombre: user?.nombre || '',
-                        calle_vereda_av: 'A',
-                        numero_casa: '',
-                        telefono_contacto: '',
-                        tenencia_vivienda: 'Propia',
-                        total_familias: 1,
-                        total_habitantes: 1,
-                      },
-                      habitantes: [{ numero_familia: 1, nombres_apellidos: '', cedula: '', sexo: 'M', parentesco: 'a', instruccion: 'c', salud: 'e' }]
-                    });
-                    setModalCenso(true);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/30 flex items-center justify-center gap-1.5 mx-auto"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Crear Planilla</span>
-                </button>
+                {user?.rol !== 'CONTRALORIA' && (
+                  <button
+                    onClick={async () => {
+                      const res = await fetch('/api/censo?proximo_numero=1').then(r => r.json()).catch(() => ({}));
+                      const nextNum = res.sugerido || generarNumeroPlanillaAlfanumericoClient();
+                      setNumeroPlanillaModal(nextNum);
+                      toast.info(`Número de planilla asignado: ${nextNum}. Recuerde anotarlo en la planilla física.`);
+                      setPlanillaActiva({
+                        planilla: {
+                          numero_planilla: nextNum,
+                          fecha: new Date().toISOString().split('T')[0],
+                          empadronador_nombre: user?.nombre || '',
+                          calle_vereda_av: 'A',
+                          numero_casa: '',
+                          telefono_contacto: '',
+                          tenencia_vivienda: 'Propia',
+                          total_familias: 1,
+                          total_habitantes: 1,
+                        },
+                        habitantes: [{ numero_familia: 1, nombres_apellidos: '', cedula: '', sexo: 'M', parentesco: 'a', instruccion: 'c', salud: 'e' }]
+                      });
+                      setModalCenso(true);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/30 flex items-center justify-center gap-1.5 mx-auto"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Crear Planilla</span>
+                  </button>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2486,19 +2595,20 @@ export default function Dashboard({ user, onLogout }) {
                       <button
                         onClick={async () => {
                           const res = await fetch(`/api/censo?id=${p.id}`).then(r => r.json());
+                          setNumeroPlanillaModal(res?.planilla?.numero_planilla || p.numero_planilla);
                           setPlanillaActiva(res);
                           setModalCenso(true);
                         }}
                         className="flex-1 py-2 px-3 rounded-xl bg-blue-600/15 hover:bg-blue-600/30 text-blue-300 border border-blue-500/20 text-xs font-semibold transition flex items-center justify-center gap-1.5"
                       >
                         <Edit className="w-3.5 h-3.5" />
-                        <span>Ver / Editar</span>
+                        <span>Ver / {user?.rol === 'CONTRALORIA' ? 'Detalle' : 'Editar'}</span>
                       </button>
 
-                      {checkPermiso('censo') && (
+                      {user?.rol === 'SUPER_ADMIN' && (
                         <button
                           onClick={async () => {
-                            if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente la Planilla N° ${p.numero_planilla} (Vereda ${p.calle_vereda_av}, Casa ${p.numero_casa}) y todos sus habitantes?`)) {
+                            if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente la Planilla N° ${p.numero_planilla} (Vereda ${p.calle_vereda_av}, Casa ${p.numero_casa}) y todos sus habitantes? Esta acción solo puede realizarla el SUPER_ADMIN.`)) {
                               return;
                             }
                             try {
@@ -2514,7 +2624,7 @@ export default function Dashboard({ user, onLogout }) {
                               toast.error('Error de conexión al eliminar');
                             }
                           }}
-                          title="Eliminar Planilla"
+                          title="Eliminar Planilla (Exclusivo SUPER_ADMIN)"
                           className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -5579,6 +5689,7 @@ export default function Dashboard({ user, onLogout }) {
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                             u.rol === 'SUPER_ADMIN' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
                             u.rol === 'ADMIN' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20' :
+                            u.rol === 'CONTRALORIA' ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30' :
                             'bg-amber-500/15 text-amber-400 border border-amber-500/20'
                           }`}>
                             {u.rol}
@@ -5610,7 +5721,7 @@ export default function Dashboard({ user, onLogout }) {
                       <div>
                         <span className="text-[10px] text-slate-500 block uppercase font-bold">Perfil</span>
                         <span className="text-slate-300 font-medium truncate block">
-                          {u.rol === 'SUPER_ADMIN' ? 'Control Total' : esCensista ? 'Digitalizador' : esEmisorDocs ? 'Emisor Docs' : 'Personalizado'}
+                          {u.rol === 'SUPER_ADMIN' ? 'Control Total' : u.rol === 'CONTRALORIA' ? 'Contraloría (Ver y Aprobar)' : esCensista ? 'Digitalizador' : esEmisorDocs ? 'Emisor Docs' : u.rol === 'ADMIN' ? 'Administrador' : 'Personalizado'}
                         </span>
                       </div>
                       {(u.email || u.telefono) && (
@@ -5722,6 +5833,7 @@ export default function Dashboard({ user, onLogout }) {
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                               u.rol === 'SUPER_ADMIN' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
                               u.rol === 'ADMIN' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20' :
+                              u.rol === 'CONTRALORIA' ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30' :
                               'bg-amber-500/15 text-amber-400 border border-amber-500/20'
                             }`}>
                               {u.rol}
@@ -5732,6 +5844,10 @@ export default function Dashboard({ user, onLogout }) {
                             {u.rol === 'SUPER_ADMIN' ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-300">
                                 <ShieldCheck className="w-3 h-3 text-purple-400" /> Control Total
+                              </span>
+                            ) : u.rol === 'CONTRALORIA' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-teal-500/15 text-teal-300 border border-teal-500/20">
+                                <ShieldCheck className="w-3 h-3 text-teal-400" /> Contraloría (Ver y Aprobar)
                               </span>
                             ) : esCensista ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
@@ -5826,7 +5942,8 @@ export default function Dashboard({ user, onLogout }) {
             <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pb-1">
               {[
                 { id: 'todo', label: 'Ver Todo' },
-                { id: 'gas', label: '🔥 Cilindros de Gas y Precios', highlight: true },
+                { id: 'respaldo', label: '💾 Respaldo Base de Datos', highlight: true },
+                { id: 'gas', label: '🔥 Cilindros de Gas y Precios' },
                 { id: 'jornadas', label: '📅 Jornadas Comunales' },
                 { id: 'banco', label: '🏦 Cuenta Bancaria' },
                 { id: 'cupo', label: '🎁 Cupo Gratuito' },
@@ -7036,6 +7153,163 @@ export default function Dashboard({ user, onLogout }) {
               <ConfiguradorTerritorio />
             )}
 
+            {/* SECCIÓN: RESPALDO INTEGRAL DE BASE DE DATOS */}
+            {(configSubTab === 'todo' || configSubTab === 'respaldo') && (
+              <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-5 text-xs shadow-2xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-blue-600/20 text-blue-400 rounded-2xl border border-blue-500/30">
+                      <Database className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+                        <span>Copia de Seguridad y Respaldo de Base de Datos</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                          Super Admin
+                        </span>
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Exportación completa de todas las tablas, esquemas, registros de vecinos, censo, solicitudes y bitácora
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={cargarBackupStats}
+                    disabled={loadingBackupStats}
+                    className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-750 text-slate-300 hover:text-white flex items-center gap-1.5 transition text-xs shrink-0 self-start sm:self-auto"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingBackupStats ? 'animate-spin' : ''}`} />
+                    <span>Actualizar Diagnóstico</span>
+                  </button>
+                </div>
+
+                {/* Tarjetas de Diagnóstico y Estado */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 block">Tablas del Sistema</span>
+                    <span className="text-lg font-black text-white font-mono">
+                      {loadingBackupStats ? '...' : (backupStats?.totalTablas || '—')}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">Tablas activas</span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 block">Total de Registros</span>
+                    <span className="text-lg font-black text-emerald-400 font-mono">
+                      {loadingBackupStats ? '...' : (backupStats?.totalRegistros ?? '—')}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">Filas en BD</span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 block">Motor de Datos</span>
+                    <span className="text-xs font-bold text-purple-300 truncate block">
+                      {backupStats?.motor || 'Turso LibSQL Cloud'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">SQLite Compatible</span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 block">Último Respaldo</span>
+                    <span className="text-[11px] font-semibold text-slate-300 truncate block">
+                      {backupStats?.ultimoRespaldo
+                        ? new Date(backupStats.ultimoRespaldo).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' })
+                        : 'Nunca'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">Registro auditable</span>
+                  </div>
+                </div>
+
+                {/* Botones de Descarga en Formatos Oficiales */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                  
+                  {/* Tarjeta Opción 1: JSON Estructurado */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-950/30 to-slate-950 border border-blue-500/30 flex flex-col justify-between gap-3">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                          JSON
+                        </span>
+                        <h3 className="font-bold text-white text-xs">Respaldo Integral Estructurado</h3>
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        Exporta metadatos, esquemas DDL y todos los objetos JSON de cada tabla. Ideal para migraciones, análisis automatizado o almacenamiento offline.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={descargandoBackup}
+                      onClick={() => descargarBackup('json')}
+                      className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>{descargandoBackup ? 'Generando Archivo...' : 'Descargar Respaldo JSON (.json)'}</span>
+                    </button>
+                  </div>
+
+                  {/* Tarjeta Opción 2: Volcado SQL */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-950/30 to-slate-950 border border-emerald-500/30 flex flex-col justify-between gap-3">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                          SQL DUMP
+                        </span>
+                        <h3 className="font-bold text-white text-xs">Volcado SQL Ejecutable Directo</h3>
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        Script estándar con sentencias <code className="text-emerald-300 font-mono">CREATE TABLE</code> e <code className="text-emerald-300 font-mono">INSERT OR REPLACE</code> dentro de una transacción. Listo para restaurar en Turso o SQLite.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={descargandoBackup}
+                      onClick={() => descargarBackup('sql')}
+                      className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>{descargandoBackup ? 'Generando Volcado...' : 'Descargar Volcado SQL (.sql)'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Desglose de Tablas Existentes */}
+                {backupStats?.tablas && backupStats.tablas.length > 0 && (
+                  <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-2.5">
+                    <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wide block">
+                      📋 Desglose de Contenido por Tablas:
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                      {backupStats.tablas.map((t) => (
+                        <div
+                          key={t.nombre}
+                          className="p-2.5 rounded-xl bg-slate-900 border border-slate-800/80 flex items-center justify-between gap-2"
+                        >
+                          <span className="font-mono text-slate-300 font-semibold truncate text-[11px]" title={t.nombre}>
+                            {t.nombre}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-slate-800 text-slate-300 shrink-0">
+                            {t.registros} reg.
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recomendaciones de Seguridad Comunal */}
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800/80 flex items-start gap-3 text-slate-400">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <p className="text-[11px] leading-relaxed">
+                    <strong className="text-slate-200">Recomendación de Resguardo Comunitario:</strong> Se aconseja descargar un respaldo periódico (semanal o tras jornadas masivas de censo) y guardarlo en una memoria USB o almacenamiento seguro fuera de línea como salvaguarda del patrimonio digital del Consejo Comunal Las Llaves.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* ZONA DE PELIGRO / PASE A PRODUCCIÓN */}
             {(configSubTab === 'todo' || configSubTab === 'general') && (
             <div className="p-6 rounded-3xl bg-red-950/20 border border-red-500/30 space-y-3">
@@ -7786,7 +8060,7 @@ export default function Dashboard({ user, onLogout }) {
                 }
 
                 const payload = {
-                  numero_planilla: (formData.get('numero_planilla') || '').trim(),
+                  numero_planilla: (numeroPlanillaModal || formData.get('numero_planilla') || '').trim(),
                   fecha: formData.get('fecha') || new Date().toISOString().split('T')[0],
                   empadronador_nombre: (formData.get('empadronador_nombre') || user?.nombre || '').trim(),
                   calle_vereda_av: formData.get('calle_vereda_av'),
@@ -7823,19 +8097,71 @@ export default function Dashboard({ user, onLogout }) {
               }}
               className="space-y-6 text-xs"
             >
+              {/* ALERTA OBLIGATORIA AL TRANSCRIPTOR */}
+              <div className="p-4 rounded-2xl bg-amber-500/10 border-2 border-amber-500/50 text-amber-200 flex items-start gap-3.5 shadow-xl shadow-amber-950/30">
+                <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl shrink-0 mt-0.5">
+                  <AlertTriangle className="w-5 h-5 animate-pulse" />
+                </div>
+                <div className="space-y-1.5 flex-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="font-black text-sm text-amber-300 tracking-wide uppercase flex items-center gap-1.5">
+                      <span>⚠️ ATENCIÓN OBLIGATORIA AL TRANSCRIPTOR</span>
+                    </h4>
+                    <span className="font-mono text-xs px-2.5 py-1 rounded-lg bg-slate-900 border border-amber-500/40 text-amber-300 font-extrabold tracking-wider shadow">
+                      CÓDIGO ASIGNADO: {numeroPlanillaModal || planillaActiva?.planilla?.numero_planilla || 'PLC-A0A0A0'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-100/90 leading-relaxed">
+                    Antes de guardar, <strong className="text-white underline font-black">debe escribir a mano este número de planilla</strong> en la parte superior del formato físico en papel. Al utilizar identificadores alfanuméricos aleatorios únicos (ej: <span className="font-mono text-amber-300 font-bold">PLC-A0A0A0</span>), evitamos huecos y planillas vacías si un formulario físico no se llegara a procesar.
+                  </p>
+                </div>
+              </div>
+
               {/* ENCABEZADO: Planilla N°, Fecha, Empadronador */}
               <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-slate-300 font-bold mb-1">Planilla N° *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-slate-300 font-bold">Planilla N° *</label>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newCode = generarNumeroPlanillaAlfanumericoClient();
+                          setNumeroPlanillaModal(newCode);
+                          toast.info(`Nuevo código asignado: ${newCode}. Escríbalo en la planilla física.`);
+                        }}
+                        title="Generar nuevo código alfanumérico aleatorio"
+                        className="px-2 py-0.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-[10px] font-bold flex items-center gap-1 transition"
+                      >
+                        <Sparkles className="w-3 h-3 text-amber-400" />
+                        <span>Nuevo Código</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = numeroPlanillaModal || planillaActiva?.planilla?.numero_planilla;
+                          if (val) {
+                            navigator.clipboard?.writeText(val);
+                            toast.success(`Copiado al portapapeles: ${val}`);
+                          }
+                        }}
+                        title="Copiar código"
+                        className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] transition"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
                   <input
                     type="text"
                     name="numero_planilla"
                     required
-                    defaultValue={planillaActiva?.planilla?.numero_planilla || ''}
-                    placeholder="Ej: PLC-0001"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white font-mono font-bold tracking-wide focus:border-blue-500 outline-none"
+                    value={numeroPlanillaModal}
+                    onChange={(e) => setNumeroPlanillaModal(e.target.value.toUpperCase())}
+                    placeholder="Ej: PLC-A0A0A0"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white font-mono font-bold tracking-wider focus:border-blue-500 outline-none uppercase"
                   />
-                  <span className="text-[10px] text-slate-500 mt-0.5 block">Identificador correlativo único</span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">Identificador alfanumérico único aleatorio (Ej: PLC-A0A0A0)</span>
                 </div>
 
                 <div>
@@ -8696,7 +9022,7 @@ export default function Dashboard({ user, onLogout }) {
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
                 ⚡ Perfiles Rápidos Preconfigurados:
               </span>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                 <button
                   type="button"
                   onClick={() => aplicarPreset('CENSISTA')}
@@ -8721,6 +9047,19 @@ export default function Dashboard({ user, onLogout }) {
                 >
                   <span className="text-xs font-bold block text-blue-400">Emisor Docs</span>
                   <span className="text-[10px] text-slate-400">Emisión de Constancias y Consulta Censo</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => aplicarPreset('CONTRALORIA')}
+                  className={`p-2 rounded-xl text-left border transition ${
+                    presetSeleccionado === 'CONTRALORIA'
+                      ? 'bg-teal-600/20 border-teal-500 text-white shadow-md'
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <span className="text-xs font-bold block text-teal-400">Contraloría</span>
+                  <span className="text-[10px] text-slate-400">Solo Ver y Aprobar (Vecinos externos, sin CRUD)</span>
                 </button>
 
                 <button
@@ -8921,6 +9260,7 @@ export default function Dashboard({ user, onLogout }) {
                     className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white disabled:opacity-50"
                   >
                     <option value="VOCERO">VOCERO (Nivel estándar restringible)</option>
+                    <option value="CONTRALORIA">CONTRALORIA (Contraloría Social - Solo Ver y Aprobar)</option>
                     <option value="ADMIN">ADMIN (Nivel administrativo)</option>
                     {usuarioEditando?.rol === 'SUPER_ADMIN' && (
                       <option value="SUPER_ADMIN">SUPER_ADMIN (Acceso Total)</option>

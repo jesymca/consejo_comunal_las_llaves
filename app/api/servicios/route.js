@@ -702,8 +702,11 @@ export async function POST(request) {
       return NextResponse.json({ success: true, message: 'Jornada actualizada exitosamente' });
     }
 
-    // 5. Eliminar Jornada de Servicios
+    // 5. Eliminar Jornada de Servicios (Solo SUPER_ADMIN)
     if (action === 'eliminar_jornada') {
+      if (!currentUser || currentUser.rol !== 'SUPER_ADMIN') {
+        return NextResponse.json({ error: 'Acceso restringido: Solo el SUPER_ADMIN puede eliminar jornadas comunales' }, { status: 403 });
+      }
       const { id, forzar } = body;
       if (!id) {
         return NextResponse.json({ error: 'ID de la jornada es obligatorio' }, { status: 400 });

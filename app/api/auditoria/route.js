@@ -33,6 +33,7 @@ const CATALOGO_EVENTOS = {
   EDICION_MODELADOR_PLANTILLA: { etiqueta: 'Edición de Plantilla / Cabecera / Footer SVG', categoria: 'ADMINISTRACION', critico: true, interno: true },
   ACTUALIZACION_CONFIGURACION: { etiqueta: 'Actualización de Configuración General', categoria: 'ADMINISTRACION', critico: true, interno: true },
   GESTION_TERRITORIO: { etiqueta: 'Modificación de Veredas y Casas', categoria: 'ADMINISTRACION', critico: true, interno: true },
+  RESPALDO_BASE_DATOS: { etiqueta: 'Respaldo Integral de Base de Datos', categoria: 'ADMINISTRACION', critico: true, interno: true },
   SISTEMA_REINICIADO_A_PRODUCCION: { etiqueta: 'Reinicio de Base de Datos a Producción', categoria: 'ADMINISTRACION', critico: true, interno: true },
   NAVEGACION_MODULO: { etiqueta: 'Ingreso / Navegación en Módulo del Sistema', categoria: 'NAVEGACION', critico: false, interno: true },
   EXPORTACION_REPORTE: { etiqueta: 'Generación de Reporte / Exportación de Datos', categoria: 'NAVEGACION', critico: false, interno: true },
@@ -114,6 +115,9 @@ function construirResumenDetalle(row, detallesObj) {
   }
   if (t === 'GESTION_TERRITORIO') {
     return `${d.accion || 'Gestión territorial'} en Vereda ${d.vereda || ''}`;
+  }
+  if (t === 'RESPALDO_BASE_DATOS') {
+    return `Descargó respaldo integral de la BD (${d.formato || 'JSON'} - ${d.total_tablas || 0} tablas, ${d.total_registros || 0} registros)`;
   }
   if (t === 'NAVEGACION_MODULO') {
     return `Accedió al módulo "${d.modulo_nombre || d.modulo || 'Panel'}" ${d.descripcion ? `- ${d.descripcion}` : ''}`.trim();

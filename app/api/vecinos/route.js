@@ -177,6 +177,11 @@ export async function POST(request) {
 
       // Si quien crea es un usuario logueado con permiso de censo
       const currentUser = extractUserFromRequest(request);
+      if (currentUser && currentUser.rol === 'CONTRALORIA' && action === 'create') {
+        return NextResponse.json({
+          error: 'El perfil de Contraloría solo tiene autorización para supervisar, ver y aprobar registros de vecinos, no para creación directa'
+        }, { status: 403 });
+      }
       let estadoInicial = 'PENDIENTE';
       let aprobadoPorId = null;
       let aprobadoPorNombre = null;

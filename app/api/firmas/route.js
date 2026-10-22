@@ -161,8 +161,8 @@ export async function PUT(request) {
 export async function DELETE(request) {
   try {
     const currentUser = extractUserFromRequest(request);
-    if (!currentUser || (!hasPermission(currentUser, 'firmas') && !hasPermission(currentUser, 'firmas_edit'))) {
-      return NextResponse.json({ error: 'No autorizado para eliminar firmas' }, { status: 403 });
+    if (!currentUser || currentUser.rol !== 'SUPER_ADMIN') {
+      return NextResponse.json({ error: 'Acceso restringido: Solo el SUPER_ADMIN puede eliminar firmas y sellos oficiales' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);

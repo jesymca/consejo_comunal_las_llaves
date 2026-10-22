@@ -160,8 +160,8 @@ export async function PUT(request) {
 export async function DELETE(request) {
   try {
     const user = extractUserFromRequest(request);
-    if (!user || (user.rol !== 'SUPER_ADMIN' && user.rol !== 'ADMIN')) {
-      return NextResponse.json({ error: 'Solo administradores pueden eliminar presets oficiales' }, { status: 403 });
+    if (!user || user.rol !== 'SUPER_ADMIN') {
+      return NextResponse.json({ error: 'Acceso restringido: Solo el SUPER_ADMIN puede eliminar presets oficiales' }, { status: 403 });
     }
 
     await asegurarTablaPresets();
