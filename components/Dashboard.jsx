@@ -639,6 +639,31 @@ export default function Dashboard({ user, onLogout }) {
     }
   };
 
+  const agregarHabitanteACenso = () => {
+    const actuales = planillaActiva?.habitantes && planillaActiva.habitantes.length > 0
+      ? planillaActiva.habitantes
+      : [{ numero_familia: 1, nombres_apellidos: '', sexo: 'M', parentesco: 'a', instruccion: 'c', salud: 'e' }];
+
+    const nuevoHab = {
+      numero_familia: actuales[actuales.length - 1]?.numero_familia || 1,
+      nombres_apellidos: '',
+      cedula: '',
+      sexo: 'M',
+      fecha_nacimiento: '',
+      parentesco: 'c',
+      instruccion: 'c',
+      profesion_ocupacion: '',
+      salud: 'e',
+      telefono_movil: ''
+    };
+
+    setPlanillaActiva({
+      ...planillaActiva,
+      habitantes: [...actuales, nuevoHab]
+    });
+    toast.success(`Habitante #${actuales.length + 1} incorporado`);
+  };
+
   const cargarFirmas = async () => {
     try {
       const res = await fetch('/api/firmas');
@@ -8028,7 +8053,7 @@ export default function Dashboard({ user, onLogout }) {
                 {planillaActiva?.planilla?.id ? `Editar Planilla N° ${planillaActiva.planilla.numero_planilla}` : 'Instrumento de Censo Sociodemográfico y Familiar'}
               </h2>
               <p className="text-xs text-slate-400">
-                1 Planilla física por Vivienda • Permite registrar múltiples familias y hasta 15 integrantes por casa
+                1 Planilla por Vivienda • Permite registrar múltiples familias e integrantes sin límite por vivienda
               </p>
             </div>
 
@@ -8262,7 +8287,6 @@ export default function Dashboard({ user, onLogout }) {
                       type="number"
                       name="total_habitantes"
                       min="1"
-                      max="20"
                       defaultValue={planillaActiva?.planilla?.total_habitantes || (planillaActiva?.habitantes?.length || 1)}
                       className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white font-bold focus:border-blue-500 outline-none"
                     />
@@ -8275,36 +8299,14 @@ export default function Dashboard({ user, onLogout }) {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
                   <div className="flex items-center gap-2 text-white font-bold text-sm">
                     <span className="w-5 h-5 rounded-full bg-emerald-600/30 text-emerald-400 flex items-center justify-center text-xs">II</span>
-                    <span>SECCIÓN II: REGISTRO SOCIODEMOGRÁFICO POR HABITANTE (HASTA 15)</span>
+                    <span>SECCIÓN II: REGISTRO SOCIODEMOGRÁFICO POR HABITANTE</span>
                   </div>
 
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        const actuales = planillaActiva?.habitantes || [{ numero_familia: 1, nombres_apellidos: '', sexo: 'M' }];
-                        if (actuales.length >= 15) {
-                          toast.error('Capacidad máxima por planilla alcanzada (15 habitantes)');
-                          return;
-                        }
-                        const nuevoHab = {
-                          numero_familia: actuales[actuales.length - 1]?.numero_familia || 1,
-                          nombres_apellidos: '',
-                          cedula: '',
-                          sexo: 'M',
-                          fecha_nacimiento: '',
-                          parentesco: 'c',
-                          instruccion: 'c',
-                          profesion_ocupacion: '',
-                          salud: 'e',
-                          telefono_movil: ''
-                        };
-                        setPlanillaActiva({
-                          ...planillaActiva,
-                          habitantes: [...actuales, nuevoHab]
-                        });
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 shadow"
+                      onClick={agregarHabitanteACenso}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 shadow transition"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Agregar Habitante</span>
@@ -8510,6 +8512,25 @@ export default function Dashboard({ user, onLogout }) {
                       </div>
                     </div>
                   ))}
+                </div>
+
+                {/* Botón al final de la SECCIÓN II para agregar nuevo habitante cómodamente */}
+                <div className="pt-3 pb-1 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-850 bg-slate-900/60 p-3.5 rounded-2xl border border-slate-800">
+                  <div className="flex items-center gap-2 text-xs text-slate-300">
+                    <Users className="w-4 h-4 text-emerald-400" />
+                    <span>
+                      Total registrados en esta vivienda: <strong className="text-white font-mono font-bold">{(planillaActiva?.habitantes?.length || 1)}</strong> {((planillaActiva?.habitantes?.length || 1) === 1 ? 'persona' : 'personas')}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={agregarHabitanteACenso}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition border border-emerald-500/30 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Agregar Habitante #{(planillaActiva?.habitantes?.length || 1) + 1}</span>
+                  </button>
                 </div>
               </div>
 
