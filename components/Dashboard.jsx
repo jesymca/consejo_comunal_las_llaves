@@ -112,6 +112,7 @@ export default function Dashboard({ user, onLogout }) {
   const [filtroBusqueda, setFiltroBusqueda] = useState('');
   const [loadingVecinos, setLoadingVecinos] = useState(false);
   const [modalNuevoVecino, setModalNuevoVecino] = useState(false);
+  const [vecinoEditando, setVecinoEditando] = useState(null);
   const [modalImportarCsv, setModalImportarCsv] = useState(false);
   const [csvPreviewData, setCsvPreviewData] = useState(null);
 
@@ -120,6 +121,7 @@ export default function Dashboard({ user, onLogout }) {
   const [filtroDocTipo, setFiltroDocTipo] = useState('');
   const [filtroDocEstado, setFiltroDocEstado] = useState('');
   const [loadingDocs, setLoadingDocs] = useState(false);
+  const [documentoEditando, setDocumentoEditando] = useState(null);
 
   // Estados de módulo Aportes Comunitarios
   const [filtroPagoBusqueda, setFiltroPagoBusqueda] = useState('');
@@ -648,6 +650,97 @@ export default function Dashboard({ user, onLogout }) {
       cargarEstadisticas();
     } catch (e) {
       toast.error(e.message);
+    }
+  };
+
+  const rechazarVecino = async (vecinoId) => {
+    const motivo = prompt('Ingresa el motivo de rechazo o revocatoria de residencia:', 'RECHAZADO POR VALIDACIÓN COMUNAL');
+    if (motivo === null) return;
+    try {
+      const res = await fetch('/api/vecinos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reject', vecinoId, motivo: motivo.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(data.message || 'Vecino marcado como rechazado');
+      cargarVecinos();
+      cargarEstadisticas();
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
+  const abrirModalCrearVecino = () => {
+    setVecinoEditando(null);
+    setModalNuevoVecino(true);
+  };
+
+  const abrirModalEditarVecino = (v) => {
+    setVecinoEditando(v);
+    setModalNuevoVecino(true);
+  };
+
+  const eliminarVecino = async (v) => {
+    if (!confirm(`¿Estás seguro de que deseas ELIMINAR definitivamente del Padrón Comunal al vecino ${v.nombres} ${v.apellidos} (C.I. ${v.cedula})?`)) return;
+    try {
+      const res = await fetch(`/api/vecinos?id=${v.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(data.message || 'Vecino eliminado del padrón');
+      cargarVecinos();
+      cargarEstadisticas();
+    } catch (e) {
+      toast.error(e.message || 'Error al eliminar vecino');
+    }
+  };
+
+  const eliminarDocumento = async (doc) => {
+    if (!confirm(`¿Confirmas que deseas ELIMINAR permanentemente el documento ${doc.codigo_qr} (${doc.tipo_documento}) de ${doc.nombres_apellidos || doc.solicitante_nombre || doc.cedula}?`)) return;
+    try {
+      const res = await fetch(`/api/documentos?id=${doc.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(data.message || 'Documento eliminado permanentemente');
+      cargarDocumentos();
+      cargarEstadisticas();
+    } catch (e) {
+      toast.error(e.message || 'Error al eliminar documento');
+    }
+  };
+
+  const eliminarSolicitudServicio = async (sol) => {
+    if (!confirm(`¿Confirmas que deseas ELIMINAR la declaración de aporte #${sol.id} de ${sol.nombres_apellidos} (Ref: ${sol.numero_referencia || 'N/A'})?`)) return;
+    try {
+      const res = await fetch('/api/servicios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'eliminar_solicitud', id: sol.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(data.message || 'Declaración eliminada');
+      if (jornadaSeleccionadaId) cargarSolicitudesJornada(jornadaSeleccionadaId);
+    } catch (e) {
+      toast.error(e.message || 'Error al eliminar declaración');
+    }
+  };
+
+  const eliminarServicioCatalogo = async (serv) => {
+    if (!confirm(`¿Confirmas que deseas ELIMINAR el servicio "${serv.nombre}" del catálogo?`)) return;
+    try {
+      const res = await fetch('/api/servicios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'eliminar_servicio', id: serv.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(data.message || 'Servicio eliminado del catálogo');
+      cargarServiciosCatalogo();
+    } catch (e) {
+      toast.error(e.message || 'Error al eliminar servicio');
     }
   };
 
@@ -2151,7 +2244,7 @@ export default function Dashboard({ user, onLogout }) {
               <h3 className="text-sm font-bold text-white mb-4">Acciones Comunes de Gestión</h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <button
-                  onClick={() => { setModalNuevoVecino(true); navigateTo('vecinos'); }}
+                  onClick={() => { abrirModalCrearVecino(); navigateTo('vecinos'); }}
                   className="p-4 rounded-xl bg-slate-950 border border-slate-800 hover:border-blue-500/40 text-left transition"
                 >
                   <Plus className="w-5 h-5 text-blue-400 mb-2" />
@@ -2226,7 +2319,7 @@ export default function Dashboard({ user, onLogout }) {
 
                 {checkPermiso("vecinos_crear") && (
                   <button
-                    onClick={() => setModalNuevoVecino(true)}
+                    onClick={abrirModalCrearVecino}
                     className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition shadow-md shadow-blue-600/30"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -2349,14 +2442,49 @@ export default function Dashboard({ user, onLogout }) {
                             )}
                           </td>
                           <td className="px-4 py-3 text-right whitespace-nowrap">
-                            {v.estado_aprobacion === 'PENDIENTE' && checkPermiso('vecinos_aprobar') && (
-                              <button
-                                onClick={() => aprobarVecino(v.id)}
-                                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] transition shadow"
-                              >
-                                Aprobar
-                              </button>
-                            )}
+                            <div className="inline-flex items-center justify-end gap-1.5">
+                              {v.estado_aprobacion !== 'APROBADO' && checkPermiso('vecinos_aprobar') && (
+                                <button
+                                  onClick={() => aprobarVecino(v.id)}
+                                  title="Aprobar y validar residencia del vecino"
+                                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] transition shadow inline-flex items-center gap-1"
+                                >
+                                  <Check className="w-3 h-3" />
+                                  <span>Aprobar</span>
+                                </button>
+                              )}
+
+                              {v.estado_aprobacion !== 'RECHAZADO' && checkPermiso('vecinos_aprobar') && (
+                                <button
+                                  onClick={() => rechazarVecino(v.id)}
+                                  title="Rechazar o revocar estatus de aprobación"
+                                  className="p-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 transition"
+                                >
+                                  <Ban className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+
+                              {checkPermiso('vecinos_editar') && (
+                                <button
+                                  onClick={() => abrirModalEditarVecino(v)}
+                                  title="Editar todos los datos del vecino"
+                                  className="px-2 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 font-bold text-[11px] transition inline-flex items-center gap-1"
+                                >
+                                  <Edit className="w-3 h-3" />
+                                  <span>Editar</span>
+                                </button>
+                              )}
+
+                              {checkPermiso('vecinos_eliminar') && (
+                                <button
+                                  onClick={() => eliminarVecino(v)}
+                                  title="Eliminar vecino del Padrón Comunal"
+                                  className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 transition"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -2506,14 +2634,32 @@ export default function Dashboard({ user, onLogout }) {
                             >
                               <Download className="w-3.5 h-3.5" />
                             </button>
-                            {d.estado_calculado === 'VIGENTE' && (
+                            {d.estado_calculado === 'VIGENTE' && checkPermiso('docs_anular') && (
                               <button
                                 onClick={() => revocarDocumento(d.codigo_qr)}
                                 title="Revocar Documento"
-                                className="p-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-400"
+                                className="p-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-400"
                               >
-                                <X className="w-3.5 h-3.5" />
+                                <Ban className="w-3.5 h-3.5" />
                               </button>
+                            )}
+                            {user?.rol === 'SUPER_ADMIN' && (
+                              <>
+                                <button
+                                  onClick={() => setDocumentoEditando({ ...d })}
+                                  title="Editar Documento (SUPER_ADMIN)"
+                                  className="p-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-400"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => eliminarDocumento(d)}
+                                  title="Eliminar Documento Permanentemente (SUPER_ADMIN)"
+                                  className="p-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-400"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
                             )}
                           </td>
                         </tr>
@@ -3171,6 +3317,24 @@ export default function Dashboard({ user, onLogout }) {
                                   >
                                     <Download className="w-3.5 h-3.5" />
                                   </button>
+                                  {user?.rol === 'SUPER_ADMIN' && (
+                                    <>
+                                      <button
+                                        onClick={() => setDocumentoEditando(doc)}
+                                        title="Editar Registro del Documento"
+                                        className="p-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/30 text-amber-400 border border-amber-500/20 transition"
+                                      >
+                                        <Edit className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => eliminarDocumento(doc)}
+                                        title="Eliminar Documento Permanentemente"
+                                        className="p-1.5 rounded-lg bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 transition"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -3470,14 +3634,26 @@ export default function Dashboard({ user, onLogout }) {
                                   </td>
 
                                   <td className="py-3 px-3 text-center">
-                                    <button
-                                      type="button"
-                                      onClick={() => setReciboModalServicio(sol)}
-                                      className="p-1.5 rounded-lg bg-blue-600/15 hover:bg-blue-600/30 text-blue-400 border border-blue-500/20 transition"
-                                      title="Ver Comprobante Digital"
-                                    >
-                                      <Eye className="w-3.5 h-3.5" />
-                                    </button>
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => setReciboModalServicio(sol)}
+                                        className="p-1.5 rounded-lg bg-blue-600/15 hover:bg-blue-600/30 text-blue-400 border border-blue-500/20 transition"
+                                        title="Ver Comprobante Digital"
+                                      >
+                                        <Eye className="w-3.5 h-3.5" />
+                                      </button>
+                                      {user?.rol === 'SUPER_ADMIN' && (
+                                        <button
+                                          type="button"
+                                          onClick={() => eliminarSolicitudServicio(sol)}
+                                          className="p-1.5 rounded-lg bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 transition"
+                                          title="Eliminar Declaración de Servicio"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -6602,14 +6778,27 @@ export default function Dashboard({ user, onLogout }) {
                           </div>
                         </div>
 
-                        <div className="pt-2 border-t border-slate-850 flex items-center justify-between">
-                          <button
-                            type="button"
-                            onClick={() => toggleActivoServicio(serv)}
-                            className="text-[11px] font-semibold text-slate-400 hover:text-white transition"
-                          >
-                            {serv.activo ? 'Pausar' : 'Activar'}
-                          </button>
+                        <div className="pt-2 border-t border-slate-850 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleActivoServicio(serv)}
+                              className="text-[11px] font-semibold text-slate-400 hover:text-white transition"
+                            >
+                              {serv.activo ? 'Pausar' : 'Activar'}
+                            </button>
+                            {user?.rol === 'SUPER_ADMIN' && (
+                              <button
+                                type="button"
+                                onClick={() => eliminarServicioCatalogo(serv)}
+                                className="text-[11px] font-semibold text-red-400 hover:text-red-300 transition flex items-center gap-0.5"
+                                title="Eliminar rubro del catálogo"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Eliminar</span>
+                              </button>
+                            )}
+                          </div>
                           <button
                             type="button"
                             onClick={() => {
@@ -8616,26 +8805,36 @@ export default function Dashboard({ user, onLogout }) {
         </div>
       )}
 
-      {/* Modal Nuevo Registro de Vecino Individual */}
+      {/* Modal Nuevo / Editar Registro de Vecino Individual */}
       {modalNuevoVecino && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button
-              onClick={() => setModalNuevoVecino(false)}
+              onClick={() => {
+                setModalNuevoVecino(false);
+                setVecinoEditando(null);
+              }}
               className="absolute top-5 right-5 text-slate-400 hover:text-white"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <h3 className="text-lg font-bold text-white mb-1">Registrar Nuevo Vecino</h3>
-            <p className="text-xs text-slate-400 mb-4">Incorporación manual al Padrón Oficial de la Comunidad</p>
+            <h3 className="text-lg font-bold text-white mb-1">
+              {vecinoEditando ? 'Editar Vecino del Padrón' : 'Registrar Nuevo Vecino'}
+            </h3>
+            <p className="text-xs text-slate-400 mb-4">
+              {vecinoEditando
+                ? `Actualizando datos censales de ${vecinoEditando.nombres} ${vecinoEditando.apellidos}`
+                : 'Incorporación manual al Padrón Oficial de la Comunidad'}
+            </p>
 
             <form
+              key={vecinoEditando ? `edit-vecino-${vecinoEditando.id}` : 'new-vecino'}
               onSubmit={async (e) => {
                 e.preventDefault();
                 const formData = new FormData(e.target);
                 const payload = {
-                  action: 'create',
+                  ...(vecinoEditando ? { id: vecinoEditando.id } : { action: 'create' }),
                   cedula: (formData.get('cedula') || '').trim().toUpperCase(),
                   nombres: (formData.get('nombres') || '').trim().toUpperCase(),
                   apellidos: (formData.get('apellidos') || '').trim().toUpperCase(),
@@ -8648,57 +8847,89 @@ export default function Dashboard({ user, onLogout }) {
                   telefono: (formData.get('telefono') || '').trim(),
                   email: (formData.get('email') || '').trim(),
                 };
+                if (vecinoEditando && formData.get('estado_aprobacion')) {
+                  payload.estado_aprobacion = formData.get('estado_aprobacion');
+                }
+                if (vecinoEditando && formData.get('observaciones') !== null) {
+                  payload.observaciones = (formData.get('observaciones') || '').trim();
+                }
 
                 try {
                   const res = await fetch('/api/vecinos', {
-                    method: 'POST',
+                    method: vecinoEditando ? 'PUT' : 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
                   });
                   const d = await res.json();
                   if (res.ok) {
-                    toast.success(d.message || 'Vecino registrado satisfactoriamente');
+                    toast.success(
+                      d.message ||
+                        (vecinoEditando
+                          ? 'Datos del vecino actualizados correctamente'
+                          : 'Vecino registrado satisfactoriamente')
+                    );
                     setModalNuevoVecino(false);
+                    setVecinoEditando(null);
                     cargarVecinos();
                     cargarEstadisticas();
                   } else {
-                    toast.error(d.error || 'Error al registrar vecino');
+                    toast.error(d.error || 'Error al guardar vecino');
                   }
                 } catch (err) {
-                  toast.error('Error de red al registrar vecino');
+                  toast.error('Error de red al guardar vecino');
                 }
               }}
               className="space-y-4 text-xs"
             >
-              <div>
-                <label className="block text-slate-400 mb-1">Cédula de Identidad *</label>
-                <input
-                  type="text"
-                  name="cedula"
-                  required
-                  placeholder="V-12345678"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono font-bold focus:border-blue-500 outline-none"
-                />
+              <div className={vecinoEditando && checkPermiso('vecinos_aprobar') ? 'grid grid-cols-2 gap-3' : ''}>
+                <div>
+                  <label className="block text-slate-400 mb-1">Cédula de Identidad *</label>
+                  <input
+                    type="text"
+                    name="cedula"
+                    required
+                    defaultValue={vecinoEditando?.cedula || ''}
+                    onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
+                    placeholder="V-12345678"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono font-bold uppercase focus:border-blue-500 outline-none"
+                  />
+                </div>
+                {vecinoEditando && checkPermiso('vecinos_aprobar') && (
+                  <div>
+                    <label className="block text-slate-400 mb-1">Estatus en Padrón *</label>
+                    <select
+                      name="estado_aprobacion"
+                      defaultValue={vecinoEditando?.estado_aprobacion || 'APROBADO'}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-bold focus:border-blue-500 outline-none"
+                    >
+                      <option value="APROBADO">✅ APROBADO (En Padrón)</option>
+                      <option value="PENDIENTE">⏳ PENDIENTE</option>
+                      <option value="RECHAZADO">❌ RECHAZADO</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 mb-1">Nombres *</label>
+                  <label className="block text-slate-400 mb-1">Nombres (MAYÚSCULAS) *</label>
                   <input
                     type="text"
                     name="nombres"
                     required
+                    defaultValue={(vecinoEditando?.nombres || '').toUpperCase()}
                     onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
                     placeholder="EJ: PEDRO JOSÉ"
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white uppercase focus:border-blue-500 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1">Apellidos *</label>
+                  <label className="block text-slate-400 mb-1">Apellidos (MAYÚSCULAS) *</label>
                   <input
                     type="text"
                     name="apellidos"
                     required
+                    defaultValue={(vecinoEditando?.apellidos || '').toUpperCase()}
                     onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
                     placeholder="EJ: PÉREZ GÓMEZ"
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white uppercase focus:border-blue-500 outline-none"
@@ -8711,6 +8942,8 @@ export default function Dashboard({ user, onLogout }) {
                   idPrefix="vecino"
                   nameVereda="vereda"
                   nameCasa="casa"
+                  defaultVereda={vecinoEditando?.vereda || 'A'}
+                  defaultCasa={vecinoEditando?.casa || ''}
                   selectClassName="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
                 />
               </div>
@@ -8720,7 +8953,7 @@ export default function Dashboard({ user, onLogout }) {
                   <label className="block text-slate-400 mb-1">Sexo</label>
                   <select
                     name="sexo"
-                    defaultValue="M"
+                    defaultValue={vecinoEditando?.sexo || 'M'}
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
                   >
                     <option value="M">Masculino</option>
@@ -8732,6 +8965,7 @@ export default function Dashboard({ user, onLogout }) {
                   <input
                     type="text"
                     name="fecha_nacimiento"
+                    defaultValue={vecinoEditando?.fecha_nacimiento || ''}
                     placeholder="DD/MM/AAAA"
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
                   />
@@ -8743,7 +8977,7 @@ export default function Dashboard({ user, onLogout }) {
                   <label className="block text-slate-400 mb-1">Calidad de Tenencia</label>
                   <select
                     name="calidad_tenencia"
-                    defaultValue="Propia"
+                    defaultValue={vecinoEditando?.calidad_tenencia || 'Propia'}
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
                   >
                     {CALIDADES_TENENCIA.map(ct => <option key={ct} value={ct}>{ct}</option>)}
@@ -8754,6 +8988,7 @@ export default function Dashboard({ user, onLogout }) {
                   <input
                     type="text"
                     name="tiempo_residencia"
+                    defaultValue={vecinoEditando?.tiempo_residencia || ''}
                     placeholder="Ej: 10"
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
                   />
@@ -8766,6 +9001,7 @@ export default function Dashboard({ user, onLogout }) {
                   <input
                     type="text"
                     name="telefono"
+                    defaultValue={vecinoEditando?.telefono || ''}
                     placeholder="0414-1234567"
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
                   />
@@ -8775,10 +9011,231 @@ export default function Dashboard({ user, onLogout }) {
                   <input
                     type="email"
                     name="email"
+                    defaultValue={vecinoEditando?.email || ''}
                     placeholder="correo@ejemplo.com"
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
                   />
                 </div>
+              </div>
+
+              {vecinoEditando && (
+                <div>
+                  <label className="block text-slate-400 mb-1">Observaciones / Notas del Padrón</label>
+                  <input
+                    type="text"
+                    name="observaciones"
+                    defaultValue={vecinoEditando?.observaciones || ''}
+                    placeholder="Opcional: notas administrativas sobre el registro"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                  />
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2"
+              >
+                <Check className="w-4 h-4" />
+                <span>{vecinoEditando ? 'Guardar Cambios del Vecino' : 'Registrar Vecino en Padrón'}</span>
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Editar Documento Emitido (SUPER_ADMIN CRUD) */}
+      {documentoEditando && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setDocumentoEditando(null)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="text-lg font-bold text-white mb-1">Editar Documento Emitido</h3>
+            <p className="text-xs text-slate-400 mb-4">
+              Correlativo: <span className="font-mono font-bold text-blue-400">{documentoEditando.correlativo}</span>
+            </p>
+
+            <form
+              key={`edit-doc-${documentoEditando.id}`}
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const payload = {
+                  id: documentoEditando.id,
+                  cedula: (formData.get('cedula') || '').trim().toUpperCase(),
+                  nombres_apellidos: (formData.get('nombres_apellidos') || '').trim().toUpperCase(),
+                  vereda: (formData.get('vereda') || '').trim().toUpperCase(),
+                  casa: (formData.get('casa') || '').trim().toUpperCase(),
+                  tiempo_residencia: (formData.get('tiempo_residencia') || '').trim(),
+                  calidad_tenencia: formData.get('calidad_tenencia') || 'Propia',
+                  estado: formData.get('estado') || 'EMITIDO',
+                  fecha_emision: (formData.get('fecha_emision') || '').trim(),
+                  fecha_vencimiento: (formData.get('fecha_vencimiento') || '').trim(),
+                  monto_bs: Number(formData.get('monto_bs') || 0),
+                  monto_usd: Number(formData.get('monto_usd') || 0),
+                  banco_nombre: (formData.get('banco_nombre') || '').trim(),
+                  numero_transferencia: (formData.get('numero_transferencia') || '').trim(),
+                  motivo_exoneracion: (formData.get('motivo_exoneracion') || '').trim(),
+                };
+
+                try {
+                  const res = await fetch('/api/documentos', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                  });
+                  const d = await res.json();
+                  if (res.ok) {
+                    toast.success(d.message || 'Documento actualizado correctamente');
+                    setDocumentoEditando(null);
+                    cargarDocumentos();
+                    cargarEstadisticas();
+                  } else {
+                    toast.error(d.error || 'Error al actualizar documento');
+                  }
+                } catch (err) {
+                  toast.error('Error de red al actualizar documento');
+                }
+              }}
+              className="space-y-3.5 text-xs"
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Cédula *</label>
+                  <input
+                    type="text"
+                    name="cedula"
+                    required
+                    defaultValue={documentoEditando.cedula || ''}
+                    onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono font-bold uppercase focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">Estatus del Documento *</label>
+                  <select
+                    name="estado"
+                    defaultValue={documentoEditando.estado || 'EMITIDO'}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-bold focus:border-blue-500 outline-none"
+                  >
+                    <option value="EMITIDO">✅ EMITIDO (Válido)</option>
+                    <option value="REVOCADO">❌ REVOCADO / ANULADO</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Nombres y Apellidos (MAYÚSCULAS) *</label>
+                <input
+                  type="text"
+                  name="nombres_apellidos"
+                  required
+                  defaultValue={(documentoEditando.nombres_apellidos || '').toUpperCase()}
+                  onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white uppercase focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Vereda</label>
+                  <input
+                    type="text"
+                    name="vereda"
+                    defaultValue={documentoEditando.vereda || ''}
+                    onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white uppercase focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">Casa</label>
+                  <input
+                    type="text"
+                    name="casa"
+                    defaultValue={documentoEditando.casa || ''}
+                    onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white uppercase focus:border-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Fecha de Emisión</label>
+                  <input
+                    type="text"
+                    name="fecha_emision"
+                    defaultValue={documentoEditando.fecha_emision || ''}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">Fecha de Vencimiento</label>
+                  <input
+                    type="text"
+                    name="fecha_vencimiento"
+                    defaultValue={documentoEditando.fecha_vencimiento || ''}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Monto Aporte (Bs.)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="monto_bs"
+                    defaultValue={documentoEditando.monto_bs || 0}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">Monto Aporte (USD)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="monto_usd"
+                    defaultValue={documentoEditando.monto_usd || 0}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Banco / Origen</label>
+                  <input
+                    type="text"
+                    name="banco_nombre"
+                    defaultValue={documentoEditando.banco_nombre || ''}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">Referencia Bancaria</label>
+                  <input
+                    type="text"
+                    name="numero_transferencia"
+                    defaultValue={documentoEditando.numero_transferencia || ''}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono focus:border-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Motivo de Exoneración / Nota</label>
+                <input
+                  type="text"
+                  name="motivo_exoneracion"
+                  defaultValue={documentoEditando.motivo_exoneracion || ''}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                />
               </div>
 
               <button
@@ -8786,7 +9243,7 @@ export default function Dashboard({ user, onLogout }) {
                 className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2"
               >
                 <Check className="w-4 h-4" />
-                <span>Registrar Vecino en Padrón</span>
+                <span>Guardar Cambios del Documento</span>
               </button>
             </form>
           </div>

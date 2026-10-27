@@ -639,3 +639,201 @@ export async function POST(request) {
     return NextResponse.json({ error: err.message || 'Error del servidor' }, { status: 500 });
   }
 }
+
+export async function PUT(request) {
+  try {
+    const currentUser = extractUserFromRequest(request);
+    if (!currentUser || (currentUser.rol !== 'SUPER_ADMIN' && !hasPermission(currentUser, 'vecinos_editar'))) {
+      return NextResponse.json({ error: 'No tienes permisos para editar vecinos del padrón' }, { status: 403 });
+    }
+
+    await cargarTerritorio();
+    const body = await request.json();
+    const {
+      id,
+      vecinoId,
+      cedula,
+      nombres,
+      apellidos,
+      vereda,
+      casa,
+      tiempo_residencia,
+      calidad_tenencia,
+      telefono,
+      email,
+      sexo,
+      fecha_nacimiento,
+      estado_aprobacion,
+      observaciones,
+    } = body;
+
+    const targetId = id || vecinoId;
+    if (!targetId) {
+      return NextResponse.json({ error: 'ID del vecino es obligatorio' }, { status: 400 });
+    }
+
+    const existRes = await db.execute({
+      sql: 'SELECT * FROM vecinos WHERE id = ?',
+      args: [targetId],
+    });
+    if (existRes.rows.length === 0) {
+      return NextResponse.json({ error: 'Vecino no encontrado' }, { status: 404 });
+    }
+    const prev = existRes.rows[0];
+
+    const normCedula = cedula ? normalizarCedula(cedula) : prev.cedula;
+    const vUpper = (vereda || prev.vereda || 'A').toString().trim().toUpperCase();
+    const cUpper = (casa || prev.casa || '').toString().trim().toUpperCase();
+
+    if (!esCasaValida(vUpper, cUpper)) {
+      return NextResponse.json({
+        error: `La casa ${cUpper} no pertenece a las casas válidas de la Vereda ${vUpper}.`
+      }, { status: 400 });
+    }
+
+    // Verificar duplicado de cédula si fue modificada
+    if (normCedula !== prev.cedula) {
+      const dupRes = await db.execute({
+        sql: 'SELECT id FROM vecinos WHERE cedula = ? AND id != ?',
+        args: [normCedula, targetId],
+      });
+      if (dupRes.rows.length > 0) {
+        return NextResponse.json({
+          error: `Ya existe otro vecino registrado con la cédula ${normCedula}.`
+        }, { status: 409 });
+      }
+    }
+
+    const now = new Date().toISOString();
+    const nomFinal = nombres !== undefined ? String(nombres).trim().toUpperCase() : String(prev.nombres || '').trim().toUpperCase();
+    const apeFinal = apellidos !== undefined ? String(apellidos).trim().toUpperCase() : String(prev.apellidos || '').trim().toUpperCase();
+    const estadoFinal = estado_aprobacion ? String(estado_aprobacion).trim().toUpperCase() : prev.estado_aprobacion;
+
+    let aprobadoPorId = prev.aprobado_por_usuario_id;
+    let aprobadoPorNombre = prev.aprobado_por_nombre ? String(prev.aprobado_por_nombre).trim().toUpperCase() : null;
+    let aprobadoEn = prev.aprobado_en;
+
+    if (estadoFinal === 'APROBADO' && prev.estado_aprobacion !== 'APROBADO') {
+      aprobadoPorId = currentUser.id;
+      aprobadoPorNombre = (currentUser.nombre || '').trim().toUpperCase();
+      aprobadoEn = now;
+    }
+
+    await db.execute({
+      sql: `UPDATE vecinos SET
+        cedula = ?,
+        nombres = ?,
+        apellidos = ?,
+        vereda = ?,
+        casa = ?,
+        tiempo_residencia = ?,
+        calidad_tenencia = ?,
+        telefono = ?,
+        email = ?,
+        sexo = ?,
+        fecha_nacimiento = ?,
+        estado_aprobacion = ?,
+        aprobado_por_usuario_id = ?,
+        aprobado_por_nombre = ?,
+        aprobado_en = ?,
+        observaciones = ?,
+        updated_at = ?
+      WHERE id = ?`,
+      args: [
+        normCedula,
+        nomFinal,
+        apeFinal,
+        vUpper,
+        cUpper,
+        tiempo_residencia !== undefined ? String(tiempo_residencia).trim() : (prev.tiempo_residencia || ''),
+        calidad_tenencia || prev.calidad_tenencia || 'Propia',
+        telefono !== undefined ? String(telefono).trim() : (prev.telefono || ''),
+        email !== undefined ? String(email).trim() : (prev.email || ''),
+        sexo ? String(sexo).trim().toUpperCase() : (prev.sexo || 'M'),
+        fecha_nacimiento !== undefined ? String(fecha_nacimiento).trim() : (prev.fecha_nacimiento || ''),
+        estadoFinal,
+        aprobadoPorId,
+        aprobadoPorNombre,
+        aprobadoEn,
+        observaciones !== undefined ? observaciones : prev.observaciones,
+        now,
+        targetId,
+      ],
+    });
+
+    await registrarAuditoria({
+      tipo_evento: 'EDICION_VECINO',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      vecino_id: Number(targetId),
+      cedula: normCedula,
+      request,
+      detalles: {
+        nombres: `${nomFinal} ${apeFinal}`.trim(),
+        vereda: vUpper,
+        casa: cUpper,
+        estado_aprobacion: estadoFinal,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Datos del vecino ${nomFinal} ${apeFinal} (${normCedula}) actualizados correctamente`,
+    });
+  } catch (err) {
+    console.error('Error en /api/vecinos PUT:', err);
+    return NextResponse.json({ error: err.message || 'Error del servidor' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    const currentUser = extractUserFromRequest(request);
+    if (!currentUser || (currentUser.rol !== 'SUPER_ADMIN' && !hasPermission(currentUser, 'vecinos_eliminar'))) {
+      return NextResponse.json({ error: 'No tienes permisos para eliminar vecinos del padrón' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    if (!id) {
+      return NextResponse.json({ error: 'ID del vecino requerido' }, { status: 400 });
+    }
+
+    const existRes = await db.execute({
+      sql: 'SELECT id, cedula, nombres, apellidos, vereda, casa FROM vecinos WHERE id = ?',
+      args: [id],
+    });
+    if (existRes.rows.length === 0) {
+      return NextResponse.json({ error: 'Vecino no encontrado' }, { status: 404 });
+    }
+    const vec = existRes.rows[0];
+
+    await db.execute({
+      sql: 'DELETE FROM vecinos WHERE id = ?',
+      args: [id],
+    });
+
+    await registrarAuditoria({
+      tipo_evento: 'ELIMINACION_VECINO',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      vecino_id: Number(id),
+      cedula: vec.cedula,
+      request,
+      detalles: {
+        nombres: `${vec.nombres || ''} ${vec.apellidos || ''}`.trim().toUpperCase(),
+        vereda: vec.vereda,
+        casa: vec.casa,
+        accion: `Eliminó del Padrón Comunal al vecino ${vec.nombres} ${vec.apellidos} (${vec.cedula})`,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Vecino ${vec.nombres} ${vec.apellidos} (${vec.cedula}) eliminado del padrón exitosamente`,
+    });
+  } catch (err) {
+    console.error('Error en /api/vecinos DELETE:', err);
+    return NextResponse.json({ error: err.message || 'Error del servidor' }, { status: 500 });
+  }
+}

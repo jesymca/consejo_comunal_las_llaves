@@ -445,3 +445,164 @@ export async function POST(request) {
     return NextResponse.json({ error: err.message || 'Error del servidor' }, { status: 500 });
   }
 }
+
+export async function PUT(request) {
+  try {
+    const currentUser = extractUserFromRequest(request);
+    if (!currentUser || currentUser.rol !== 'SUPER_ADMIN') {
+      return NextResponse.json({ error: 'Solo el SUPER_ADMIN puede editar documentos emitidos' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const {
+      id,
+      cedula,
+      nombres_apellidos,
+      vereda,
+      casa,
+      tiempo_residencia,
+      fecha_emision,
+      fecha_vencimiento,
+      estado,
+      es_exonerado,
+      motivo_exoneracion,
+      monto_bs,
+      monto_usd,
+      banco_nombre,
+      numero_transferencia,
+    } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID del documento requerido' }, { status: 400 });
+    }
+
+    const existRes = await db.execute({
+      sql: 'SELECT * FROM documentos_solicitudes WHERE id = ?',
+      args: [id],
+    });
+    if (existRes.rows.length === 0) {
+      return NextResponse.json({ error: 'Documento no encontrado' }, { status: 404 });
+    }
+    const prev = existRes.rows[0];
+    const nowIso = new Date().toISOString();
+
+    const normCedula = cedula ? normalizarCedula(cedula) : prev.cedula;
+    const nomFinal = nombres_apellidos !== undefined
+      ? String(nombres_apellidos).trim().toUpperCase()
+      : String(prev.nombres_apellidos || '').trim().toUpperCase();
+
+    await db.execute({
+      sql: `UPDATE documentos_solicitudes SET
+        cedula = ?,
+        nombres_apellidos = ?,
+        vereda = ?,
+        casa = ?,
+        tiempo_residencia = ?,
+        fecha_emision = ?,
+        fecha_vencimiento = ?,
+        estado = ?,
+        es_exonerado = ?,
+        motivo_exoneracion = ?,
+        monto_bs = ?,
+        monto_usd = ?,
+        banco_nombre = ?,
+        numero_transferencia = ?,
+        updated_at = ?
+      WHERE id = ?`,
+      args: [
+        normCedula,
+        nomFinal,
+        vereda ? String(vereda).trim().toUpperCase() : prev.vereda,
+        casa ? String(casa).trim().toUpperCase() : prev.casa,
+        tiempo_residencia !== undefined ? String(tiempo_residencia).trim() : prev.tiempo_residencia,
+        fecha_emision || prev.fecha_emision,
+        fecha_vencimiento || prev.fecha_vencimiento,
+        estado ? String(estado).trim().toUpperCase() : prev.estado,
+        es_exonerado !== undefined ? (es_exonerado ? 1 : 0) : prev.es_exonerado,
+        motivo_exoneracion !== undefined ? motivo_exoneracion : prev.motivo_exoneracion,
+        monto_bs !== undefined ? Number(monto_bs) : prev.monto_bs,
+        monto_usd !== undefined ? Number(monto_usd) : prev.monto_usd,
+        banco_nombre !== undefined ? banco_nombre : prev.banco_nombre,
+        numero_transferencia !== undefined ? numero_transferencia : prev.numero_transferencia,
+        nowIso,
+        id,
+      ],
+    });
+
+    await registrarAuditoria({
+      tipo_evento: 'EDICION_DOCUMENTO',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      cedula: normCedula,
+      codigo_documento: prev.codigo_qr,
+      tipo_documento: prev.tipo_documento,
+      request,
+      detalles: {
+        id,
+        codigo_qr: prev.codigo_qr,
+        titular: nomFinal,
+        estado: estado || prev.estado,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Documento ${prev.codigo_qr} actualizado correctamente`,
+    });
+  } catch (err) {
+    console.error('Error en /api/documentos PUT:', err);
+    return NextResponse.json({ error: err.message || 'Error del servidor' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    const currentUser = extractUserFromRequest(request);
+    if (!currentUser || currentUser.rol !== 'SUPER_ADMIN') {
+      return NextResponse.json({ error: 'Solo el SUPER_ADMIN puede eliminar documentos' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    if (!id) {
+      return NextResponse.json({ error: 'ID del documento requerido' }, { status: 400 });
+    }
+
+    const existRes = await db.execute({
+      sql: 'SELECT id, codigo_qr, tipo_documento, cedula, nombres_apellidos FROM documentos_solicitudes WHERE id = ?',
+      args: [id],
+    });
+    if (existRes.rows.length === 0) {
+      return NextResponse.json({ error: 'Documento no encontrado' }, { status: 404 });
+    }
+    const doc = existRes.rows[0];
+
+    await db.execute({
+      sql: 'DELETE FROM documentos_solicitudes WHERE id = ?',
+      args: [id],
+    });
+
+    await registrarAuditoria({
+      tipo_evento: 'ELIMINACION_DOCUMENTO',
+      usuario_id: currentUser.id,
+      usuario_nombre: currentUser.nombre,
+      cedula: doc.cedula,
+      codigo_documento: doc.codigo_qr,
+      tipo_documento: doc.tipo_documento,
+      request,
+      detalles: {
+        id,
+        codigo_qr: doc.codigo_qr,
+        titular: doc.nombres_apellidos,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Documento ${doc.codigo_qr} eliminado permanentemente`,
+    });
+  } catch (err) {
+    console.error('Error en /api/documentos DELETE:', err);
+    return NextResponse.json({ error: err.message || 'Error del servidor' }, { status: 500 });
+  }
+}

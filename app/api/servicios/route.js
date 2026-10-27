@@ -830,6 +830,58 @@ export async function POST(request) {
       return NextResponse.json({ success: true, message: `Declaración actualizada a ${estado}` });
     }
 
+    // 7. Eliminar Declaración de Aporte de Vecino (Solo SUPER_ADMIN)
+    if (action === 'eliminar_solicitud') {
+      if (!currentUser || currentUser.rol !== 'SUPER_ADMIN') {
+        return NextResponse.json({ error: 'Solo el SUPER_ADMIN puede eliminar declaraciones de aportes' }, { status: 403 });
+      }
+      const { id } = body;
+      if (!id) {
+        return NextResponse.json({ error: 'ID de solicitud requerido' }, { status: 400 });
+      }
+      const solRes = await db.execute({
+        sql: 'SELECT id, cedula, nombres_apellidos, numero_referencia FROM jornadas_solicitudes WHERE id = ?',
+        args: [Number(id)],
+      });
+      if (solRes.rows.length === 0) {
+        return NextResponse.json({ error: 'Declaración no encontrada' }, { status: 404 });
+      }
+      const sol = solRes.rows[0];
+      await db.execute({
+        sql: 'DELETE FROM jornadas_solicitudes WHERE id = ?',
+        args: [Number(id)],
+      });
+      await registrarAuditoria({
+        tipo_evento: 'ELIMINACION_APORTE_SERVICIO',
+        usuario_id: currentUser.id,
+        usuario_nombre: currentUser.nombre,
+        cedula: sol.cedula,
+        request,
+        detalles: {
+          solicitud_id: id,
+          nombres_apellidos: sol.nombres_apellidos,
+          referencia: sol.numero_referencia,
+        },
+      });
+      return NextResponse.json({ success: true, message: 'Declaración de aporte eliminada correctamente' });
+    }
+
+    // 8. Eliminar Ítem del Catálogo de Servicios (Solo SUPER_ADMIN)
+    if (action === 'eliminar_servicio') {
+      if (!currentUser || currentUser.rol !== 'SUPER_ADMIN') {
+        return NextResponse.json({ error: 'Solo el SUPER_ADMIN puede eliminar servicios del catálogo' }, { status: 403 });
+      }
+      const { id } = body;
+      if (!id) {
+        return NextResponse.json({ error: 'ID de servicio requerido' }, { status: 400 });
+      }
+      await db.execute({
+        sql: 'DELETE FROM servicios_catalogo WHERE id = ?',
+        args: [Number(id)],
+      });
+      return NextResponse.json({ success: true, message: 'Servicio eliminado del catálogo exitosamente' });
+    }
+
     return NextResponse.json({ error: 'Acción no soportada' }, { status: 400 });
   } catch (err) {
     console.error('Error en /api/servicios POST:', err);
