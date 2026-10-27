@@ -85,8 +85,8 @@ export default function ModalRegistroVecino({ initialCedula = '', onClose, onReg
         body: JSON.stringify({
           action: 'register',
           cedula: normalizarCedula(cedula),
-          nombres,
-          apellidos,
+          nombres: nombres.trim().toUpperCase(),
+          apellidos: apellidos.trim().toUpperCase(),
           vereda,
           casa,
           tiempo_residencia: tiempoResidencia,
@@ -190,7 +190,7 @@ export default function ModalRegistroVecino({ initialCedula = '', onClose, onReg
                   type="text"
                   required
                   value={nombres}
-                  onChange={(e) => setNombres(e.target.value)}
+                  onChange={(e) => setNombres(e.target.value.toUpperCase())}
                   placeholder="Ej: JUAN CARLOS"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500 uppercase"
                 />
@@ -203,7 +203,7 @@ export default function ModalRegistroVecino({ initialCedula = '', onClose, onReg
                   type="text"
                   required
                   value={apellidos}
-                  onChange={(e) => setApellidos(e.target.value)}
+                  onChange={(e) => setApellidos(e.target.value.toUpperCase())}
                   placeholder="Ej: PÉREZ ROJAS"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs focus:outline-none focus:border-blue-500 uppercase"
                 />

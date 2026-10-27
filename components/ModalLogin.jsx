@@ -76,7 +76,7 @@ export default function ModalLogin({ onClose, onLoginSuccess }) {
               type="text"
               required
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              onChange={(e) => setUsername(e.target.value.toUpperCase())}
               placeholder="Ingresa tu usuario"
               className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs font-mono focus:outline-none focus:border-blue-500 uppercase"
             />

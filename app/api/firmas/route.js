@@ -66,9 +66,9 @@ export async function POST(request) {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         orderNum,
-        comision.trim(),
-        nombre.trim(),
-        (cedula || '').trim(),
+        comision.trim().toUpperCase(),
+        nombre.trim().toUpperCase(),
+        (cedula || '').trim().toUpperCase(),
         (telefono || '').trim(),
         url_firma || null,
         url_sello || null,
@@ -82,9 +82,9 @@ export async function POST(request) {
       tipo_evento: 'GESTION_FIRMAS_SELLOS',
       usuario_id: currentUser.id,
       usuario_nombre: currentUser.nombre,
-      cedula: (cedula || '').trim() || null,
+      cedula: (cedula || '').trim().toUpperCase() || null,
       request,
-      detalles: { accion: 'Nueva firma autorizada agregada', vocero: nombre.trim(), comision: comision.trim() }
+      detalles: { accion: 'Nueva firma autorizada agregada', vocero: nombre.trim().toUpperCase(), comision: comision.trim().toUpperCase() }
     });
 
     return NextResponse.json({
@@ -129,9 +129,9 @@ export async function PUT(request) {
         WHERE id = ?`,
       args: [
         orden !== undefined ? parseInt(orden, 10) : 1,
-        comision.trim(),
-        nombre.trim(),
-        (cedula || '').trim(),
+        comision.trim().toUpperCase(),
+        nombre.trim().toUpperCase(),
+        (cedula || '').trim().toUpperCase(),
         (telefono || '').trim(),
         url_firma !== undefined ? url_firma : null,
         url_sello !== undefined ? url_sello : null,
@@ -146,9 +146,9 @@ export async function PUT(request) {
       tipo_evento: 'GESTION_FIRMAS_SELLOS',
       usuario_id: currentUser.id,
       usuario_nombre: currentUser.nombre,
-      cedula: (cedula || '').trim() || null,
+      cedula: (cedula || '').trim().toUpperCase() || null,
       request,
-      detalles: { accion: 'Firma autorizada modificada', id, vocero: nombre.trim(), comision: comision.trim(), activo: Boolean(activo) }
+      detalles: { accion: 'Firma autorizada modificada', id, vocero: nombre.trim().toUpperCase(), comision: comision.trim().toUpperCase(), activo: Boolean(activo) }
     });
 
     return NextResponse.json({ success: true, message: 'Firma autorizada actualizada correctamente' });

@@ -226,6 +226,16 @@ export default function Dashboard({ user, onLogout }) {
   const [modalUsuario, setModalUsuario] = useState(false);
   const [usuarioEditando, setUsuarioEditando] = useState(null);
   const [presetSeleccionado, setPresetSeleccionado] = useState('CENSISTA');
+  const [usuarioForm, setUsuarioForm] = useState({
+    username: '',
+    nombre: '',
+    password: '',
+    comision: '',
+    email: '',
+    telefono: '',
+    rol: 'VOCERO',
+    activo: '1',
+  });
   const [permisosForm, setPermisosForm] = useState({
     vecinos: true,
     vecinos_crear: true,
@@ -260,6 +270,7 @@ export default function Dashboard({ user, onLogout }) {
   const aplicarPreset = (presetName) => {
     setPresetSeleccionado(presetName);
     if (presetName === 'CENSISTA') {
+      setUsuarioForm((prev) => ({ ...prev, rol: 'VOCERO' }));
       setPermisosForm({
         vecinos: true,
         censo: true,
@@ -280,6 +291,7 @@ export default function Dashboard({ user, onLogout }) {
         auditoria: false,
       });
     } else if (presetName === 'DOCUMENTAL') {
+      setUsuarioForm((prev) => ({ ...prev, rol: 'VOCERO' }));
       setPermisosForm({
         vecinos: true,
         censo: true,
@@ -301,6 +313,7 @@ export default function Dashboard({ user, onLogout }) {
       });
     } else if (presetName === 'CONTRALORIA') {
       // Perfil de Contraloría Social: Supervisar y Aprobar (Sin CRUD Total)
+      setUsuarioForm((prev) => ({ ...prev, rol: 'CONTRALORIA' }));
       setPermisosForm({
         vecinos: true,
         censo: true,
@@ -321,6 +334,7 @@ export default function Dashboard({ user, onLogout }) {
         docs_anular: false,
       });
     } else if (presetName === 'ADMIN') {
+      setUsuarioForm((prev) => ({ ...prev, rol: 'ADMIN' }));
       setPermisosForm({
         vecinos: true,
         censo: true,
@@ -340,38 +354,80 @@ export default function Dashboard({ user, onLogout }) {
         docs_emitir: true,
         docs_anular: false,
       });
+    } else if (presetName === 'SUPER_ADMIN') {
+      setUsuarioForm((prev) => ({ ...prev, rol: 'SUPER_ADMIN' }));
+      setPermisosForm({
+        vecinos: true,
+        censo: true,
+        documentos: true,
+        pagos: true,
+        firmas: true,
+        firmas_edit: true,
+        modelador: true,
+        modelador_edit: true,
+        estadisticas: true,
+        auditoria: true,
+        vecinos_crear: true,
+        censo_masivo: true,
+        vecinos_editar: true,
+        vecinos_aprobar: true,
+        vecinos_eliminar: true,
+        docs_emitir: true,
+        docs_anular: true,
+      });
     }
   };
 
   const abrirModalCrearUsuario = () => {
     setUsuarioEditando(null);
+    setUsuarioForm({
+      username: '',
+      nombre: '',
+      password: '',
+      comision: '',
+      email: '',
+      telefono: '',
+      rol: 'VOCERO',
+      activo: '1',
+    });
     aplicarPreset('CENSISTA');
     setModalUsuario(true);
   };
 
   const abrirModalEditarUsuario = (u) => {
     setUsuarioEditando(u);
-    const uPerms = typeof u.permisos === 'string' ? JSON.parse(u.permisos || '{}') : (u.permisos || {});
-    setPermisosForm({
-      vecinos: uPerms.vecinos ?? true,
-      vecinos_crear: uPerms.vecinos_crear ?? false,
-      censo_masivo: uPerms.censo_masivo ?? false,
-      vecinos_editar: uPerms.vecinos_editar ?? false,
-      vecinos_aprobar: uPerms.vecinos_aprobar ?? false,
-      vecinos_eliminar: uPerms.vecinos_eliminar ?? false,
-      censo: uPerms.censo ?? true,
-      documentos: uPerms.documentos ?? false,
-      docs_emitir: uPerms.docs_emitir ?? false,
-      docs_anular: uPerms.docs_anular ?? false,
-      pagos: uPerms.pagos ?? false,
-      firmas: uPerms.firmas ?? false,
-      firmas_edit: uPerms.firmas_edit ?? false,
-      modelador: uPerms.modelador ?? false,
-      modelador_edit: uPerms.modelador_edit ?? false,
-      estadisticas: uPerms.estadisticas ?? false,
-      auditoria: uPerms.auditoria ?? false,
+    setUsuarioForm({
+      username: String(u.username || '').trim().toUpperCase(),
+      nombre: String(u.nombre || '').trim().toUpperCase(),
+      password: '',
+      comision: u.comision ? String(u.comision).trim().toUpperCase() : '',
+      email: u.email || '',
+      telefono: u.telefono || '',
+      rol: u.rol || 'VOCERO',
+      activo: u.activo ? '1' : '0',
     });
-    setPresetSeleccionado('CUSTOM');
+    const uPerms = typeof u.permisos === 'string' ? JSON.parse(u.permisos || '{}') : (u.permisos || {});
+    const isSuper = u.rol === 'SUPER_ADMIN';
+    setPermisosForm({
+      vecinos: isSuper ? true : (uPerms.vecinos ?? true),
+      vecinos_crear: isSuper ? true : (uPerms.vecinos_crear ?? false),
+      censo_masivo: isSuper ? true : (uPerms.censo_masivo ?? false),
+      vecinos_editar: isSuper ? true : (uPerms.vecinos_editar ?? false),
+      vecinos_aprobar: isSuper ? true : (uPerms.vecinos_aprobar ?? false),
+      vecinos_eliminar: isSuper ? true : (uPerms.vecinos_eliminar ?? false),
+      censo: isSuper ? true : (uPerms.censo ?? true),
+      documentos: isSuper ? true : (uPerms.documentos ?? false),
+      docs_emitir: isSuper ? true : (uPerms.docs_emitir ?? false),
+      docs_anular: isSuper ? true : (uPerms.docs_anular ?? false),
+      pagos: isSuper ? true : (uPerms.pagos ?? false),
+      firmas: isSuper ? true : (uPerms.firmas ?? false),
+      firmas_edit: isSuper ? true : (uPerms.firmas_edit ?? false),
+      modelador: isSuper ? true : (uPerms.modelador ?? false),
+      modelador_edit: isSuper ? true : (uPerms.modelador_edit ?? false),
+      estadisticas: isSuper ? true : (uPerms.estadisticas ?? false),
+      auditoria: isSuper ? true : (uPerms.auditoria ?? false),
+    });
+    setPresetSeleccionado(isSuper ? 'SUPER_ADMIN' : 'CUSTOM');
     setModalUsuario(true);
   };
 
@@ -936,10 +992,6 @@ export default function Dashboard({ user, onLogout }) {
   };
 
   const toggleActivoUsuario = async (u) => {
-    if (u.username === 'CIENCIA_TECNOLOGIA') {
-      toast.error('La cuenta principal de CIENCIA_TECNOLOGIA no puede ser inhabilitada');
-      return;
-    }
     if (Number(u.id) === Number(user?.id)) {
       toast.error('No puedes inhabilitar tu propia cuenta en uso');
       return;
@@ -972,10 +1024,6 @@ export default function Dashboard({ user, onLogout }) {
   };
 
   const eliminarUsuario = async (u) => {
-    if (u.username === 'CIENCIA_TECNOLOGIA') {
-      toast.error('La cuenta principal de CIENCIA_TECNOLOGIA no puede ser eliminada');
-      return;
-    }
     if (Number(u.id) === Number(user?.id)) {
       toast.error('No puedes eliminar tu propia cuenta en sesión activa');
       return;
@@ -5710,7 +5758,7 @@ export default function Dashboard({ user, onLogout }) {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-black text-sm text-white tracking-wide">{u.username}</span>
+                          <span className="font-mono font-black text-sm text-white tracking-wide uppercase">{u.username}</span>
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                             u.rol === 'SUPER_ADMIN' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
                             u.rol === 'ADMIN' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20' :
@@ -5720,7 +5768,7 @@ export default function Dashboard({ user, onLogout }) {
                             {u.rol}
                           </span>
                         </div>
-                        <h4 className="text-xs font-semibold text-slate-300 mt-0.5">{u.nombre}</h4>
+                        <h4 className="text-xs font-semibold text-slate-300 mt-0.5 uppercase">{u.nombre}</h4>
                       </div>
 
                       {/* Estado */}
@@ -5741,12 +5789,12 @@ export default function Dashboard({ user, onLogout }) {
                     <div className="grid grid-cols-2 gap-2 p-2.5 rounded-xl bg-slate-950/70 border border-slate-800/80 text-[11px]">
                       <div>
                         <span className="text-[10px] text-slate-500 block uppercase font-bold">Comisión</span>
-                        <span className="text-slate-300 font-medium truncate block">{u.comision || 'Comisión General'}</span>
+                        <span className="text-slate-300 font-medium truncate block uppercase">{u.comision || 'COMISIÓN GENERAL'}</span>
                       </div>
                       <div>
                         <span className="text-[10px] text-slate-500 block uppercase font-bold">Perfil</span>
                         <span className="text-slate-300 font-medium truncate block">
-                          {u.rol === 'SUPER_ADMIN' ? 'Control Total' : u.rol === 'CONTRALORIA' ? 'Contraloría (Ver y Aprobar)' : esCensista ? 'Digitalizador' : esEmisorDocs ? 'Emisor Docs' : u.rol === 'ADMIN' ? 'Administrador' : 'Personalizado'}
+                          {u.rol === 'SUPER_ADMIN' ? 'Control Total' : u.rol === 'CONTRALORIA' ? 'Contraloría (Ver y Aprobar)' : esCensista ? 'Digitalizador / Encuestador' : esEmisorDocs ? 'Emisor Docs' : u.rol === 'ADMIN' ? 'Administrador' : 'Personalizado'}
                         </span>
                       </div>
                       {(u.email || u.telefono) && (
@@ -5772,15 +5820,15 @@ export default function Dashboard({ user, onLogout }) {
                       {/* Inhabilitar / Habilitar */}
                       <button
                         onClick={() => toggleActivoUsuario(u)}
-                        disabled={esRoot || esSelf}
+                        disabled={esSelf}
                         className={`py-2 px-1 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center gap-0.5 border ${
-                          esRoot || esSelf
+                          esSelf
                             ? 'bg-slate-800/40 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
                             : u.activo
                             ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30 active:scale-95'
                             : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30 active:scale-95'
                         }`}
-                        title={esRoot ? 'Cuenta raíz protegida' : esSelf ? 'No puedes inhabilitarte a ti mismo' : u.activo ? 'Inhabilitar acceso' : 'Habilitar acceso'}
+                        title={esSelf ? 'No puedes inhabilitarte a ti mismo' : u.activo ? 'Inhabilitar acceso' : 'Habilitar acceso'}
                       >
                         {u.activo ? <Ban className="w-4 h-4 text-amber-400" /> : <UserCheck className="w-4 h-4 text-emerald-400" />}
                         <span className="text-[10px]">{u.activo ? 'Inhabilitar' : 'Habilitar'}</span>
@@ -5791,20 +5839,20 @@ export default function Dashboard({ user, onLogout }) {
                         onClick={() => abrirModalEditarUsuario(u)}
                         className="py-2 px-1 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs font-bold transition flex flex-col items-center justify-center gap-0.5 active:scale-95"
                       >
-                        <Sliders className="w-4 h-4" />
-                        <span className="text-[10px]">Permisos</span>
+                        <Edit className="w-4 h-4" />
+                        <span className="text-[10px]">Editar / Permisos</span>
                       </button>
 
                       {/* Eliminar */}
                       <button
                         onClick={() => eliminarUsuario(u)}
-                        disabled={esRoot || esSelf}
+                        disabled={esSelf}
                         className={`py-2 px-1 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center gap-0.5 border ${
-                          esRoot || esSelf
+                          esSelf
                             ? 'bg-slate-800/40 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
                             : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/30 active:scale-95'
                         }`}
-                        title={esRoot ? 'Cuenta raíz protegida' : esSelf ? 'No puedes eliminarte a ti mismo' : 'Eliminar usuario'}
+                        title={esSelf ? 'No puedes eliminarte a ti mismo' : 'Eliminar usuario'}
                       >
                         <Trash2 className="w-4 h-4" />
                         <span className="text-[10px]">Eliminar</span>
@@ -5841,11 +5889,11 @@ export default function Dashboard({ user, onLogout }) {
                       return (
                         <tr key={u.id} className="hover:bg-slate-850/40 transition">
                           <td className="px-4 py-3">
-                            <span className="font-mono font-bold text-white block">{u.username}</span>
+                            <span className="font-mono font-bold text-white block uppercase">{u.username}</span>
                             {esRoot && <span className="text-[9px] text-purple-400 font-semibold">Super Admin Raíz</span>}
                           </td>
                           <td className="px-4 py-3">
-                            <span className="font-semibold text-slate-200 block">{u.nombre}</span>
+                            <span className="font-semibold text-slate-200 block uppercase">{u.nombre}</span>
                             {(u.email || u.telefono) && (
                               <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
                                 {u.email && <span>{u.email}</span>}
@@ -5864,7 +5912,7 @@ export default function Dashboard({ user, onLogout }) {
                               {u.rol}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-slate-400">{u.comision || 'Comisión General'}</td>
+                          <td className="px-4 py-3 text-slate-400 uppercase">{u.comision || 'COMISIÓN GENERAL'}</td>
                           <td className="px-4 py-3">
                             {u.rol === 'SUPER_ADMIN' ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-300">
@@ -5876,7 +5924,7 @@ export default function Dashboard({ user, onLogout }) {
                               </span>
                             ) : esCensista ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
-                                <ClipboardList className="w-3 h-3" /> Digitalizador Censo
+                                <ClipboardList className="w-3 h-3" /> Digitalizador / Encuestador
                               </span>
                             ) : esEmisorDocs ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/20">
@@ -5904,15 +5952,15 @@ export default function Dashboard({ user, onLogout }) {
                               {/* Inhabilitar / Habilitar */}
                               <button
                                 onClick={() => toggleActivoUsuario(u)}
-                                disabled={esRoot || esSelf}
+                                disabled={esSelf}
                                 className={`px-2.5 py-1 rounded-xl text-xs font-bold transition inline-flex items-center gap-1 border ${
-                                  esRoot || esSelf
+                                  esSelf
                                     ? 'bg-slate-850 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
                                     : u.activo
                                     ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30'
                                     : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
                                 }`}
-                                title={esRoot ? 'Cuenta raíz protegida' : esSelf ? 'No puedes inhabilitarte a ti mismo' : u.activo ? 'Inhabilitar acceso' : 'Habilitar acceso'}
+                                title={esSelf ? 'No puedes inhabilitarte a ti mismo' : u.activo ? 'Inhabilitar acceso' : 'Habilitar acceso'}
                               >
                                 {u.activo ? <Ban className="w-3 h-3" /> : <UserCheck className="w-3 h-3" />}
                                 <span>{u.activo ? 'Inhabilitar' : 'Habilitar'}</span>
@@ -5922,27 +5970,25 @@ export default function Dashboard({ user, onLogout }) {
                               <button
                                 onClick={() => abrirModalEditarUsuario(u)}
                                 className="px-2.5 py-1 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs font-bold transition inline-flex items-center gap-1"
-                                title="Editar vocero y permisos"
+                                title="Editar datos del usuario, contraseña y permisos"
                               >
-                                <Sliders className="w-3 h-3" />
-                                <span>Permisos</span>
+                                <Edit className="w-3 h-3" />
+                                <span>Editar / Permisos</span>
                               </button>
 
                               {/* Eliminar */}
-                              {!esRoot && (
-                                <button
-                                  onClick={() => eliminarUsuario(u)}
-                                  disabled={esSelf}
-                                  className={`p-1.5 rounded-xl transition inline-flex items-center border ${
-                                    esSelf
-                                      ? 'bg-slate-850 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
-                                      : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/20'
-                                  }`}
-                                  title={esSelf ? 'No puedes eliminarte a ti mismo' : 'Eliminar usuario'}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
+                              <button
+                                onClick={() => eliminarUsuario(u)}
+                                disabled={esSelf}
+                                className={`p-1.5 rounded-xl transition inline-flex items-center border ${
+                                  esSelf
+                                    ? 'bg-slate-850 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
+                                    : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/20'
+                                }`}
+                                title={esSelf ? 'No puedes eliminarte a ti mismo' : 'Eliminar usuario'}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -8072,8 +8118,8 @@ export default function Dashboard({ user, onLogout }) {
 
                   habList.push({
                     numero_familia: Number(nroFam) || 1,
-                    nombres_apellidos: nom.trim(),
-                    cedula: (formData.get(`hab_${i}_cedula`) || '').trim(),
+                    nombres_apellidos: nom.trim().toUpperCase(),
+                    cedula: (formData.get(`hab_${i}_cedula`) || '').trim().toUpperCase(),
                     sexo: formData.get(`hab_${i}_sexo`) || 'M',
                     fecha_nacimiento: (formData.get(`hab_${i}_fecha_nac`) || '').trim(),
                     parentesco: formData.get(`hab_${i}_parentesco`) || 'a',
@@ -8087,7 +8133,7 @@ export default function Dashboard({ user, onLogout }) {
                 const payload = {
                   numero_planilla: (numeroPlanillaModal || formData.get('numero_planilla') || '').trim(),
                   fecha: formData.get('fecha') || new Date().toISOString().split('T')[0],
-                  empadronador_nombre: (formData.get('empadronador_nombre') || user?.nombre || '').trim(),
+                  empadronador_nombre: (formData.get('empadronador_nombre') || user?.nombre || '').trim().toUpperCase(),
                   calle_vereda_av: formData.get('calle_vereda_av'),
                   numero_casa: (formData.get('numero_casa') || '').trim().toUpperCase(),
                   telefono_contacto: (formData.get('telefono_contacto') || '').trim(),
@@ -8206,9 +8252,10 @@ export default function Dashboard({ user, onLogout }) {
                     type="text"
                     name="empadronador_nombre"
                     required
-                    defaultValue={planillaActiva?.planilla?.empadronador_nombre || user?.nombre || ''}
-                    placeholder="Nombre del vocero censista"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                    defaultValue={(planillaActiva?.planilla?.empadronador_nombre || user?.nombre || '').toUpperCase()}
+                    onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
+                    placeholder="NOMBRE DEL VOCERO CENSISTA"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white uppercase focus:border-blue-500 outline-none"
                   />
                 </div>
               </div>
@@ -8394,8 +8441,9 @@ export default function Dashboard({ user, onLogout }) {
                           <input
                             type="text"
                             name={`hab_${idx}_nombre`}
-                            defaultValue={hab.nombres_apellidos || ''}
-                            placeholder="Nombre completo"
+                            defaultValue={(hab.nombres_apellidos || '').toUpperCase()}
+                            onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
+                            placeholder="NOMBRE COMPLETO"
                             required={idx === 0}
                             className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white uppercase font-semibold"
                           />
@@ -8588,9 +8636,9 @@ export default function Dashboard({ user, onLogout }) {
                 const formData = new FormData(e.target);
                 const payload = {
                   action: 'create',
-                  cedula: (formData.get('cedula') || '').trim(),
-                  nombres: (formData.get('nombres') || '').trim(),
-                  apellidos: (formData.get('apellidos') || '').trim(),
+                  cedula: (formData.get('cedula') || '').trim().toUpperCase(),
+                  nombres: (formData.get('nombres') || '').trim().toUpperCase(),
+                  apellidos: (formData.get('apellidos') || '').trim().toUpperCase(),
                   vereda: (formData.get('vereda') || 'A').trim().toUpperCase(),
                   casa: (formData.get('casa') || '').trim().toUpperCase(),
                   sexo: formData.get('sexo') || 'M',
@@ -8640,7 +8688,8 @@ export default function Dashboard({ user, onLogout }) {
                     type="text"
                     name="nombres"
                     required
-                    placeholder="Ej: Pedro José"
+                    onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
+                    placeholder="EJ: PEDRO JOSÉ"
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white uppercase focus:border-blue-500 outline-none"
                   />
                 </div>
@@ -8650,7 +8699,8 @@ export default function Dashboard({ user, onLogout }) {
                     type="text"
                     name="apellidos"
                     required
-                    placeholder="Ej: Pérez Gómez"
+                    onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
+                    placeholder="EJ: PÉREZ GÓMEZ"
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white uppercase focus:border-blue-500 outline-none"
                   />
                 </div>
@@ -8788,10 +8838,10 @@ export default function Dashboard({ user, onLogout }) {
                   <input
                     type="text"
                     required
-                    placeholder="Ej: Vocero Ejecutivo C.C., Contraloría Social, etc."
+                    placeholder="EJ: VOCERO EJECUTIVO C.C., CONTRALORÍA SOCIAL, ETC."
                     value={modalFirma.comision}
-                    onChange={(e) => setModalFirma({ ...modalFirma, comision: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-medium"
+                    onChange={(e) => setModalFirma({ ...modalFirma, comision: e.target.value.toUpperCase() })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-medium uppercase"
                   />
                 </div>
 
@@ -8800,10 +8850,10 @@ export default function Dashboard({ user, onLogout }) {
                   <input
                     type="text"
                     required
-                    placeholder="Nombre y Apellido"
+                    placeholder="NOMBRE Y APELLIDO"
                     value={modalFirma.nombre}
-                    onChange={(e) => setModalFirma({ ...modalFirma, nombre: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white"
+                    onChange={(e) => setModalFirma({ ...modalFirma, nombre: e.target.value.toUpperCase() })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white uppercase"
                   />
                 </div>
 
@@ -8814,8 +8864,8 @@ export default function Dashboard({ user, onLogout }) {
                     required
                     placeholder="V-12345678"
                     value={modalFirma.cedula}
-                    onChange={(e) => setModalFirma({ ...modalFirma, cedula: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono"
+                    onChange={(e) => setModalFirma({ ...modalFirma, cedula: e.target.value.toUpperCase() })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white font-mono uppercase"
                   />
                 </div>
 
@@ -9031,10 +9081,10 @@ export default function Dashboard({ user, onLogout }) {
             <div className="mb-4">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-blue-400" />
-                {usuarioEditando ? `Configurar Vocero: ${usuarioEditando.username}` : 'Crear Nuevo Vocero o Administrador'}
+                {usuarioEditando ? `Editar Usuario y Permisos: ${usuarioForm.username || usuarioEditando.username}` : 'Crear Nuevo Vocero o Administrador'}
               </h3>
               <p className="text-xs text-slate-400">
-                Define el perfil y qué funciones específicas tiene permitido ver y ejecutar en la plataforma.
+                Edición integral de credenciales (usuario, contraseña, nombre, comisión, rol, estado) y matriz de permisos granulares.
               </p>
             </div>
 
@@ -9043,7 +9093,7 @@ export default function Dashboard({ user, onLogout }) {
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
                 ⚡ Perfiles Rápidos Preconfigurados:
               </span>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
                 <button
                   type="button"
                   onClick={() => aplicarPreset('CENSISTA')}
@@ -9053,7 +9103,7 @@ export default function Dashboard({ user, onLogout }) {
                       : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                   }`}
                 >
-                  <span className="text-xs font-bold block text-emerald-400">Digitalizador</span>
+                  <span className="text-xs font-bold block text-emerald-400">Encuestador / Digitalizador</span>
                   <span className="text-[10px] text-slate-400">Solo Censo y Vecinos (Individual y Masivo)</span>
                 </button>
 
@@ -9098,6 +9148,19 @@ export default function Dashboard({ user, onLogout }) {
 
                 <button
                   type="button"
+                  onClick={() => aplicarPreset('SUPER_ADMIN')}
+                  className={`p-2 rounded-xl text-left border transition ${
+                    presetSeleccionado === 'SUPER_ADMIN'
+                      ? 'bg-fuchsia-600/20 border-fuchsia-500 text-white shadow-md'
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <span className="text-xs font-bold block text-fuchsia-400">Super Admin</span>
+                  <span className="text-[10px] text-slate-400">Control Total del Sistema</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setPresetSeleccionado('CUSTOM')}
                   className={`p-2 rounded-xl text-left border transition ${
                     presetSeleccionado === 'CUSTOM'
@@ -9114,31 +9177,36 @@ export default function Dashboard({ user, onLogout }) {
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                const formData = new FormData(e.target);
-                const username = formData.get('username');
-                const nombre = formData.get('nombre');
-                const password = formData.get('password');
-                const rol = formData.get('rol');
-                const comision = formData.get('comision');
-                const email = formData.get('email');
-                const telefono = formData.get('telefono');
-                const activo = formData.get('activo') === '1';
+                const username = (usuarioForm.username || '').trim().toUpperCase();
+                const nombre = (usuarioForm.nombre || '').trim().toUpperCase();
+                const password = (usuarioForm.password || '').trim();
+                const rol = usuarioForm.rol || 'VOCERO';
+                const comision = (usuarioForm.comision || '').trim().toUpperCase();
+                const email = (usuarioForm.email || '').trim();
+                const telefono = (usuarioForm.telefono || '').trim();
+                const activo = usuarioForm.activo === '1';
+
+                if (!username || !nombre) {
+                  toast.error('El usuario de acceso y el nombre completo son obligatorios');
+                  return;
+                }
 
                 if (usuarioEditando) {
-                  // Actualizar usuario existente
+                  // Actualizar usuario existente (CRUD total)
                   const bodyPayload = {
                     action: 'update_user',
                     userId: usuarioEditando.id,
+                    username,
                     nombre,
                     rol,
-                    comision,
-                    email: email?.trim() || null,
-                    telefono: telefono?.trim() || null,
+                    comision: comision || null,
+                    email: email || null,
+                    telefono: telefono || null,
                     activo,
                     permisos: permisosForm,
                   };
-                  if (password && password.trim().length > 0) {
-                    bodyPayload.newPassword = password.trim();
+                  if (password.length > 0) {
+                    bodyPayload.newPassword = password;
                   }
 
                   const res = await fetch('/api/auth', {
@@ -9148,7 +9216,7 @@ export default function Dashboard({ user, onLogout }) {
                   });
                   const d = await res.json();
                   if (res.ok) {
-                    toast.success('Vocero y permisos actualizados correctamente');
+                    toast.success('Usuario y permisos actualizados correctamente');
                     setModalUsuario(false);
                     cargarUsuarios();
                   } else {
@@ -9156,7 +9224,7 @@ export default function Dashboard({ user, onLogout }) {
                   }
                 } else {
                   // Crear nuevo usuario
-                  if (!username || !password || !nombre) {
+                  if (!password) {
                     toast.error('Usuario, contraseña y nombre son obligatorios');
                     return;
                   }
@@ -9170,9 +9238,9 @@ export default function Dashboard({ user, onLogout }) {
                       password,
                       nombre,
                       rol,
-                      comision,
-                      email: email?.trim() || null,
-                      telefono: telefono?.trim() || null,
+                      comision: comision || null,
+                      email: email || null,
+                      telefono: telefono || null,
                       permisos: permisosForm,
                     }),
                   });
@@ -9191,26 +9259,27 @@ export default function Dashboard({ user, onLogout }) {
               {/* Datos de Acceso */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-950 border border-slate-800">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Usuario de Acceso *</label>
+                  <label className="block text-slate-300 font-semibold mb-1">Usuario de Acceso (Login) *</label>
                   <input
                     name="username"
-                    defaultValue={usuarioEditando?.username || ''}
-                    disabled={Boolean(usuarioEditando)}
-                    required={!usuarioEditando}
-                    placeholder="EJ: VOCERO_CENSO"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white uppercase font-mono disabled:opacity-50"
+                    value={usuarioForm.username}
+                    onChange={(e) => setUsuarioForm({ ...usuarioForm, username: e.target.value.toUpperCase() })}
+                    required
+                    placeholder="EJ: JACQUELINE"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white uppercase font-mono focus:border-blue-500 outline-none"
                   />
-                  {usuarioEditando && <span className="text-[10px] text-slate-500">El nombre de usuario no es editable.</span>}
+                  <span className="text-[10px] text-emerald-400/80">Editable en todo momento (siempre en MAYÚSCULAS).</span>
                 </div>
 
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">Nombre Completo *</label>
                   <input
                     name="nombre"
-                    defaultValue={usuarioEditando?.nombre || ''}
+                    value={usuarioForm.nombre}
+                    onChange={(e) => setUsuarioForm({ ...usuarioForm, nombre: e.target.value.toUpperCase() })}
                     required
-                    placeholder="Nombre y Apellido del vocero"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white"
+                    placeholder="NOMBRE Y APELLIDO DEL VOCERO"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white uppercase focus:border-blue-500 outline-none"
                   />
                 </div>
 
@@ -9222,9 +9291,11 @@ export default function Dashboard({ user, onLogout }) {
                     <input
                       type={mostrarPasswordUsuario ? 'text' : 'password'}
                       name="password"
+                      value={usuarioForm.password}
+                      onChange={(e) => setUsuarioForm({ ...usuarioForm, password: e.target.value })}
                       required={!usuarioEditando}
                       placeholder={usuarioEditando ? 'Dejar en blanco para mantener la actual' : 'Contraseña segura'}
-                      className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white font-mono"
+                      className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white font-mono focus:border-blue-500 outline-none"
                     />
                     <button
                       type="button"
@@ -9245,9 +9316,10 @@ export default function Dashboard({ user, onLogout }) {
                   <label className="block text-slate-300 font-semibold mb-1">Comisión Comunal</label>
                   <input
                     name="comision"
-                    defaultValue={usuarioEditando?.comision || ''}
-                    placeholder="Ej: Censo y Población, Hábitat, etc."
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white"
+                    value={usuarioForm.comision}
+                    onChange={(e) => setUsuarioForm({ ...usuarioForm, comision: e.target.value.toUpperCase() })}
+                    placeholder="EJ: CENSO Y POBLACIÓN, HÁBITAT, ETC."
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white uppercase focus:border-blue-500 outline-none"
                   />
                 </div>
 
@@ -9256,19 +9328,22 @@ export default function Dashboard({ user, onLogout }) {
                   <input
                     type="email"
                     name="email"
-                    defaultValue={usuarioEditando?.email || ''}
+                    value={usuarioForm.email}
+                    onChange={(e) => setUsuarioForm({ ...usuarioForm, email: e.target.value })}
                     placeholder="correo@ejemplo.com"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white focus:border-blue-500 outline-none"
                   />
                 </div>
 
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">Teléfono / WhatsApp</label>
                   <input
+                    type="text"
                     name="telefono"
-                    defaultValue={usuarioEditando?.telefono || ''}
+                    value={usuarioForm.telefono}
+                    onChange={(e) => setUsuarioForm({ ...usuarioForm, telefono: e.target.value })}
                     placeholder="Ej: 0412-1234567"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white focus:border-blue-500 outline-none"
                   />
                 </div>
 
@@ -9276,16 +9351,16 @@ export default function Dashboard({ user, onLogout }) {
                   <label className="block text-slate-300 font-semibold mb-1">Nivel / Rol</label>
                   <select
                     name="rol"
-                    defaultValue={usuarioEditando?.rol || 'VOCERO'}
-                    disabled={usuarioEditando?.username === 'CIENCIA_TECNOLOGIA'}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white disabled:opacity-50"
+                    value={usuarioForm.rol}
+                    onChange={(e) => setUsuarioForm({ ...usuarioForm, rol: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white focus:border-blue-500 outline-none"
                   >
-                    <option value="VOCERO">VOCERO (Nivel estándar restringible)</option>
-                    <option value="CONTRALORIA">CONTRALORIA (Contraloría Social - Solo Ver y Aprobar)</option>
-                    <option value="ADMIN">ADMIN (Nivel administrativo)</option>
-                    {usuarioEditando?.rol === 'SUPER_ADMIN' && (
-                      <option value="SUPER_ADMIN">SUPER_ADMIN (Acceso Total)</option>
-                    )}
+                    <option value="VOCERO">VOCERO (Nivel estándar / Encuestador)</option>
+                    <option value="CENSISTA">CENSISTA (Encuestador / Digitalizador de Censo)</option>
+                    <option value="DOCUMENTAL">DOCUMENTAL (Emisor de Constancias)</option>
+                    <option value="CONTRALORIA">CONTRALORIA (Contraloría Social - Ver y Aprobar)</option>
+                    <option value="ADMIN">ADMIN (Nivel Administrativo)</option>
+                    <option value="SUPER_ADMIN">SUPER_ADMIN (Acceso y Control Total)</option>
                   </select>
                 </div>
 
@@ -9293,16 +9368,13 @@ export default function Dashboard({ user, onLogout }) {
                   <label className="block text-slate-300 font-semibold mb-1">Estado de Acceso</label>
                   <select
                     name="activo"
-                    defaultValue={usuarioEditando ? (usuarioEditando.activo ? '1' : '0') : '1'}
-                    disabled={usuarioEditando?.username === 'CIENCIA_TECNOLOGIA'}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white disabled:opacity-50"
+                    value={usuarioForm.activo}
+                    onChange={(e) => setUsuarioForm({ ...usuarioForm, activo: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white focus:border-blue-500 outline-none"
                   >
                     <option value="1">Habilitado (Permite iniciar sesión)</option>
                     <option value="0">Inhabilitado (Bloquea acceso al sistema)</option>
                   </select>
-                  {usuarioEditando?.username === 'CIENCIA_TECNOLOGIA' && (
-                    <span className="text-[10px] text-purple-400">La cuenta raíz principal no se puede inhabilitar.</span>
-                  )}
                 </div>
               </div>
 
@@ -9383,6 +9455,19 @@ export default function Dashboard({ user, onLogout }) {
                         className="rounded bg-slate-900 border-slate-700 text-blue-600 focus:ring-0"
                       />
                       <span>Aprobar / Validar Residencia</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(permisosForm.vecinos_eliminar)}
+                        onChange={(e) => {
+                          setPermisosForm({ ...permisosForm, vecinos_eliminar: e.target.checked });
+                          setPresetSeleccionado('CUSTOM');
+                        }}
+                        className="rounded bg-slate-900 border-slate-700 text-blue-600 focus:ring-0"
+                      />
+                      <span className="text-rose-300">Eliminar Vecinos del Padrón</span>
                     </label>
 
                     <label className="flex items-center gap-2 cursor-pointer text-slate-300">

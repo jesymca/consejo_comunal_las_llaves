@@ -215,7 +215,7 @@ export async function POST(request) {
       args: [
         numPlanillaFinal,
         fecha || now.split('T')[0],
-        empadronador_nombre || (currentUser?.nombre || ''),
+        (empadronador_nombre || currentUser?.nombre || '').trim().toUpperCase(),
         currentUser?.id || null,
         vUpper,
         cUpper,

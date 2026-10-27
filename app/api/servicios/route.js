@@ -456,7 +456,7 @@ export async function POST(request) {
           jornada.id,
           vecino.id,
           normCedula,
-          `${vecino.nombres} ${vecino.apellidos}`.trim(),
+          `${vecino.nombres} ${vecino.apellidos}`.trim().toUpperCase(),
           vecino.vereda,
           vecino.casa,
           telefono || vecino.telefono || '',
@@ -540,7 +540,7 @@ export async function POST(request) {
         args: [
           codFinal,
           (categoria || 'GAS').toUpperCase(),
-          nombre,
+          nombre.trim().toUpperCase(),
           descripcion || '',
           Number(precioFinal),
           Number(alicuota_autogestion_usd || 0),
@@ -573,7 +573,7 @@ export async function POST(request) {
               SET nombre = ?, categoria = ?, descripcion = ?, precio_usd = ?, alicuota_autogestion_usd = ?, activo = ?, updated_at = ?
               WHERE id = ?`,
         args: [
-          nombre,
+          nombre.trim().toUpperCase(),
           (categoria || 'GAS').toUpperCase(),
           descripcion || '',
           Number(precioFinal !== undefined ? precioFinal : 1.0),

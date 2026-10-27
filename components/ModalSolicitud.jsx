@@ -110,10 +110,10 @@ export default function ModalSolicitud({
         tasa_bcv: tasaBcv,
         fecha_pago: fechaPago,
         datos_extra: tipo === 'FUNCIONAMIENTO' ? {
-          nombre_comercio: nombreComercio.trim(),
+          nombre_comercio: nombreComercio.trim().toUpperCase(),
           rif_comercio: rifComercio.trim().toUpperCase(),
           tamano_espacio: tamanoEspacio.trim(),
-          rubro_establecimiento: rubroEstablecimiento.trim(),
+          rubro_establecimiento: rubroEstablecimiento.trim().toUpperCase(),
           fecha_inicio_alquiler: fechaInicioAlquiler,
         } : null
       };
@@ -329,9 +329,9 @@ export default function ModalSolicitud({
                       type="text"
                       required
                       value={nombreComercio}
-                      onChange={(e) => setNombreComercio(e.target.value)}
-                      placeholder="Ej: Inversiones El Progreso C.A."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white text-xs focus:border-indigo-500"
+                      onChange={(e) => setNombreComercio(e.target.value.toUpperCase())}
+                      placeholder="Ej: INVERSIONES EL PROGRESO C.A."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white text-xs uppercase focus:border-indigo-500"
                     />
                   </div>
 
@@ -343,7 +343,7 @@ export default function ModalSolicitud({
                       type="text"
                       required
                       value={rifComercio}
-                      onChange={(e) => setRifComercio(e.target.value)}
+                      onChange={(e) => setRifComercio(e.target.value.toUpperCase())}
                       placeholder="Ej: J-12345678-0"
                       className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white text-xs font-mono uppercase focus:border-indigo-500"
                     />

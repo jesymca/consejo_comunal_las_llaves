@@ -193,7 +193,7 @@ export async function POST(request) {
         estadoInicial = canApprove ? (body.estado_aprobacion || 'APROBADO') : (body.estado_aprobacion || 'PENDIENTE');
         if (estadoInicial === 'APROBADO') {
           aprobadoPorId = currentUser.id;
-          aprobadoPorNombre = currentUser.nombre;
+          aprobadoPorNombre = (currentUser.nombre || '').trim().toUpperCase();
           aprobadoEn = now;
         }
       }
@@ -296,7 +296,7 @@ export async function POST(request) {
           aprobado_en = ?,
           updated_at = ?
           WHERE id = ?`,
-        args: [currentUser.id, currentUser.nombre, now, now, targetId]
+        args: [currentUser.id, (currentUser.nombre || '').trim().toUpperCase(), now, now, targetId]
       });
 
       // Registro estricto en bitácora auditable con IP pública
