@@ -630,17 +630,48 @@ export async function POST(request) {
       ? habitantesLimpios.length
       : (Number(total_habitantes) || 1);
 
-    // Verificar si ya existe una planilla por numero_planilla o para la misma vivienda (vereda + casa)
-    const existenteRes = await db.execute({
-      sql: `SELECT id, numero_planilla FROM censo_planillas
-            WHERE numero_planilla = ? OR (UPPER(calle_vereda_av) = ? AND UPPER(numero_casa) = ?)
-            ORDER BY CASE WHEN numero_planilla = ? THEN 0 ELSE 1 END ASC, id ASC
-            LIMIT 1`,
-      args: [numPlanillaFinal, vUpper, cUpper, numPlanillaFinal],
-    });
+    numPlanillaFinal = numPlanillaFinal.toUpperCase();
+    const planillaIdEdicion = Number(body.planilla_id) || null;
 
-    if (existenteRes.rows.length > 0 && existenteRes.rows[0].numero_planilla) {
-      numPlanillaFinal = existenteRes.rows[0].numero_planilla;
+    // REGLA: El número de planilla asignado al transcriptor NUNCA se reemplaza silenciosamente.
+    // 1) Si el código ya pertenece a OTRA planilla distinta a la que se edita -> rechazar (evita sobrescribir otra vivienda).
+    const porNumeroRes = await db.execute({
+      sql: 'SELECT id, calle_vereda_av, numero_casa FROM censo_planillas WHERE numero_planilla = ? LIMIT 1',
+      args: [numPlanillaFinal],
+    });
+    const filaPorNumero = porNumeroRes.rows[0] || null;
+    if (filaPorNumero && Number(filaPorNumero.id) !== planillaIdEdicion) {
+      return NextResponse.json({
+        error: `El código de planilla ${numPlanillaFinal} ya está asignado a la Vereda ${filaPorNumero.calle_vereda_av}, Casa ${filaPorNumero.numero_casa}. No se modificó ninguna planilla. Abra esa planilla para editarla o use otro código.`,
+        conflicto: 'NUMERO_EN_USO',
+      }, { status: 409 });
+    }
+
+    // 2) Regla de 1 planilla por vivienda: si la casa ya tiene OTRA planilla, rechazar en lugar de cambiar el número.
+    const porCasaRes = await db.execute({
+      sql: `SELECT id, numero_planilla FROM censo_planillas
+            WHERE UPPER(calle_vereda_av) = ? AND UPPER(numero_casa) = ? LIMIT 1`,
+      args: [vUpper, cUpper],
+    });
+    const filaPorCasa = porCasaRes.rows[0] || null;
+    if (filaPorCasa && Number(filaPorCasa.id) !== planillaIdEdicion) {
+      return NextResponse.json({
+        error: `La Vereda ${vUpper}, Casa ${cUpper} ya tiene registrada la Planilla N° ${filaPorCasa.numero_planilla}. No se cambió el código ${numPlanillaFinal}. Abra la planilla existente para agregar o editar habitantes.`,
+        conflicto: 'CASA_CON_PLANILLA',
+        numero_planilla_existente: filaPorCasa.numero_planilla,
+        planilla_id_existente: Number(filaPorCasa.id),
+      }, { status: 409 });
+    }
+
+    // 3) Edición por ID: actualizar la fila exacta (permite corregir el código si el transcriptor lo cambia a mano)
+    if (planillaIdEdicion) {
+      const existeId = await db.execute({ sql: 'SELECT id FROM censo_planillas WHERE id = ? LIMIT 1', args: [planillaIdEdicion] });
+      if (existeId.rows.length > 0) {
+        await db.execute({
+          sql: 'UPDATE censo_planillas SET numero_planilla = ? WHERE id = ?',
+          args: [numPlanillaFinal, planillaIdEdicion],
+        });
+      }
     }
 
     // Guardar o actualizar planilla

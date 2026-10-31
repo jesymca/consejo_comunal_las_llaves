@@ -862,9 +862,19 @@ export default function Dashboard({ user, onLogout }) {
         return;
       }
       const habsNorm = normalizarHabitantesParaFormulario(res.habitantes || []);
-      const numPlan = res.planilla?.numero_planilla || numeroPlanillaModal || generarNumeroPlanillaAlfanumericoClient();
+      // REGLA: el código ya asignado al transcriptor NO se cambia si la casa aún no tiene planilla.
+      // Solo se usa el número existente cuando la vivienda YA posee una planilla guardada (1 planilla por vivienda).
+      const codigoAsignadoActual = planillaActiva?.planilla?.id
+        ? '' // el código actual pertenece a otra planilla ya guardada; no reutilizarlo para una casa distinta
+        : (numeroPlanillaModal || '').trim();
+      const numPlan = res.existe_planilla
+        ? (res.planilla?.numero_planilla || codigoAsignadoActual)
+        : (codigoAsignadoActual || res.planilla?.numero_planilla || generarNumeroPlanillaAlfanumericoClient());
+      if (res.existe_planilla && codigoAsignadoActual && codigoAsignadoActual !== numPlan && !planillaActiva?.planilla?.id) {
+        toast.warning(`La Casa ${casa} ya tiene la Planilla N° ${numPlan}. Se abrió esa planilla; el código ${codigoAsignadoActual} NO fue utilizado.`, { duration: 9000 });
+      }
       setNumeroPlanillaModal(numPlan);
-      setPlanillaActiva({
+      setPlanillaActiva((prev) => ({
         planilla: {
           ...(res.planilla || {}),
           numero_planilla: numPlan,
@@ -875,7 +885,8 @@ export default function Dashboard({ user, onLogout }) {
         },
         habitantes: habsNorm,
         vecinos_casa: res.vecinos_casa || [],
-      });
+        _rev: (prev?._rev || 0) + 1,
+      }));
       setModalCenso(true);
 
       const vecCount = Array.isArray(res.vecinos_casa) ? res.vecinos_casa.length : 0;
@@ -8763,7 +8774,7 @@ export default function Dashboard({ user, onLogout }) {
             </div>
 
             <form
-              key={planillaActiva?.planilla?.id ? `edit-censo-${planillaActiva.planilla.id}` : `new-censo-${planillaActiva?.planilla?.numero_planilla || numeroPlanillaModal || 'auto'}`}
+              key={planillaActiva?.planilla?.id ? `edit-censo-${planillaActiva.planilla.id}-${planillaActiva?._rev || 0}` : `new-censo-${planillaActiva?._rev || 0}`}
               onSubmit={async (e) => {
                 e.preventDefault();
                 if (guardandoCenso) return;
@@ -8808,6 +8819,7 @@ export default function Dashboard({ user, onLogout }) {
                 }
 
                 const payload = {
+                  planilla_id: planillaActiva?.planilla?.id || null,
                   numero_planilla: (numeroPlanillaModal || formData.get('numero_planilla') || '').trim(),
                   fecha: formData.get('fecha') || new Date().toISOString().split('T')[0],
                   empadronador_nombre: (formData.get('empadronador_nombre') || user?.nombre || '').trim().toUpperCase(),
@@ -8830,7 +8842,7 @@ export default function Dashboard({ user, onLogout }) {
                   });
                   const d = await res.json();
                   if (res.ok) {
-                    toast.success(d.message || 'Planilla de censo y habitantes guardados correctamente');
+                    toast.success(d.message || `Planilla N° ${payload.numero_planilla} y habitantes guardados correctamente`);
                     setModalCenso(false);
                     setPlanillaActiva(null);
                     cargarCenso();
