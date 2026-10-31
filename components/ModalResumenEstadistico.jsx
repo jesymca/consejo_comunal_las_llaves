@@ -4,7 +4,8 @@ import React, { useRef } from 'react';
 import {
   X, Printer, Users, Home, FileText, DollarSign,
   Heart, GraduationCap, ShieldCheck, PieChart as PieIcon,
-  Sparkles, CheckCircle2, AlertTriangle, Layers
+  Sparkles, CheckCircle2, AlertTriangle, Layers,
+  Download, RefreshCw, PenTool
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -21,6 +22,12 @@ export default function ModalResumenEstadistico({
   onClose,
   stats,
   config = {},
+  firmas = [],
+  firmanteReporteId = 'ADMIN_ACTUAL',
+  onCambiarFirmanteReporte = null,
+  onDescargarPdf = null,
+  generandoReportePdf = false,
+  user = null,
 }) {
   const contentRef = useRef(null);
 
@@ -72,15 +79,58 @@ export default function ModalResumenEstadistico({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-auto">
+          <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
+            {/* Selector de Firmante Autorizado */}
+            <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-750 px-2.5 py-1.5 rounded-xl">
+              <PenTool className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <span className="text-[10px] font-bold text-slate-300 shrink-0 hidden md:inline">Firmante:</span>
+              <select
+                value={firmanteReporteId}
+                onChange={(e) => onCambiarFirmanteReporte && onCambiarFirmanteReporte(e.target.value)}
+                className="bg-transparent text-white text-[11px] font-semibold focus:outline-none max-w-[170px] truncate"
+                title="Selecciona el firmante oficial para el PDF"
+              >
+                <option value="ADMIN_ACTUAL" className="bg-slate-900 text-white">
+                  👤 {user?.nombre || user?.username || 'Administrador'} (Admin)
+                </option>
+                {firmas.filter(f => f.activo !== 0).map(f => (
+                  <option key={f.id} value={`FIRMA_${f.id}`} className="bg-slate-900 text-white">
+                    ✍️ {f.nombre} ({f.comision})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {onDescargarPdf && (
+              <button
+                type="button"
+                onClick={onDescargarPdf}
+                disabled={generandoReportePdf}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold transition shadow-sm"
+                title="Descargar informe oficial en PDF con la firma y sellos asignados"
+              >
+                {generandoReportePdf ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Generando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Descargar PDF</span>
+                  </>
+                )}
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handlePrint}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 text-xs font-bold transition shadow-sm"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 text-xs font-bold transition shadow-sm"
               title="Imprimir resumen visual"
             >
               <Printer className="w-4 h-4 text-cyan-400" />
-              <span>Imprimir / Vista Limpia</span>
+              <span className="hidden sm:inline">Imprimir</span>
             </button>
             <button
               type="button"
@@ -303,10 +353,26 @@ export default function ModalResumenEstadistico({
                   <YAxis stroke="#64748b" fontSize={10} />
                   <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '11px' }} />
                   <Legend wrapperStyle={{ fontSize: '10px' }} />
+                  <Bar name="Habitantes Reales" dataKey="habitantes" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                   <Bar name="Vecinos Registrados" dataKey="vecinos" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                   <Bar name="Casas en Catálogo" dataKey="casas" fill="#06b6d4" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+
+            {/* Desglose resumido de veredas */}
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 pt-2 border-t border-slate-800 text-[11px]">
+              {veredasData.map((v) => (
+                <div key={v.codigo} className="p-2 rounded-xl bg-slate-900/80 border border-slate-800/80">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-300">{v.vereda}</span>
+                    <span className="font-mono text-cyan-400 font-bold">{v.habitantes || 0} hab.</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    {v.casas || 0} casas {v.casas_censadas ? `(${v.casas_censadas} cens.)` : ''}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 

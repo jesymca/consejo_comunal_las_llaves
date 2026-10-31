@@ -167,54 +167,116 @@ export async function GET(request) {
     }));
 
     // 5. Cobertura Territorial Integral por Vereda (A hasta O)
-    const veredasRes = await db.execute(`
-      SELECT vereda, COUNT(*) as total
-      FROM vecinos
-      GROUP BY vereda
-    `);
-    const vecinosPorVeredaMap = {};
-    veredasRes.rows.forEach(r => {
-      vecinosPorVeredaMap[String(r.vereda).toUpperCase()] = Number(r.total || 0);
+    // 5.1 Habitantes registrados en censo_habitantes por vereda
+    let censoHabitantesPorVeredaRes = { rows: [] };
+    try {
+      censoHabitantesPorVeredaRes = await db.execute(`
+        SELECT UPPER(TRIM(p.calle_vereda_av)) as vereda, h.cedula
+        FROM censo_planillas p
+        JOIN censo_habitantes h ON h.planilla_id = p.id
+      `);
+    } catch (e) {
+      console.warn('Error consultando censo_habitantes por vereda:', e);
+    }
+
+    // 5.2 Planillas y casas censadas por vereda
+    let censoPorVeredaRes = { rows: [] };
+    try {
+      censoPorVeredaRes = await db.execute(`
+        SELECT UPPER(TRIM(calle_vereda_av)) as vereda, COUNT(DISTINCT numero_casa) as casas_censadas, SUM(total_habitantes) as habitantes
+        FROM censo_planillas
+        GROUP BY UPPER(TRIM(calle_vereda_av))
+      `);
+    } catch {}
+
+    const censoPorVeredaMap = {};
+    censoPorVeredaRes.rows.forEach(r => {
+      if (r.vereda) {
+        censoPorVeredaMap[r.vereda] = {
+          casas_censadas: Number(r.casas_censadas || 0),
+          habitantes: Number(r.habitantes || 0),
+        };
+      }
     });
 
+    // 5.3 Vecinos registrados en la plataforma
+    const veredasRes = await db.execute(`
+      SELECT UPPER(TRIM(vereda)) as vereda, cedula
+      FROM vecinos
+    `);
+    const vecinosPorVeredaMap = {};
+    const vecinosPorVeredaList = [];
+    veredasRes.rows.forEach(r => {
+      const v = String(r.vereda || '').toUpperCase().trim();
+      if (v) {
+        vecinosPorVeredaMap[v] = (vecinosPorVeredaMap[v] || 0) + 1;
+        vecinosPorVeredaList.push({ vereda: v, cedula: r.cedula });
+      }
+    });
+
+    // 5.4 Casas activas en catálogo territorial
     let casasPorVeredaRes = { rows: [] };
     try {
       casasPorVeredaRes = await db.execute(`
-        SELECT vereda, COUNT(*) as total_casas
+        SELECT UPPER(TRIM(vereda)) as vereda, COUNT(*) as total_casas
         FROM territorio_casas
         WHERE activo = 1
-        GROUP BY vereda
+        GROUP BY UPPER(TRIM(vereda))
       `);
     } catch {}
     const casasPorVeredaMap = {};
     casasPorVeredaRes.rows.forEach(r => {
-      casasPorVeredaMap[String(r.vereda).toUpperCase()] = Number(r.total_casas || 0);
+      if (r.vereda) casasPorVeredaMap[r.vereda] = Number(r.total_casas || 0);
     });
 
-    let censoPorVeredaRes = { rows: [] };
-    try {
-      censoPorVeredaRes = await db.execute(`
-        SELECT calle_vereda_av as vereda, COUNT(DISTINCT numero_casa) as casas_censadas, SUM(total_habitantes) as habitantes
-        FROM censo_planillas
-        GROUP BY calle_vereda_av
-      `);
-    } catch {}
-    const censoPorVeredaMap = {};
-    censoPorVeredaRes.rows.forEach(r => {
-      censoPorVeredaMap[String(r.vereda).toUpperCase()] = {
-        casas_censadas: Number(r.casas_censadas || 0),
-        habitantes: Number(r.habitantes || 0),
+    // Consolidación de habitantes reales por vereda (censo + vecinos no duplicados)
+    const veredasMap = {};
+    VEREDAS.forEach(v => {
+      veredasMap[v] = {
+        censo_count: 0,
+        vecinos_count: vecinosPorVeredaMap[v] || 0,
+        cedulas_vistas: new Set(),
+        habitantes_sin_cedula: 0,
       };
     });
 
-    const veredasData = VEREDAS.map(v => ({
-      vereda: `Vereda ${v}`,
-      codigo: v,
-      vecinos: vecinosPorVeredaMap[v] || 0,
-      casas: casasPorVeredaMap[v] || (CASAS_POR_VEREDA[v]?.length || 0),
-      casas_censadas: censoPorVeredaMap[v]?.casas_censadas || 0,
-      habitantes_censo: censoPorVeredaMap[v]?.habitantes || 0,
-    }));
+    censoHabitantesPorVeredaRes.rows.forEach(r => {
+      const v = r.vereda;
+      if (v && veredasMap[v]) {
+        veredasMap[v].censo_count++;
+        const ced = String(r.cedula || '').trim().toUpperCase();
+        if (ced) veredasMap[v].cedulas_vistas.add(ced);
+        else veredasMap[v].habitantes_sin_cedula++;
+      }
+    });
+
+    vecinosPorVeredaList.forEach(r => {
+      const v = r.vereda;
+      if (v && veredasMap[v]) {
+        const ced = String(r.cedula || '').trim().toUpperCase();
+        if (ced) {
+          veredasMap[v].cedulas_vistas.add(ced);
+        }
+      }
+    });
+
+    const veredasData = VEREDAS.map(v => {
+      const vInfo = veredasMap[v] || { censo_count: 0, vecinos_count: 0, cedulas_vistas: new Set(), habitantes_sin_cedula: 0 };
+      const habsConsolidados = Math.max(
+        vInfo.censo_count,
+        vInfo.cedulas_vistas.size + vInfo.habitantes_sin_cedula
+      );
+
+      return {
+        vereda: `Vereda ${v}`,
+        codigo: v,
+        habitantes: habsConsolidados,
+        habitantes_censo: vInfo.censo_count || (censoPorVeredaMap[v]?.habitantes || 0),
+        vecinos: vInfo.vecinos_count,
+        casas: casasPorVeredaMap[v] || (CASAS_POR_VEREDA[v]?.length || 0),
+        casas_censadas: censoPorVeredaMap[v]?.casas_censadas || 0,
+      };
+    });
 
     // 6. Catálogos Oficiales Dinámicos (Parentesco, Instrucción, Salud desde #configuracion)
     await asegurarTablaCatalogos();

@@ -92,6 +92,7 @@ export default function Dashboard({ user, onLogout }) {
   const [fechaInicioReporte, setFechaInicioReporte] = useState('');
   const [fechaFinReporte, setFechaFinReporte] = useState('');
   const [generandoReportePdf, setGenerandoReportePdf] = useState(false);
+  const [firmanteReporteId, setFirmanteReporteId] = useState('ADMIN_ACTUAL');
 
   // Estados para Crear Nuevo Documento en Modelador
   const [modalNuevaPlantilla, setModalNuevaPlantilla] = useState(false);
@@ -134,6 +135,7 @@ export default function Dashboard({ user, onLogout }) {
   const [modalCenso, setModalCenso] = useState(false);
   const [planillaActiva, setPlanillaActiva] = useState(null);
   const [numeroPlanillaModal, setNumeroPlanillaModal] = useState('');
+  const [guardandoCenso, setGuardandoCenso] = useState(false);
 
   // Generador cliente de códigos alfanuméricos aleatorios únicos (ej: PLC-A0A0A0)
   const generarNumeroPlanillaAlfanumericoClient = () => {
@@ -553,6 +555,57 @@ export default function Dashboard({ user, onLogout }) {
     }
   };
 
+  const handleCambiarFirmanteReporte = async (nuevoId) => {
+    setFirmanteReporteId(nuevoId);
+    if (user?.rol === 'SUPER_ADMIN' || user?.rol === 'ADMIN') {
+      try {
+        await fetch('/api/configuracion', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            settings: { firmante_estadisticas_id: nuevoId }
+          })
+        });
+        toast.success('Firmante del informe estadístico asignado y guardado');
+      } catch (e) {
+        console.error('Error guardando firmante:', e);
+      }
+    }
+  };
+
+  const obtenerFirmanteSeleccionado = (listaFirmas = firmas) => {
+    if (firmanteReporteId && firmanteReporteId.startsWith('FIRMA_')) {
+      const idNum = parseInt(firmanteReporteId.replace('FIRMA_', ''), 10);
+      const firmaEncontrada = listaFirmas.find(f => f.id === idNum);
+      if (firmaEncontrada) return firmaEncontrada;
+    }
+
+    // Si es ADMIN_ACTUAL o no se encontró la firma específica:
+    const firmaAdminRegistrada = listaFirmas.find(f => 
+      (user?.cedula && f.cedula && f.cedula.replace(/[^\d]/g, '') === String(user.cedula).replace(/[^\d]/g, '')) ||
+      (f.nombre && user?.nombre && f.nombre.toUpperCase().includes(user.nombre.toUpperCase().slice(0, 8))) ||
+      f.comision?.toUpperCase().includes('ADMIN') ||
+      f.comision?.toUpperCase().includes('TECNOLOG')
+    );
+
+    if (firmaAdminRegistrada) {
+      return {
+        ...firmaAdminRegistrada,
+        nombre: firmaAdminRegistrada.nombre || user?.nombre || 'ADMINISTRADOR DEL SISTEMA',
+        comision: firmaAdminRegistrada.comision || 'ADMINISTRADOR DEL SISTEMA Y GESTIÓN COMUNAL',
+      };
+    }
+
+    return {
+      nombre: user?.nombre || 'ADMINISTRADOR DEL SISTEMA',
+      cedula: user?.cedula || config?.admin_cedula || 'V-ADMIN',
+      comision: 'ADMINISTRADOR DEL SISTEMA Y GESTIÓN COMUNAL',
+      telefono: user?.telefono || '',
+      url_firma: user?.url_firma || null,
+      usar_sello_principal: 1,
+    };
+  };
+
   const handleGenerarReportePdf = async () => {
     setGenerandoReportePdf(true);
     try {
@@ -568,6 +621,8 @@ export default function Dashboard({ user, onLogout }) {
       ]);
 
       const statData = statsRes.resumen ? statsRes : stats;
+      const listaFirmas = firmasRes.firmas || firmas || [];
+      const firmanteEfectivo = obtenerFirmanteSeleccionado(listaFirmas);
 
       await generarReporteGestionPdf({
         rango: { fechaInicio: fechaInicioReporte, fechaFin: fechaFinReporte },
@@ -577,9 +632,11 @@ export default function Dashboard({ user, onLogout }) {
         parentescoData: statData?.graficos?.parentescoData || [],
         instruccionData: statData?.graficos?.instruccionData || [],
         saludData: statData?.graficos?.saludData || [],
-        firmas: firmasRes.firmas || firmas || [],
+        firmas: listaFirmas,
+        firmanteSeleccionado: firmanteEfectivo,
         config: config || {},
-        usuarioGenerador: user?.nombre || user?.username || 'Vocería Ejecutiva'
+        appUrl: typeof window !== 'undefined' ? window.location.origin : 'https://lasllaves.org',
+        usuarioGenerador: user?.nombre || user?.username || 'Administrador del Sistema'
       });
 
       toast.success('Informe de gestión y auditoría descargado exitosamente');
@@ -794,29 +851,90 @@ export default function Dashboard({ user, onLogout }) {
     }
   };
 
-  const agregarHabitanteACenso = () => {
-    const actuales = planillaActiva?.habitantes && planillaActiva.habitantes.length > 0
-      ? planillaActiva.habitantes
-      : [{ numero_familia: 1, nombres_apellidos: '', sexo: 'M', parentesco: 'a', instruccion: 'c', salud: 'e' }];
+  const crearHabitanteVacio = (numeroFamilia = 1, parentesco = 'a') => ({
+    _uid: `hab_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    numero_familia: numeroFamilia,
+    nombres_apellidos: '',
+    cedula: '',
+    sexo: 'M',
+    fecha_nacimiento: '',
+    parentesco,
+    instruccion: 'c',
+    profesion_ocupacion: '',
+    salud: 'e',
+    telefono_movil: '',
+  });
 
-    const nuevoHab = {
-      numero_familia: actuales[actuales.length - 1]?.numero_familia || 1,
-      nombres_apellidos: '',
-      cedula: '',
-      sexo: 'M',
-      fecha_nacimiento: '',
-      parentesco: 'c',
-      instruccion: 'c',
-      profesion_ocupacion: '',
-      salud: 'e',
-      telefono_movil: ''
-    };
-
-    setPlanillaActiva({
-      ...planillaActiva,
-      habitantes: [...actuales, nuevoHab]
+  const normalizarHabitantesParaFormulario = (lista) => {
+    if (!Array.isArray(lista) || lista.length === 0) {
+      return [crearHabitanteVacio(1, 'a')];
+    }
+    const vistos = new Set();
+    const unicos = [];
+    lista.forEach((h, idx) => {
+      const nomNorm = String(h?.nombres_apellidos || '').trim().toUpperCase().replace(/\s+/g, ' ');
+      const cedNorm = String(h?.cedula || '').trim().toUpperCase();
+      const clave = nomNorm ? `${nomNorm}|${cedNorm}` : `__empty_${idx}`;
+      if (!vistos.has(clave)) {
+        vistos.add(clave);
+        unicos.push({
+          ...h,
+          _uid: h?._uid || `hab_${h?.id || idx}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          numero_familia: Number(h?.numero_familia) || 1,
+          nombres_apellidos: nomNorm,
+          cedula: cedNorm,
+          sexo: h?.sexo || 'M',
+          fecha_nacimiento: h?.fecha_nacimiento || '',
+          parentesco: h?.parentesco || (unicos.length === 0 ? 'a' : 'c'),
+          instruccion: h?.instruccion || 'c',
+          profesion_ocupacion: h?.profesion_ocupacion || '',
+          salud: h?.salud || 'e',
+          telefono_movil: h?.telefono_movil || '',
+        });
+      }
     });
-    toast.success(`Habitante #${actuales.length + 1} incorporado`);
+    return unicos.length > 0 ? unicos : [crearHabitanteVacio(1, 'a')];
+  };
+
+  const actualizarHabitanteCenso = (idx, campo, valor) => {
+    setPlanillaActiva((prev) => {
+      if (!prev) return prev;
+      const actuales = Array.isArray(prev.habitantes) && prev.habitantes.length > 0
+        ? [...prev.habitantes]
+        : [crearHabitanteVacio(1, 'a')];
+      actuales[idx] = {
+        ...actuales[idx],
+        [campo]: valor,
+      };
+      return {
+        ...prev,
+        habitantes: actuales,
+      };
+    });
+  };
+
+  const agregarHabitanteACenso = () => {
+    let nuevoTotal = 1;
+    setPlanillaActiva((prev) => {
+      const actuales = Array.isArray(prev?.habitantes) && prev.habitantes.length > 0
+        ? prev.habitantes.map((h) => ({ ...h }))
+        : [crearHabitanteVacio(1, 'a')];
+
+      const famAnterior = Number(actuales[actuales.length - 1]?.numero_familia) || 1;
+      const nuevoHab = crearHabitanteVacio(famAnterior, 'c');
+      const nuevaLista = [...actuales, nuevoHab];
+      nuevoTotal = nuevaLista.length;
+
+      return {
+        ...prev,
+        planilla: {
+          ...(prev?.planilla || {}),
+          total_habitantes: nuevaLista.length,
+        },
+        habitantes: nuevaLista,
+      };
+    });
+    toast.success(`Habitante #${nuevoTotal} incorporado`);
   };
 
   const cargarFirmas = async () => {
@@ -1267,6 +1385,7 @@ export default function Dashboard({ user, onLogout }) {
       const data = await res.json();
       const cfg = data.config || {};
       setConfig(cfg);
+      if (cfg.firmante_estadisticas_id) setFirmanteReporteId(cfg.firmante_estadisticas_id);
       if (cfg.sello_forma) setSelloForma(cfg.sello_forma);
       if (cfg.sello_ancho_mm) setSelloAnchoMm(parseFloat(cfg.sello_ancho_mm) || 48);
       if (cfg.sello_alto_mm) setSelloAltoMm(parseFloat(cfg.sello_alto_mm) || 26);
@@ -2709,20 +2828,7 @@ export default function Dashboard({ user, onLogout }) {
                           total_habitantes: 1,
                           observaciones: ''
                         },
-                        habitantes: [
-                          {
-                            numero_familia: 1,
-                            nombres_apellidos: '',
-                            cedula: '',
-                            sexo: 'M',
-                            fecha_nacimiento: '',
-                            parentesco: 'a',
-                            instruccion: 'c',
-                            profesion_ocupacion: '',
-                            salud: 'e',
-                            telefono_movil: ''
-                          }
-                        ]
+                        habitantes: normalizarHabitantesParaFormulario([crearHabitanteVacio(1, 'a')])
                       });
                       setModalCenso(true);
                     } catch (e) {
@@ -2738,7 +2844,7 @@ export default function Dashboard({ user, onLogout }) {
                           total_familias: 1,
                           total_habitantes: 1,
                         },
-                        habitantes: []
+                        habitantes: normalizarHabitantesParaFormulario([crearHabitanteVacio(1, 'a')])
                       });
                       setModalCenso(true);
                     }
@@ -2778,7 +2884,7 @@ export default function Dashboard({ user, onLogout }) {
                           total_familias: 1,
                           total_habitantes: 1,
                         },
-                        habitantes: [{ numero_familia: 1, nombres_apellidos: '', cedula: '', sexo: 'M', parentesco: 'a', instruccion: 'c', salud: 'e' }]
+                        habitantes: normalizarHabitantesParaFormulario([crearHabitanteVacio(1, 'a')])
                       });
                       setModalCenso(true);
                     }}
@@ -2820,8 +2926,15 @@ export default function Dashboard({ user, onLogout }) {
                       <button
                         onClick={async () => {
                           const res = await fetch(`/api/censo?id=${p.id}`).then(r => r.json());
+                          const habsNorm = normalizarHabitantesParaFormulario(res?.habitantes || []);
                           setNumeroPlanillaModal(res?.planilla?.numero_planilla || p.numero_planilla);
-                          setPlanillaActiva(res);
+                          setPlanillaActiva({
+                            planilla: {
+                              ...(res?.planilla || p),
+                              total_habitantes: habsNorm.length,
+                            },
+                            habitantes: habsNorm,
+                          });
                           setModalCenso(true);
                         }}
                         className="flex-1 py-2 px-3 rounded-xl bg-blue-600/15 hover:bg-blue-600/30 text-blue-300 border border-blue-500/20 text-xs font-semibold transition flex items-center justify-center gap-1.5"
@@ -3705,6 +3818,19 @@ export default function Dashboard({ user, onLogout }) {
                   <span>Agregar Firma Autorizada</span>
                 </button>
               )}
+            </div>
+
+            {/* Aviso informativo de vinculación con reportes estadísticos y documentos */}
+            <div className="p-4 rounded-2xl bg-blue-950/40 border border-blue-500/30 flex items-start gap-3 text-xs text-blue-200">
+              <Sparkles className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <span className="font-bold text-white block">
+                  Asignación Dinámica de Firmantes para Documentos y Reportes Estadísticos
+                </span>
+                <p className="text-slate-300 leading-relaxed text-[11px]">
+                  Todos los voceros y cargos agregados en esta sección (incluyendo la firma del Administrador del Sistema con su PNG transparente y sellos) quedan disponibles en el sistema para ser asignados individualmente al firmar los documentos legales y los <strong>Informes Estadísticos de Gestión Comunal en PDF (#estadisticas)</strong>.
+                </p>
+              </div>
             </div>
 
             {/* PANEL DE CONTROL DEL SELLO PRINCIPAL OFICIAL */}
@@ -4740,6 +4866,27 @@ export default function Dashboard({ user, onLogout }) {
                   </button>
                 )}
 
+                {/* Selector de Firmante Autorizado para Reportes Estadísticos */}
+                <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-750 px-2.5 py-1 rounded-xl">
+                  <PenTool className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  <span className="text-[11px] font-bold text-slate-300 shrink-0">Firmante:</span>
+                  <select
+                    value={firmanteReporteId}
+                    onChange={(e) => handleCambiarFirmanteReporte(e.target.value)}
+                    className="bg-slate-950 border border-slate-700 text-white text-[11px] rounded-lg px-2 py-0.5 focus:outline-none focus:border-blue-500 max-w-[210px] truncate"
+                    title="Selecciona el vocero o administrador que firma los documentos estadísticos en PDF"
+                  >
+                    <option value="ADMIN_ACTUAL">
+                      👤 {user?.nombre || user?.username || 'Administrador del Sistema'} (Admin en Sesión)
+                    </option>
+                    {firmas.filter(f => f.activo !== 0).map((f) => (
+                      <option key={f.id} value={`FIRMA_${f.id}`}>
+                        ✍️ {f.nombre} ({f.comision})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => setModalResumenVisual(true)}
@@ -5100,6 +5247,7 @@ export default function Dashboard({ user, onLogout }) {
                       <YAxis stroke="#64748b" fontSize={10} />
                       <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }} />
                       <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+                      <Bar name="Habitantes Reales" dataKey="habitantes" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                       <Bar name="Vecinos Registrados" dataKey="vecinos" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                       <Bar name="Casas en Catálogo" dataKey="casas" fill="#06b6d4" radius={[4, 4, 0, 0]} />
                     </BarChart>
@@ -8473,29 +8621,45 @@ export default function Dashboard({ user, onLogout }) {
             </div>
 
             <form
+              key={planillaActiva?.planilla?.id ? `edit-censo-${planillaActiva.planilla.id}` : `new-censo-${planillaActiva?.planilla?.numero_planilla || numeroPlanillaModal || 'auto'}`}
               onSubmit={async (e) => {
                 e.preventDefault();
+                if (guardandoCenso) return;
+                setGuardandoCenso(true);
+
                 const formData = new FormData(e.target);
-                
-                // Recopilar habitantes desde el formulario
-                const totalHab = Math.max(1, (planillaActiva?.habitantes?.length || 1));
+
+                // Recopilar habitantes desde el estado controlado (o fallback a FormData) y deduplicar
+                const fuenteHabs = Array.isArray(planillaActiva?.habitantes) && planillaActiva.habitantes.length > 0
+                  ? planillaActiva.habitantes
+                  : [];
+
                 const habList = [];
-                for (let i = 0; i < totalHab; i++) {
-                  const nroFam = formData.get(`hab_${i}_fam`) || '1';
-                  const nom = formData.get(`hab_${i}_nombre`);
-                  if (!nom || !nom.trim()) continue;
+                const vistosSubmit = new Set();
+
+                for (let i = 0; i < fuenteHabs.length; i++) {
+                  const item = fuenteHabs[i] || {};
+                  const nroFam = item.numero_familia ?? formData.get(`hab_${i}_fam`) ?? '1';
+                  const nom = String(item.nombres_apellidos ?? formData.get(`hab_${i}_nombre`) ?? '').trim().toUpperCase().replace(/\s+/g, ' ');
+                  if (!nom) continue;
+
+                  const ced = String(item.cedula ?? formData.get(`hab_${i}_cedula`) ?? '').trim().toUpperCase();
+                  const fecNac = String(item.fecha_nacimiento ?? formData.get(`hab_${i}_fecha_nac`) ?? '').trim();
+                  const claveUnica = `${nom}|${ced}|${fecNac}`;
+                  if (vistosSubmit.has(claveUnica)) continue;
+                  vistosSubmit.add(claveUnica);
 
                   habList.push({
                     numero_familia: Number(nroFam) || 1,
-                    nombres_apellidos: nom.trim().toUpperCase(),
-                    cedula: (formData.get(`hab_${i}_cedula`) || '').trim().toUpperCase(),
-                    sexo: formData.get(`hab_${i}_sexo`) || 'M',
-                    fecha_nacimiento: (formData.get(`hab_${i}_fecha_nac`) || '').trim(),
-                    parentesco: formData.get(`hab_${i}_parentesco`) || 'a',
-                    instruccion: formData.get(`hab_${i}_instruccion`) || 'c',
-                    profesion_ocupacion: (formData.get(`hab_${i}_ocupacion`) || '').trim(),
-                    salud: formData.get(`hab_${i}_salud`) || 'e',
-                    telefono_movil: (formData.get(`hab_${i}_telefono`) || '').trim(),
+                    nombres_apellidos: nom,
+                    cedula: ced,
+                    sexo: item.sexo || formData.get(`hab_${i}_sexo`) || 'M',
+                    fecha_nacimiento: fecNac,
+                    parentesco: item.parentesco || formData.get(`hab_${i}_parentesco`) || 'a',
+                    instruccion: item.instruccion || formData.get(`hab_${i}_instruccion`) || 'c',
+                    profesion_ocupacion: String(item.profesion_ocupacion ?? formData.get(`hab_${i}_ocupacion`) ?? '').trim(),
+                    salud: item.salud || formData.get(`hab_${i}_salud`) || 'e',
+                    telefono_movil: String(item.telefono_movil ?? formData.get(`hab_${i}_telefono`) ?? '').trim(),
                   });
                 }
 
@@ -8533,6 +8697,8 @@ export default function Dashboard({ user, onLogout }) {
                   }
                 } catch (err) {
                   toast.error('Error de conexión al guardar el censo');
+                } finally {
+                  setGuardandoCenso(false);
                 }
               }}
               className="space-y-6 text-xs"
@@ -8703,8 +8869,9 @@ export default function Dashboard({ user, onLogout }) {
                       type="number"
                       name="total_habitantes"
                       min="1"
-                      defaultValue={planillaActiva?.planilla?.total_habitantes || (planillaActiva?.habitantes?.length || 1)}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white font-bold focus:border-blue-500 outline-none"
+                      value={planillaActiva?.habitantes?.length || planillaActiva?.planilla?.total_habitantes || 1}
+                      readOnly
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900/70 border border-slate-750 text-emerald-400 font-bold outline-none"
                     />
                   </div>
                 </div>
@@ -8758,13 +8925,13 @@ export default function Dashboard({ user, onLogout }) {
                   </div>
                 </div>
 
-                {/* Lista / Tabla de Habitantes Responsive */}
+                {/* Lista / Tabla de Habitantes Responsive (Estado Controlado + Clave Única por Habitante) */}
                 <div className="space-y-3">
                   {(planillaActiva?.habitantes && planillaActiva.habitantes.length > 0
                     ? planillaActiva.habitantes
-                    : [{ numero_familia: 1, nombres_apellidos: '', sexo: 'M', parentesco: 'a', instruccion: 'c', salud: 'e' }]
+                    : [{ _uid: 'hab_default_0', numero_familia: 1, nombres_apellidos: '', sexo: 'M', parentesco: 'a', instruccion: 'c', salud: 'e' }]
                   ).map((hab, idx) => (
-                    <div key={idx} className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800/90 hover:border-slate-700 transition space-y-3">
+                    <div key={hab._uid || hab.id || `hab_row_${idx}`} className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800/90 hover:border-slate-700 transition space-y-3">
                       <div className="flex items-center justify-between text-xs font-bold text-slate-300">
                         <div className="flex items-center gap-2">
                           <span className="w-6 h-6 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center font-mono font-black text-xs">
@@ -8773,13 +8940,21 @@ export default function Dashboard({ user, onLogout }) {
                           <span>Habitante N° {idx + 1}</span>
                         </div>
 
-                        {idx > 0 && (
+                        {(planillaActiva?.habitantes?.length || 1) > 1 && (
                           <button
                             type="button"
                             onClick={() => {
-                              const lista = [...(planillaActiva.habitantes || [])];
-                              lista.splice(idx, 1);
-                              setPlanillaActiva({ ...planillaActiva, habitantes: lista });
+                              setPlanillaActiva((prev) => {
+                                const lista = (prev?.habitantes || []).filter((_, i) => i !== idx);
+                                return {
+                                  ...prev,
+                                  planilla: {
+                                    ...(prev?.planilla || {}),
+                                    total_habitantes: Math.max(1, lista.length),
+                                  },
+                                  habitantes: lista.length > 0 ? lista : [crearHabitanteVacio(1, 'a')],
+                                };
+                              });
                             }}
                             className="text-rose-400 hover:text-rose-300 text-[11px] font-semibold flex items-center gap-1"
                           >
@@ -8789,7 +8964,7 @@ export default function Dashboard({ user, onLogout }) {
                         )}
                       </div>
 
-                      {/* Campos del habitante */}
+                      {/* Campos del habitante (controlados) */}
                       <div className="grid grid-cols-2 sm:grid-cols-6 lg:grid-cols-12 gap-2 text-xs">
                         {/* Fam N° */}
                         <div className="col-span-1 sm:col-span-1 lg:col-span-1">
@@ -8799,7 +8974,8 @@ export default function Dashboard({ user, onLogout }) {
                             name={`hab_${idx}_fam`}
                             min="1"
                             max="9"
-                            defaultValue={hab.numero_familia || 1}
+                            value={hab.numero_familia ?? 1}
+                            onChange={(e) => actualizarHabitanteCenso(idx, 'numero_familia', e.target.value)}
                             className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white font-mono text-center font-bold"
                           />
                         </div>
@@ -8810,8 +8986,8 @@ export default function Dashboard({ user, onLogout }) {
                           <input
                             type="text"
                             name={`hab_${idx}_nombre`}
-                            defaultValue={(hab.nombres_apellidos || '').toUpperCase()}
-                            onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
+                            value={hab.nombres_apellidos ?? ''}
+                            onChange={(e) => actualizarHabitanteCenso(idx, 'nombres_apellidos', e.target.value.toUpperCase())}
                             placeholder="NOMBRE COMPLETO"
                             required={idx === 0}
                             className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white uppercase font-semibold"
@@ -8824,7 +9000,8 @@ export default function Dashboard({ user, onLogout }) {
                           <input
                             type="text"
                             name={`hab_${idx}_cedula`}
-                            defaultValue={hab.cedula || ''}
+                            value={hab.cedula ?? ''}
+                            onChange={(e) => actualizarHabitanteCenso(idx, 'cedula', e.target.value.toUpperCase())}
                             placeholder="V-12345678"
                             className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white font-mono"
                           />
@@ -8835,7 +9012,8 @@ export default function Dashboard({ user, onLogout }) {
                           <label className="block text-[10px] text-slate-400 mb-0.5">Sexo</label>
                           <select
                             name={`hab_${idx}_sexo`}
-                            defaultValue={hab.sexo || 'M'}
+                            value={hab.sexo || 'M'}
+                            onChange={(e) => actualizarHabitanteCenso(idx, 'sexo', e.target.value)}
                             className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white text-center font-bold"
                           >
                             <option value="M">M</option>
@@ -8849,7 +9027,8 @@ export default function Dashboard({ user, onLogout }) {
                           <input
                             type="text"
                             name={`hab_${idx}_fecha_nac`}
-                            defaultValue={hab.fecha_nacimiento || ''}
+                            value={hab.fecha_nacimiento ?? ''}
+                            onChange={(e) => actualizarHabitanteCenso(idx, 'fecha_nacimiento', e.target.value)}
                             placeholder="DD/MM/AAAA"
                             className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white"
                           />
@@ -8860,7 +9039,8 @@ export default function Dashboard({ user, onLogout }) {
                           <label className="block text-[10px] text-slate-400 mb-0.5">Parentesco</label>
                           <select
                             name={`hab_${idx}_parentesco`}
-                            defaultValue={hab.parentesco || (idx === 0 ? 'a' : 'c')}
+                            value={hab.parentesco || (idx === 0 ? 'a' : 'c')}
+                            onChange={(e) => actualizarHabitanteCenso(idx, 'parentesco', e.target.value)}
                             className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white text-[11px]"
                           >
                             {catalogos.parentesco.map((item) => (
@@ -8876,7 +9056,8 @@ export default function Dashboard({ user, onLogout }) {
                           <label className="block text-[10px] text-slate-400 mb-0.5">Instrucción</label>
                           <select
                             name={`hab_${idx}_instruccion`}
-                            defaultValue={hab.instruccion || 'c'}
+                            value={hab.instruccion || 'c'}
+                            onChange={(e) => actualizarHabitanteCenso(idx, 'instruccion', e.target.value)}
                             className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white text-[11px]"
                           >
                             {catalogos.instruccion.map((item) => (
@@ -8893,7 +9074,8 @@ export default function Dashboard({ user, onLogout }) {
                           <input
                             type="text"
                             name={`hab_${idx}_ocupacion`}
-                            defaultValue={hab.profesion_ocupacion || ''}
+                            value={hab.profesion_ocupacion ?? ''}
+                            onChange={(e) => actualizarHabitanteCenso(idx, 'profesion_ocupacion', e.target.value)}
                             placeholder="Ej: Docente, Estudiante"
                             className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white"
                           />
@@ -8904,7 +9086,8 @@ export default function Dashboard({ user, onLogout }) {
                           <label className="block text-[10px] text-slate-400 mb-0.5">Salud</label>
                           <select
                             name={`hab_${idx}_salud`}
-                            defaultValue={hab.salud || 'e'}
+                            value={hab.salud || 'e'}
+                            onChange={(e) => actualizarHabitanteCenso(idx, 'salud', e.target.value)}
                             className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white text-[11px]"
                           >
                             {catalogos.salud.map((item) => (
@@ -8921,7 +9104,8 @@ export default function Dashboard({ user, onLogout }) {
                           <input
                             type="text"
                             name={`hab_${idx}_telefono`}
-                            defaultValue={hab.telefono_movil || ''}
+                            value={hab.telefono_movil ?? ''}
+                            onChange={(e) => actualizarHabitanteCenso(idx, 'telefono_movil', e.target.value)}
                             placeholder="0412-1234567"
                             className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white"
                           />
@@ -8974,10 +9158,20 @@ export default function Dashboard({ user, onLogout }) {
                 </button>
                 <button
                   type="submit"
-                  className="w-full sm:w-2/3 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2"
+                  disabled={guardandoCenso}
+                  className="w-full sm:w-2/3 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xs transition shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2"
                 >
-                  <Check className="w-4 h-4" />
-                  <span>Guardar Planilla Oficial de Censo</span>
+                  {guardandoCenso ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Guardando Planilla...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Guardar Planilla Oficial de Censo</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -10871,6 +11065,12 @@ export default function Dashboard({ user, onLogout }) {
         onClose={() => setModalResumenVisual(false)}
         stats={stats}
         config={config}
+        firmas={firmas}
+        firmanteReporteId={firmanteReporteId}
+        onCambiarFirmanteReporte={handleCambiarFirmanteReporte}
+        onDescargarPdf={handleGenerarReportePdf}
+        generandoReportePdf={generandoReportePdf}
+        user={user}
       />
 
     </div>

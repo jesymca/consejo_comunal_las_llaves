@@ -53,33 +53,61 @@ export async function GET(request) {
       }
 
       const habitantesRes = await db.execute({
-        sql: 'SELECT * FROM censo_habitantes WHERE planilla_id = ? ORDER BY numero_habitante ASC',
+        sql: 'SELECT * FROM censo_habitantes WHERE planilla_id = ? ORDER BY numero_habitante ASC, id ASC',
         args: [id]
       });
 
+      // Deduplicar defensivamente por (nombres_apellidos, cedula) dentro de la misma planilla
+      const vistos = new Set();
+      const habitantesUnicos = [];
+      for (const h of habitantesRes.rows) {
+        const nomNorm = String(h.nombres_apellidos || '').trim().toUpperCase().replace(/\s+/g, ' ');
+        const cedNorm = String(h.cedula || '').trim().toUpperCase();
+        const clave = `${nomNorm}|${cedNorm}`;
+        if (!vistos.has(clave)) {
+          vistos.add(clave);
+          habitantesUnicos.push({
+            ...h,
+            numero_habitante: habitantesUnicos.length + 1,
+          });
+        }
+      }
+
       return NextResponse.json({
-        planilla: planillaRes.rows[0],
-        habitantes: habitantesRes.rows,
+        planilla: {
+          ...planillaRes.rows[0],
+          total_habitantes: habitantesUnicos.length > 0 ? habitantesUnicos.length : planillaRes.rows[0].total_habitantes,
+        },
+        habitantes: habitantesUnicos,
       });
     }
 
-    // Listado general de planillas con filtros
-    let sql = `SELECT * FROM censo_planillas WHERE 1=1`;
+    // Listado general de planillas con filtros y conteo real de habitantes
+    let sql = `
+      SELECT p.*,
+        (SELECT COUNT(*) FROM censo_habitantes h WHERE h.planilla_id = p.id) AS habitantes_reales
+      FROM censo_planillas p
+      WHERE 1=1
+    `;
     const args = [];
 
     if (vereda) {
-      sql += ` AND calle_vereda_av = ?`;
+      sql += ` AND p.calle_vereda_av = ?`;
       args.push(vereda.toUpperCase());
     }
     if (casa) {
-      sql += ` AND numero_casa = ?`;
+      sql += ` AND p.numero_casa = ?`;
       args.push(casa.toUpperCase());
     }
 
-    sql += ` ORDER BY id DESC LIMIT 100`;
+    sql += ` ORDER BY p.id DESC LIMIT 200`;
 
     const res = await db.execute({ sql, args });
-    return NextResponse.json({ planillas: res.rows });
+    const planillas = res.rows.map((p) => ({
+      ...p,
+      total_habitantes: Number(p.habitantes_reales) > 0 ? Number(p.habitantes_reales) : Number(p.total_habitantes || 0),
+    }));
+    return NextResponse.json({ planillas });
   } catch (err) {
     console.error('Error en /api/censo GET:', err);
     return NextResponse.json({ error: err.message || 'Error del servidor' }, { status: 500 });
@@ -192,8 +220,46 @@ export async function POST(request) {
 
     const now = new Date().toISOString();
 
+    // Limpiar y deduplicar habitantes recibidos (evita duplicados dentro de la misma vivienda)
+    const habitantesLimpios = [];
+    const vistosPayload = new Set();
+    if (Array.isArray(habitantes)) {
+      for (const h of habitantes) {
+        const nomNorm = String(h?.nombres_apellidos || '').trim().toUpperCase().replace(/\s+/g, ' ');
+        if (!nomNorm) continue;
+        const cedNorm = String(h?.cedula || '').trim().toUpperCase();
+        const nacNorm = String(h?.fecha_nacimiento || '').trim();
+        const clave = `${nomNorm}|${cedNorm}|${nacNorm}`;
+        if (!vistosPayload.has(clave)) {
+          vistosPayload.add(clave);
+          habitantesLimpios.push({
+            ...h,
+            nombres_apellidos: nomNorm,
+            cedula: cedNorm,
+          });
+        }
+      }
+    }
+
+    const conteoHabitantesFinal = habitantesLimpios.length > 0
+      ? habitantesLimpios.length
+      : (Number(total_habitantes) || 1);
+
+    // Verificar si ya existe una planilla por numero_planilla o para la misma vivienda (vereda + casa)
+    const existenteRes = await db.execute({
+      sql: `SELECT id, numero_planilla FROM censo_planillas
+            WHERE numero_planilla = ? OR (UPPER(calle_vereda_av) = ? AND UPPER(numero_casa) = ?)
+            ORDER BY CASE WHEN numero_planilla = ? THEN 0 ELSE 1 END ASC, id ASC
+            LIMIT 1`,
+      args: [numPlanillaFinal, vUpper, cUpper, numPlanillaFinal],
+    });
+
+    if (existenteRes.rows.length > 0 && existenteRes.rows[0].numero_planilla) {
+      numPlanillaFinal = existenteRes.rows[0].numero_planilla;
+    }
+
     // Guardar o actualizar planilla
-    const planillaRes = await db.execute({
+    await db.execute({
       sql: `INSERT INTO censo_planillas (
         numero_planilla, fecha, empadronador_nombre, empadronador_usuario_id,
         calle_vereda_av, numero_casa, telefono_contacto, tenencia_vivienda,
@@ -223,34 +289,33 @@ export async function POST(request) {
         tenencia_vivienda || 'Propia',
         tiempo_residencia_desde || '',
         Number(total_familias) || 1,
-        Number(total_habitantes) || (habitantes?.length || 1),
+        conteoHabitantesFinal,
         observaciones || '',
         now,
         now,
       ]
     });
 
-    // Obtener ID de la planilla
-    let planillaId = Number(planillaRes.lastInsertRowid);
-    if (!planillaId) {
-      const getP = await db.execute({
-        sql: 'SELECT id FROM censo_planillas WHERE numero_planilla = ?',
-        args: [numPlanillaFinal]
-      });
-      planillaId = getP.rows[0]?.id;
-    }
+    // Consultar SIEMPRE el id exacto por numero_planilla (nunca depender de lastInsertRowid tras ON CONFLICT DO UPDATE)
+    const getP = await db.execute({
+      sql: 'SELECT id FROM censo_planillas WHERE numero_planilla = ? LIMIT 1',
+      args: [numPlanillaFinal]
+    });
+    const planillaId = Number(getP.rows[0]?.id);
 
-    // Si enviaron habitantes, reemplazar registros de la planilla
-    if (habitantes && Array.isArray(habitantes) && planillaId) {
-      await db.execute({
-        sql: 'DELETE FROM censo_habitantes WHERE planilla_id = ?',
-        args: [planillaId]
-      });
+    // Reemplazar habitantes de forma ATÓMICA mediante transacción db.batch(..., 'write')
+    // Esto impide condiciones de carrera o duplicados si se presiona Guardar dos veces seguidas
+    if (Array.isArray(habitantes) && planillaId) {
+      const batchStmts = [
+        {
+          sql: 'DELETE FROM censo_habitantes WHERE planilla_id = ?',
+          args: [planillaId],
+        },
+      ];
 
-      for (let i = 0; i < habitantes.length; i++) {
-        const h = habitantes[i];
-        if (!h.nombres_apellidos) continue;
-        await db.execute({
+      for (let i = 0; i < habitantesLimpios.length; i++) {
+        const h = habitantesLimpios[i];
+        batchStmts.push({
           sql: `INSERT INTO censo_habitantes (
             planilla_id, numero_habitante, numero_familia, nombres_apellidos,
             cedula, sexo, fecha_nacimiento, parentesco, instruccion,
@@ -260,7 +325,7 @@ export async function POST(request) {
             planillaId,
             i + 1,
             Number(h.numero_familia) || 1,
-            h.nombres_apellidos.trim().toUpperCase(),
+            h.nombres_apellidos,
             h.cedula || '',
             h.sexo || 'M',
             h.fecha_nacimiento || '',
@@ -270,12 +335,19 @@ export async function POST(request) {
             h.salud || 'e',
             h.telefono_movil || '',
             now,
-          ]
+          ],
         });
       }
+
+      batchStmts.push({
+        sql: 'UPDATE censo_planillas SET total_habitantes = ?, updated_at = ? WHERE id = ?',
+        args: [conteoHabitantesFinal, now, planillaId],
+      });
+
+      await db.batch(batchStmts, 'write');
     }
 
-    const jefeFamiliar = Array.isArray(habitantes) && habitantes[0] ? habitantes[0] : null;
+    const jefeFamiliar = habitantesLimpios[0] || null;
     await registrarAuditoria({
       tipo_evento: 'REGISTRO_PLANILLA_CENSO',
       usuario_id: currentUser?.id || null,
@@ -288,7 +360,7 @@ export async function POST(request) {
         vereda: vUpper,
         casa: cUpper,
         total_familias: Number(total_familias) || 1,
-        total_habitantes: Number(total_habitantes) || (habitantes?.length || 1),
+        total_habitantes: conteoHabitantesFinal,
         jefe_familia: jefeFamiliar?.nombres_apellidos || null,
       }
     });
