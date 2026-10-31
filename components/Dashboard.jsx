@@ -132,6 +132,7 @@ export default function Dashboard({ user, onLogout }) {
 
   // Estados de módulo Censo
   const [planillasCenso, setPlanillasCenso] = useState([]);
+  const [vecinosCenso, setVecinosCenso] = useState([]);
   const [modalCenso, setModalCenso] = useState(false);
   const [planillaActiva, setPlanillaActiva] = useState(null);
   const [numeroPlanillaModal, setNumeroPlanillaModal] = useState('');
@@ -846,8 +847,45 @@ export default function Dashboard({ user, onLogout }) {
       const res = await fetch('/api/censo');
       const data = await res.json();
       setPlanillasCenso(data.planillas || []);
+      setVecinosCenso(data.vecinos_censo || []);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const abrirPlanillaPorVivienda = async (vereda, casa, silencioso = false) => {
+    if (!vereda || !casa) return;
+    try {
+      const res = await fetch(`/api/censo?cargar_vivienda=1&vereda=${encodeURIComponent(vereda)}&casa=${encodeURIComponent(casa)}`).then((r) => r.json());
+      if (res.error) {
+        if (!silencioso) toast.error(res.error);
+        return;
+      }
+      const habsNorm = normalizarHabitantesParaFormulario(res.habitantes || []);
+      const numPlan = res.planilla?.numero_planilla || numeroPlanillaModal || generarNumeroPlanillaAlfanumericoClient();
+      setNumeroPlanillaModal(numPlan);
+      setPlanillaActiva({
+        planilla: {
+          ...(res.planilla || {}),
+          numero_planilla: numPlan,
+          empadronador_nombre: res.planilla?.empadronador_nombre || user?.nombre || '',
+          calle_vereda_av: vereda.toUpperCase(),
+          numero_casa: casa.toUpperCase(),
+          total_habitantes: habsNorm.length,
+        },
+        habitantes: habsNorm,
+        vecinos_casa: res.vecinos_casa || [],
+      });
+      setModalCenso(true);
+
+      const vecCount = Array.isArray(res.vecinos_casa) ? res.vecinos_casa.length : 0;
+      if (res.existe_planilla) {
+        toast.info(`Cargada Planilla N° ${numPlan} de Vereda ${vereda}, Casa ${casa}${vecCount > 0 ? ` (${vecCount} vecino(s) de #vecinos vinculados sin duplicar)` : ''}`);
+      } else if (vecCount > 0) {
+        toast.success(`Se precargaron ${vecCount} vecino(s) de #vecinos en Casa ${casa}. Ajuste parentesco o datos faltantes.`);
+      }
+    } catch (err) {
+      if (!silencioso) toast.error('No se pudo consultar la vivienda');
     }
   };
 
@@ -2857,6 +2895,102 @@ export default function Dashboard({ user, onLogout }) {
               )}
             </div>
 
+            {/* Panel de Integración #vecinos ↔ #censo (Vecinos Pendientes de Aprobación o sin Planilla) */}
+            {vecinosCenso.length > 0 && (
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-amber-500/30 shadow-lg space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
+                      <UserCheck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
+                        <span>Vecinos Registrados en #vecinos y su Vinculación con Planillas de #censo</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          {vecinosCenso.filter((v) => v.estado_aprobacion === 'PENDIENTE').length} pendiente(s) de aprobación
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-slate-400">
+                        Si un integrante se registró en el portal (aunque no sea el dueño de la vivienda), el sistema lo vincula con la planilla de su casa <strong className="text-slate-200">sin duplicarlo</strong> para que el transcriptor verifique su parentesco y complete datos faltantes.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {vecinosCenso.map((vc) => (
+                    <div
+                      key={vc.id}
+                      className={`p-3 rounded-xl border flex flex-col justify-between gap-2.5 transition ${
+                        vc.estado_aprobacion === 'PENDIENTE'
+                          ? 'bg-amber-950/20 border-amber-500/30 hover:border-amber-500/50'
+                          : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                          <span className="font-mono text-[11px] font-bold text-white bg-slate-900 px-2 py-0.5 rounded border border-slate-750">
+                            Vereda {vc.vereda} · Casa {vc.casa}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              vc.estado_aprobacion === 'PENDIENTE'
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            }`}
+                          >
+                            {vc.estado_aprobacion === 'PENDIENTE' ? '⏳ PENDIENTE EN #VECINOS' : '✅ APROBADO EN #VECINOS'}
+                          </span>
+                        </div>
+
+                        <div className="text-xs font-bold text-white pt-0.5">{vc.nombre_completo}</div>
+                        <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span className="font-mono text-slate-300">{vc.cedula}</span>
+                          <span>• Declaró: <strong className="text-amber-300">{vc.parentesco_declarado}</strong></span>
+                          {vc.telefono && <span>• Tel: {vc.telefono}</span>}
+                        </div>
+
+                        <div className="pt-1">
+                          {vc.planilla_id ? (
+                            vc.ya_en_planilla ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                <Check className="w-3 h-3" />
+                                Ya está en Planilla {vc.numero_planilla} (No se duplica)
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                                <Plus className="w-3 h-3" />
+                                Se anexará a Planilla {vc.numero_planilla} al abrirla
+                              </span>
+                            )
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                              Casa {vc.casa} aún sin Planilla en #censo
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {user?.rol !== 'CONTRALORIA' && (
+                        <button
+                          type="button"
+                          onClick={() => abrirPlanillaPorVivienda(vc.vereda, vc.casa)}
+                          className="w-full py-1.5 px-2.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/35 text-blue-300 border border-blue-500/30 text-[11px] font-bold transition flex items-center justify-center gap-1.5"
+                        >
+                          <Edit className="w-3 h-3" />
+                          <span>
+                            {vc.planilla_id
+                              ? `Abrir Planilla ${vc.numero_planilla} y Ajustar Datos`
+                              : `Crear Planilla de Casa ${vc.casa} con este Vecino`}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Listado de Planillas de Censo */}
             {planillasCenso.length === 0 ? (
               <div className="p-12 text-center rounded-3xl bg-slate-900 border border-slate-800 text-slate-400">
@@ -2900,11 +3034,18 @@ export default function Dashboard({ user, onLogout }) {
                 {planillasCenso.map((p) => (
                   <div key={p.id} className="p-5 rounded-2xl glass-panel relative border border-slate-800 hover:border-blue-500/30 transition flex flex-col justify-between">
                     <div>
-                      <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                         <span className="font-mono text-xs font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
                           PLANILLA N° {p.numero_planilla}
                         </span>
-                        <span className="text-[11px] text-slate-400">{p.fecha}</span>
+                        <div className="flex items-center gap-1.5">
+                          {p.vecinos_pendientes_count > 0 && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              ⏳ {p.vecinos_pendientes_count} pend. en #vecinos
+                            </span>
+                          )}
+                          <span className="text-[11px] text-slate-400">{p.fecha}</span>
+                        </div>
                       </div>
 
                       <h3 className="font-bold text-base text-white mb-1">
@@ -2934,6 +3075,7 @@ export default function Dashboard({ user, onLogout }) {
                               total_habitantes: habsNorm.length,
                             },
                             habitantes: habsNorm,
+                            vecinos_casa: res?.vecinos_casa || [],
                           });
                           setModalCenso(true);
                         }}
@@ -8660,6 +8802,8 @@ export default function Dashboard({ user, onLogout }) {
                     profesion_ocupacion: String(item.profesion_ocupacion ?? formData.get(`hab_${i}_ocupacion`) ?? '').trim(),
                     salud: item.salud || formData.get(`hab_${i}_salud`) || 'e',
                     telefono_movil: String(item.telefono_movil ?? formData.get(`hab_${i}_telefono`) ?? '').trim(),
+                    vecino_id: item.vecino_id || null,
+                    aprobar_en_padron: Boolean(item.aprobar_en_padron),
                   });
                 }
 
@@ -8810,6 +8954,7 @@ export default function Dashboard({ user, onLogout }) {
                     labelVereda="Calle / Vereda / Av *"
                     defaultVereda={planillaActiva?.planilla?.calle_vereda_av || 'A'}
                     defaultCasa={planillaActiva?.planilla?.numero_casa || ''}
+                    onSelectCasa={(v, c) => abrirPlanillaPorVivienda(v, c, true)}
                   />
 
                   <div>
@@ -8931,38 +9076,106 @@ export default function Dashboard({ user, onLogout }) {
                     ? planillaActiva.habitantes
                     : [{ _uid: 'hab_default_0', numero_familia: 1, nombres_apellidos: '', sexo: 'M', parentesco: 'a', instruccion: 'c', salud: 'e' }]
                   ).map((hab, idx) => (
-                    <div key={hab._uid || hab.id || `hab_row_${idx}`} className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800/90 hover:border-slate-700 transition space-y-3">
-                      <div className="flex items-center justify-between text-xs font-bold text-slate-300">
-                        <div className="flex items-center gap-2">
+                    <div
+                      key={hab._uid || hab.id || `hab_row_${idx}`}
+                      className={`p-3.5 rounded-xl border transition space-y-3 ${
+                        hab.vecino_id
+                          ? hab.estado_vecino === 'PENDIENTE'
+                            ? 'bg-amber-950/15 border-amber-500/40 hover:border-amber-500/60'
+                            : 'bg-emerald-950/10 border-emerald-500/30 hover:border-emerald-500/50'
+                          : 'bg-slate-900/90 border-slate-800/90 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-300">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="w-6 h-6 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center font-mono font-black text-xs">
                             #{idx + 1}
                           </span>
                           <span>Habitante N° {idx + 1}</span>
+
+                          {hab.vecino_id && (
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${
+                                hab.estado_vecino === 'PENDIENTE'
+                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                  : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              }`}
+                            >
+                              {hab.origen_vecinos === 'DESDE_VECINOS'
+                                ? `🆕 Precargado de #vecinos (${hab.estado_vecino})`
+                                : `🔗 Vinculado con #vecinos (${hab.estado_vecino}) · Sin duplicar`}
+                            </span>
+                          )}
                         </div>
 
-                        {(planillaActiva?.habitantes?.length || 1) > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPlanillaActiva((prev) => {
-                                const lista = (prev?.habitantes || []).filter((_, i) => i !== idx);
-                                return {
-                                  ...prev,
-                                  planilla: {
-                                    ...(prev?.planilla || {}),
-                                    total_habitantes: Math.max(1, lista.length),
-                                  },
-                                  habitantes: lista.length > 0 ? lista : [crearHabitanteVacio(1, 'a')],
-                                };
-                              });
-                            }}
-                            className="text-rose-400 hover:text-rose-300 text-[11px] font-semibold flex items-center gap-1"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Quitar</span>
-                          </button>
-                        )}
+                        <div className="flex items-center gap-3">
+                          {hab.vecino_id && hab.estado_vecino === 'PENDIENTE' && checkPermiso('vecinos_aprobar') && (
+                            <label className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-300 bg-emerald-500/15 px-2.5 py-1 rounded-lg border border-emerald-500/30 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(hab.aprobar_en_padron)}
+                                onChange={(e) => actualizarHabitanteCenso(idx, 'aprobar_en_padron', e.target.checked)}
+                                className="rounded accent-emerald-500"
+                              />
+                              <span>Aprobar en #vecinos al guardar</span>
+                            </label>
+                          )}
+
+                          {(planillaActiva?.habitantes?.length || 1) > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPlanillaActiva((prev) => {
+                                  const lista = (prev?.habitantes || []).filter((_, i) => i !== idx);
+                                  return {
+                                    ...prev,
+                                    planilla: {
+                                      ...(prev?.planilla || {}),
+                                      total_habitantes: Math.max(1, lista.length),
+                                    },
+                                    habitantes: lista.length > 0 ? lista : [crearHabitanteVacio(1, 'a')],
+                                  };
+                                });
+                              }}
+                              className="text-rose-400 hover:text-rose-300 text-[11px] font-semibold flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Quitar</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
+
+                      {hab.datos_vecino_portal && (
+                        <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 text-[11px] text-slate-300 flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span>
+                              📋 <strong className="text-amber-300">Datos en #vecinos:</strong> {hab.datos_vecino_portal.nombre_completo} ({hab.datos_vecino_portal.cedula})
+                            </span>
+                            {hab.datos_vecino_portal.parentesco_declarado && (
+                              <span>
+                                • Declaró Parentesco: <strong className="text-white">{hab.datos_vecino_portal.parentesco_declarado}</strong> (ajuste abajo si no es el Jefe/Dueño)
+                              </span>
+                            )}
+                            {hab.datos_vecino_portal.fecha_nacimiento && (
+                              <span>• Nac: {hab.datos_vecino_portal.fecha_nacimiento}</span>
+                            )}
+                            {hab.datos_vecino_portal.telefono && (
+                              <span>• Tel: {hab.datos_vecino_portal.telefono}</span>
+                            )}
+                          </div>
+
+                          {hab.datos_vecino_portal.cedula_difiere && (
+                            <button
+                              type="button"
+                              onClick={() => actualizarHabitanteCenso(idx, 'cedula', hab.datos_vecino_portal.cedula)}
+                              className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[10px] font-bold transition"
+                            >
+                              Usar C.I. {hab.datos_vecino_portal.cedula}
+                            </button>
+                          )}
+                        </div>
+                      )}
 
                       {/* Campos del habitante (controlados) */}
                       <div className="grid grid-cols-2 sm:grid-cols-6 lg:grid-cols-12 gap-2 text-xs">

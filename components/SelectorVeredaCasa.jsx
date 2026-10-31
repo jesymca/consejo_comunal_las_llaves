@@ -18,6 +18,7 @@ export default function SelectorVeredaCasa({
   selectClassName = 'w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white font-semibold focus:border-blue-500 outline-none',
   labelClassName = 'block text-slate-400 mb-1',
   idPrefix = 'selector',
+  onSelectCasa = null,
 }) {
   const { veredas, casasPorVereda, loading } = useTerritorio();
   const [vereda, setVereda] = useState((defaultVereda || 'A').toUpperCase());
@@ -59,7 +60,13 @@ export default function SelectorVeredaCasa({
           name={nameCasa}
           required
           value={casa}
-          onChange={e => setCasa(e.target.value)}
+          onChange={e => {
+            const nuevaCasa = e.target.value;
+            setCasa(nuevaCasa);
+            if (typeof onSelectCasa === 'function' && nuevaCasa) {
+              onSelectCasa(vereda, nuevaCasa);
+            }
+          }}
           disabled={!vereda || (opciones.length === 0 && !loading)}
           className={`${selectClassName} uppercase font-bold disabled:opacity-50`}
         >
