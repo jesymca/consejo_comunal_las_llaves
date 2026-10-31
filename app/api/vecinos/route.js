@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/turso';
 import {
-  normalizarCedula, esCasaValida, getCasasPorVereda,
+  normalizarCedula, esCasaValida, getCasasPorVereda, normalizarCasaVereda,
   decodificarParentesco, decodificarInstruccion, decodificarSalud
 } from '@/lib/territory';
 import { extractUserFromRequest, hasPermission } from '@/lib/auth';
@@ -136,7 +136,7 @@ export async function POST(request) {
 
       const normCedula = normalizarCedula(cedula);
       const vUpper = vereda.trim().toUpperCase();
-      const cUpper = casa.trim().toUpperCase();
+      const cUpper = normalizarCasaVereda(vUpper, casa);
 
       // Validar que la casa sea estrictamente de las permitidas para esa vereda
       if (!esCasaValida(vUpper, cUpper)) {
@@ -369,6 +369,7 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Filas de datos requeridas' }, { status: 400 });
       }
 
+      await cargarTerritorio();
       const mapasCatalogos = await obtenerMapasCatalogos();
       const parsedRows = [];
       const errors = [];
@@ -459,7 +460,8 @@ export async function POST(request) {
         }
 
         const normCed = normalizarCedula(cedulaRaw);
-        if (!esCasaValida(veredaRaw, casaRaw)) {
+        const normCasa = normalizarCasaVereda(veredaRaw, casaRaw);
+        if (!esCasaValida(veredaRaw, normCasa)) {
           errors.push({ fila: index + 2, cedula: normCed, error: `Casa ${casaRaw} inválida para Vereda ${veredaRaw}` });
           return;
         }
@@ -476,7 +478,7 @@ export async function POST(request) {
           nombres: nombresRaw.toString().trim().toUpperCase(),
           apellidos: apellidosRaw.toString().trim().toUpperCase(),
           vereda: veredaRaw,
-          casa: casaRaw,
+          casa: normCasa,
           sexo: ['F', 'FEMENINO', 'MUJER'].includes(sexoRaw) ? 'F' : 'M',
           parentesco: parentescoDecod,
           parentesco_codigo: parentescoRaw.toLowerCase(),
@@ -683,7 +685,7 @@ export async function PUT(request) {
 
     const normCedula = cedula ? normalizarCedula(cedula) : prev.cedula;
     const vUpper = (vereda || prev.vereda || 'A').toString().trim().toUpperCase();
-    const cUpper = (casa || prev.casa || '').toString().trim().toUpperCase();
+    const cUpper = normalizarCasaVereda(vUpper, (casa || prev.casa || ''));
 
     if (!esCasaValida(vUpper, cUpper)) {
       return NextResponse.json({

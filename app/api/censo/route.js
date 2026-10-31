@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/turso';
 import { extractUserFromRequest } from '@/lib/auth';
-import { esCasaValida } from '@/lib/territory';
+import { esCasaValida, normalizarCasaVereda } from '@/lib/territory';
 import { cargarTerritorio } from '@/lib/territoryServer';
 import { registrarAuditoria } from '@/lib/audit';
 
@@ -181,7 +181,7 @@ export async function POST(request) {
     }
 
     const vUpper = calle_vereda_av.trim().toUpperCase();
-    const cUpper = numero_casa.trim().toUpperCase();
+    const cUpper = normalizarCasaVereda(vUpper, numero_casa);
 
     await cargarTerritorio();
     if (!esCasaValida(vUpper, cUpper)) {

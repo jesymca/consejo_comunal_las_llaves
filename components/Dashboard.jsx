@@ -4756,7 +4756,15 @@ export default function Dashboard({ user, onLogout }) {
             </div>
 
             {/* Tarjetas Resumen */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Viviendas / Casas</span>
+                <span className="text-xl font-extrabold text-cyan-400 block">{stats?.resumen?.total_casas_territorio || 0}</span>
+                <span className="text-[10px] text-slate-400">
+                  {stats?.resumen?.total_casas_subdivididas ? `${stats.resumen.total_casas_subdivididas} divisiones (A/B)` : `${stats?.resumen?.casas_censadas || 0} censadas`}
+                </span>
+              </div>
+
               <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
                 <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Total Vecinos</span>
                 <span className="text-xl font-extrabold text-white block">{stats?.resumen?.vecinos_total || 0}</span>
@@ -4910,10 +4918,17 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
               </div>
 
-              {/* Gráfico 4: Habitantes por Vereda */}
+              {/* Gráfico 4: Cobertura Territorial por Vereda */}
               <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800">
-                <h3 className="text-sm font-bold text-white mb-1">Cobertura Territorial por Vereda (A a O)</h3>
-                <p className="text-xs text-slate-400 mb-4">Total de vecinos registrados por sector</p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-white mb-0.5">Cobertura Territorial por Vereda (A a O)</h3>
+                    <p className="text-xs text-slate-400">Comparativa de vecinos registrados y viviendas/casas (incluyendo subdivisiones)</p>
+                  </div>
+                  <span className="text-[11px] font-mono font-bold text-cyan-400 bg-cyan-500/10 px-2.5 py-0.5 rounded-full border border-cyan-500/20 self-start sm:self-auto">
+                    {stats?.resumen?.total_casas_territorio || 0} Casas Totales
+                  </span>
+                </div>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={stats?.graficos?.veredasData || []}>
@@ -4921,7 +4936,9 @@ export default function Dashboard({ user, onLogout }) {
                       <XAxis dataKey="vereda" stroke="#64748b" fontSize={9} />
                       <YAxis stroke="#64748b" fontSize={10} />
                       <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }} />
-                      <Bar dataKey="vecinos" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                      <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+                      <Bar name="Vecinos Registrados" dataKey="vecinos" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                      <Bar name="Casas en Catálogo" dataKey="casas" fill="#06b6d4" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

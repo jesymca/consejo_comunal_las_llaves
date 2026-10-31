@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/turso';
 import { extractUserFromRequest } from '@/lib/auth';
+import { VEREDAS, CASAS_POR_VEREDA } from '@/lib/territory';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +52,29 @@ export async function GET(request) {
     });
 
     const censoCountRes = await db.execute('SELECT COUNT(*) as total_planillas, SUM(total_habitantes) as total_habitantes FROM censo_planillas');
+
+    // Métrica Territorial: Conteo real de casas, divisiones familiares y cobertura
+    let totalCasasTerritorio = 0;
+    let totalCasasSubdivididas = 0;
+    try {
+      const tcRes = await db.execute('SELECT casa FROM territorio_casas WHERE activo = 1');
+      totalCasasTerritorio = tcRes.rows.length;
+      totalCasasSubdivididas = tcRes.rows.filter(r => /[A-Z]$/.test(r.casa) || /-[A-Z0-9]+$/.test(String(r.casa).replace(/^[A-Z]-\d+/, ''))).length;
+    } catch {
+      totalCasasTerritorio = Object.values(CASAS_POR_VEREDA).reduce((acc, arr) => acc + arr.length, 0);
+    }
+
+    let casasCensadasUnicas = 0;
+    try {
+      const ccuRes = await db.execute('SELECT COUNT(DISTINCT calle_vereda_av || "-" || numero_casa) as total FROM censo_planillas');
+      casasCensadasUnicas = Number(ccuRes.rows[0]?.total || 0);
+    } catch {}
+
+    let casasConVecinos = 0;
+    try {
+      const ccvRes = await db.execute('SELECT COUNT(DISTINCT vereda || "-" || casa) as total FROM vecinos');
+      casasConVecinos = Number(ccvRes.rows[0]?.total || 0);
+    } catch {}
 
     // Total de locales comerciales registrados
     let totalLocales = 0;
@@ -141,17 +165,54 @@ export async function GET(request) {
       habitantes: gruposEdades[k],
     }));
 
-    // 5. Gráfico: Distribución por Vereda (A hasta O)
+    // 5. Cobertura Territorial Integral por Vereda (A hasta O)
     const veredasRes = await db.execute(`
       SELECT vereda, COUNT(*) as total
       FROM vecinos
       GROUP BY vereda
-      ORDER BY vereda ASC
     `);
+    const vecinosPorVeredaMap = {};
+    veredasRes.rows.forEach(r => {
+      vecinosPorVeredaMap[String(r.vereda).toUpperCase()] = Number(r.total || 0);
+    });
 
-    const veredasData = veredasRes.rows.map(r => ({
-      vereda: `Vereda ${r.vereda}`,
-      vecinos: Number(r.total),
+    let casasPorVeredaRes = { rows: [] };
+    try {
+      casasPorVeredaRes = await db.execute(`
+        SELECT vereda, COUNT(*) as total_casas
+        FROM territorio_casas
+        WHERE activo = 1
+        GROUP BY vereda
+      `);
+    } catch {}
+    const casasPorVeredaMap = {};
+    casasPorVeredaRes.rows.forEach(r => {
+      casasPorVeredaMap[String(r.vereda).toUpperCase()] = Number(r.total_casas || 0);
+    });
+
+    let censoPorVeredaRes = { rows: [] };
+    try {
+      censoPorVeredaRes = await db.execute(`
+        SELECT calle_vereda_av as vereda, COUNT(DISTINCT numero_casa) as casas_censadas, SUM(total_habitantes) as habitantes
+        FROM censo_planillas
+        GROUP BY calle_vereda_av
+      `);
+    } catch {}
+    const censoPorVeredaMap = {};
+    censoPorVeredaRes.rows.forEach(r => {
+      censoPorVeredaMap[String(r.vereda).toUpperCase()] = {
+        casas_censadas: Number(r.casas_censadas || 0),
+        habitantes: Number(r.habitantes || 0),
+      };
+    });
+
+    const veredasData = VEREDAS.map(v => ({
+      vereda: `Vereda ${v}`,
+      codigo: v,
+      vecinos: vecinosPorVeredaMap[v] || 0,
+      casas: casasPorVeredaMap[v] || (CASAS_POR_VEREDA[v]?.length || 0),
+      casas_censadas: censoPorVeredaMap[v]?.casas_censadas || 0,
+      habitantes_censo: censoPorVeredaMap[v]?.habitantes || 0,
     }));
 
     // 6. Documentos por Tipo con Recaudación asociada
@@ -217,6 +278,10 @@ export async function GET(request) {
         total_planillas_censo: Number(censoCountRes.rows[0]?.total_planillas || 0),
         total_habitantes_censo: Number(censoCountRes.rows[0]?.total_habitantes || 0),
         total_locales_comerciales: totalLocales,
+        total_casas_territorio: totalCasasTerritorio,
+        total_casas_subdivididas: totalCasasSubdivididas,
+        casas_censadas: casasCensadasUnicas,
+        casas_con_vecinos: casasConVecinos,
       },
       graficos: {
         horasDescargas,
