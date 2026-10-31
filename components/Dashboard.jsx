@@ -14,8 +14,10 @@ import {
 } from 'lucide-react';
 import { 
   VEREDAS, CASAS_POR_VEREDA, getCasasPorVereda, BANCOS_VENEZUELA, CALIDADES_TENENCIA,
-  MAPEO_PARENTESCO, MAPEO_INSTRUCCION, MAPEO_SALUD
+  MAPEO_PARENTESCO, MAPEO_INSTRUCCION, MAPEO_SALUD,
+  validarFechaValida, normalizarFechaISO, formatearFechaLatina
 } from '@/lib/territory';
+import CampoFechaCenso from '@/components/CampoFechaCenso';
 import { generarDocumentoPdf, generarReporteGestionPdf } from '@/lib/pdfGenerator';
 import SvgCanvasEditor from '@/components/SvgCanvasEditor';
 import { toast } from '@/lib/toast';
@@ -878,6 +880,7 @@ export default function Dashboard({ user, onLogout }) {
         planilla: {
           ...(res.planilla || {}),
           numero_planilla: numPlan,
+          fecha: normalizarFechaISO(res.planilla?.fecha) || res.planilla?.fecha || new Date().toISOString().split('T')[0],
           empadronador_nombre: res.planilla?.empadronador_nombre || user?.nombre || '',
           calle_vereda_av: vereda.toUpperCase(),
           numero_casa: casa.toUpperCase(),
@@ -933,7 +936,7 @@ export default function Dashboard({ user, onLogout }) {
           nombres_apellidos: nomNorm,
           cedula: cedNorm,
           sexo: h?.sexo || 'M',
-          fecha_nacimiento: h?.fecha_nacimiento || '',
+          fecha_nacimiento: normalizarFechaISO(h?.fecha_nacimiento) || h?.fecha_nacimiento || '',
           parentesco: h?.parentesco || (unicos.length === 0 ? 'a' : 'c'),
           instruccion: h?.instruccion || 'c',
           profesion_ocupacion: h?.profesion_ocupacion || '',
@@ -2503,6 +2506,24 @@ export default function Dashboard({ user, onLogout }) {
               </div>
             </div>
 
+            {/* Banner de Sincronización Padrón ↔ Censo */}
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-blue-950/40 via-slate-900 to-indigo-950/40 border border-blue-500/30 flex items-start gap-3 shadow-md">
+              <div className="p-2.5 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30 shrink-0 mt-0.5">
+                <Users className="w-5 h-5" />
+              </div>
+              <div className="text-xs space-y-1">
+                <h3 className="font-extrabold text-white flex items-center gap-2">
+                  <span>Padrón Comunal Vinculado con el Censo Familiar</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    Sincronizado con #censo
+                  </span>
+                </h3>
+                <p className="text-slate-300 leading-relaxed">
+                  Todos los vecinos agregados en las planillas de <strong>#censo</strong> se reflejan automáticamente aquí en el Padrón. Puedes realizar operaciones <strong>CRUD de forma individual</strong> sobre cada habitante (editar sus datos personales, cambiar estatus o eliminar), o hacer clic en <strong className="text-blue-300 font-bold">"Planilla Censo"</strong> en su fila para ir directamente a la planilla registrada en el sistema y gestionarlo desde el Censo.
+                </p>
+              </div>
+            </div>
+
             {/* Barra de Filtros en Tiempo Real */}
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div>
@@ -2569,6 +2590,7 @@ export default function Dashboard({ user, onLogout }) {
                       <th className="px-4 py-3">Cédula</th>
                       <th className="px-4 py-3">Nombre Completo</th>
                       <th className="px-4 py-3">Ubicación</th>
+                      <th className="px-4 py-3">Planilla Censo</th>
                       <th className="px-4 py-3">Tiempo Residencia</th>
                       <th className="px-4 py-3">Tenencia</th>
                       <th className="px-4 py-3">Estado</th>
@@ -2579,7 +2601,7 @@ export default function Dashboard({ user, onLogout }) {
                   <tbody className="divide-y divide-slate-800/60">
                     {vecinos.length === 0 ? (
                       <tr>
-                        <td colSpan="8" className="px-4 py-8 text-center text-slate-500">
+                        <td colSpan="9" className="px-4 py-8 text-center text-slate-500">
                           {loadingVecinos ? 'Cargando vecinos...' : 'No se encontraron vecinos con los filtros seleccionados.'}
                         </td>
                       </tr>
@@ -2589,6 +2611,29 @@ export default function Dashboard({ user, onLogout }) {
                           <td className="px-4 py-3 font-mono font-bold text-white whitespace-nowrap">{v.cedula}</td>
                           <td className="px-4 py-3 font-semibold text-slate-200">{v.nombres} {v.apellidos}</td>
                           <td className="px-4 py-3 text-slate-300">Vereda {v.vereda}, Casa {v.casa}</td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {v.numero_planilla ? (
+                              <button
+                                type="button"
+                                onClick={() => abrirPlanillaPorVivienda(v.vereda, v.casa)}
+                                title={`Abrir Planilla N° ${v.numero_planilla} en el Censo`}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 font-mono text-[11px] font-bold transition group"
+                              >
+                                <ClipboardList className="w-3.5 h-3.5 text-blue-400 group-hover:scale-110 transition-transform" />
+                                <span>{v.numero_planilla}</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => abrirPlanillaPorVivienda(v.vereda, v.casa)}
+                                title="Vivienda sin planilla en censo. Haz clic para crearla e incorporar este vecino."
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 text-[10px] font-semibold transition"
+                              >
+                                <Plus className="w-3 h-3" />
+                                <span>Sin Planilla</span>
+                              </button>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-slate-400">{v.tiempo_residencia} años</td>
                           <td className="px-4 py-3 text-slate-400">{v.calidad_tenencia}</td>
                           <td className="px-4 py-3 whitespace-nowrap">
@@ -2617,6 +2662,17 @@ export default function Dashboard({ user, onLogout }) {
                           </td>
                           <td className="px-4 py-3 text-right whitespace-nowrap">
                             <div className="inline-flex items-center justify-end gap-1.5">
+                              {/* Botón directo a la planilla de censo para gestión integral */}
+                              <button
+                                type="button"
+                                onClick={() => abrirPlanillaPorVivienda(v.vereda, v.casa)}
+                                title={v.numero_planilla ? `Ir a Planilla ${v.numero_planilla} en Censo para gestionar esta vivienda` : `Crear Planilla de Censo para Casa ${v.casa}`}
+                                className="px-2 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/35 text-indigo-300 border border-indigo-500/30 font-bold text-[11px] transition inline-flex items-center gap-1 shadow-sm"
+                              >
+                                <ClipboardList className="w-3 h-3 text-indigo-400" />
+                                <span>Planilla Censo</span>
+                              </button>
+
                               {v.estado_aprobacion !== 'APROBADO' && checkPermiso('vecinos_aprobar') && (
                                 <button
                                   onClick={() => aprobarVecino(v.id)}
@@ -2641,7 +2697,7 @@ export default function Dashboard({ user, onLogout }) {
                               {checkPermiso('vecinos_editar') && (
                                 <button
                                   onClick={() => abrirModalEditarVecino(v)}
-                                  title="Editar todos los datos del vecino"
+                                  title="Editar todos los datos del vecino (CRUD individual)"
                                   className="px-2 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 font-bold text-[11px] transition inline-flex items-center gap-1"
                                 >
                                   <Edit className="w-3 h-3" />
@@ -2652,7 +2708,7 @@ export default function Dashboard({ user, onLogout }) {
                               {checkPermiso('vecinos_eliminar') && (
                                 <button
                                   onClick={() => eliminarVecino(v)}
-                                  title="Eliminar vecino del Padrón Comunal"
+                                  title="Eliminar vecino del Padrón Comunal (CRUD individual)"
                                   className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 transition"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -2906,6 +2962,39 @@ export default function Dashboard({ user, onLogout }) {
               )}
             </div>
 
+            {/* Banner Informativo de Integración #censo ↔ #vecinos */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-950/40 via-slate-900 to-indigo-950/40 border border-blue-500/30 shadow-lg space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30 shrink-0 mt-0.5">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
+                      <span>Integración Automática con el Padrón de Vecinos</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        #censo ↔ #vecinos
+                      </span>
+                    </h3>
+                    <p className="text-[11px] sm:text-xs text-slate-300 leading-relaxed mt-0.5">
+                      Todos los vecinos e integrantes familiares que se van agregando en el <strong>Censo</strong> se incorporan automáticamente en el <strong>Padrón de Vecinos (#vecinos)</strong>. Cada habitante cuenta con su registro individual en el Padrón para realizarle operaciones CRUD de forma individual (editar datos personales, certificar residencia o retirarlo), o abrir en cualquier momento su planilla para actualizarlo desde el Censo.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.hash = '#vecinos';
+                    setCurrentTab('vecinos');
+                  }}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/35 text-blue-300 border border-blue-500/30 text-xs font-bold transition shrink-0"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Ver Padrón de Vecinos</span>
+                </button>
+              </div>
+            </div>
+
             {/* Panel de Integración #vecinos ↔ #censo (Vecinos Pendientes de Aprobación o sin Planilla) */}
             {vecinosCenso.length > 0 && (
               <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-amber-500/30 shadow-lg space-y-3">
@@ -3055,16 +3144,24 @@ export default function Dashboard({ user, onLogout }) {
                               ⏳ {p.vecinos_pendientes_count} pend. en #vecinos
                             </span>
                           )}
-                          <span className="text-[11px] text-slate-400">{p.fecha}</span>
+                          <span className="text-[11px] text-slate-400">{formatearFechaLatina(p.fecha) || p.fecha}</span>
                         </div>
                       </div>
 
                       <h3 className="font-bold text-base text-white mb-1">
                         Vereda {p.calle_vereda_av}, Casa {p.numero_casa}
                       </h3>
-                      <p className="text-xs text-slate-400 mb-3">
-                        Empadronador: <strong className="text-slate-300">{p.empadronador_nombre || 'No asignado'}</strong>
-                      </p>
+                      <div className="text-xs text-slate-300 mb-3 flex items-center gap-1.5 flex-wrap">
+                        <span className="text-slate-400 font-semibold">Jefe(a) de Casa:</span>
+                        <strong className="text-white font-bold">
+                          {p.jefe_casa_nombre || p.jefe_casa || 'No asignado'}
+                        </strong>
+                        {p.jefe_casa_cedula && (
+                          <span className="font-mono text-[10px] text-cyan-300 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-800/40 font-bold">
+                            {p.jefe_casa_cedula}
+                          </span>
+                        )}
+                      </div>
 
                       <div className="grid grid-cols-2 gap-2 text-xs text-slate-400 border-t border-slate-800/80 pt-3 mb-4">
                         <div>Familias: <strong className="text-white">{p.total_familias}</strong></div>
@@ -8798,7 +8895,18 @@ export default function Dashboard({ user, onLogout }) {
 
                   const ced = String(item.cedula ?? formData.get(`hab_${i}_cedula`) ?? '').trim().toUpperCase();
                   const fecNac = String(item.fecha_nacimiento ?? formData.get(`hab_${i}_fecha_nac`) ?? '').trim();
-                  const claveUnica = `${nom}|${ced}|${fecNac}`;
+                  let fecNacIso = '';
+                  if (fecNac) {
+                    const resFec = validarFechaValida(fecNac, false);
+                    if (!resFec.valida) {
+                      toast.error(`Fecha de nacimiento inválida para el habitante #${i + 1} (${nom}): ${resFec.error}. Ingrese una fecha válida o elíjala del calendario.`);
+                      setGuardandoCenso(false);
+                      return;
+                    }
+                    fecNacIso = resFec.iso;
+                  }
+
+                  const claveUnica = `${nom}|${ced}|${fecNacIso}`;
                   if (vistosSubmit.has(claveUnica)) continue;
                   vistosSubmit.add(claveUnica);
 
@@ -8807,7 +8915,7 @@ export default function Dashboard({ user, onLogout }) {
                     nombres_apellidos: nom,
                     cedula: ced,
                     sexo: item.sexo || formData.get(`hab_${i}_sexo`) || 'M',
-                    fecha_nacimiento: fecNac,
+                    fecha_nacimiento: fecNacIso,
                     parentesco: item.parentesco || formData.get(`hab_${i}_parentesco`) || 'a',
                     instruccion: item.instruccion || formData.get(`hab_${i}_instruccion`) || 'c',
                     profesion_ocupacion: String(item.profesion_ocupacion ?? formData.get(`hab_${i}_ocupacion`) ?? '').trim(),
@@ -8818,10 +8926,19 @@ export default function Dashboard({ user, onLogout }) {
                   });
                 }
 
+                // Validación de Fecha de Aplicación de la Planilla
+                const fechaInput = formData.get('fecha') || planillaActiva?.planilla?.fecha || new Date().toISOString().split('T')[0];
+                const resFechaApp = validarFechaValida(fechaInput, false);
+                if (!resFechaApp.valida) {
+                  toast.error(`Fecha de aplicación de la planilla no es válida: ${resFechaApp.error}. Seleccione una fecha válida.`);
+                  setGuardandoCenso(false);
+                  return;
+                }
+
                 const payload = {
                   planilla_id: planillaActiva?.planilla?.id || null,
                   numero_planilla: (numeroPlanillaModal || formData.get('numero_planilla') || '').trim(),
-                  fecha: formData.get('fecha') || new Date().toISOString().split('T')[0],
+                  fecha: resFechaApp.iso,
                   empadronador_nombre: (formData.get('empadronador_nombre') || user?.nombre || '').trim().toUpperCase(),
                   calle_vereda_av: formData.get('calle_vereda_av'),
                   numero_casa: (formData.get('numero_casa') || '').trim().toUpperCase(),
@@ -8876,6 +8993,9 @@ export default function Dashboard({ user, onLogout }) {
                   <p className="text-xs text-amber-100/90 leading-relaxed">
                     Antes de guardar, <strong className="text-white underline font-black">debe escribir a mano este número de planilla</strong> en la parte superior del formato físico en papel. Al utilizar identificadores alfanuméricos aleatorios únicos (ej: <span className="font-mono text-amber-300 font-bold">PLC-A0A0A0</span>), evitamos huecos y planillas vacías si un formulario físico no se llegara a procesar.
                   </p>
+                  <p className="text-[11px] text-emerald-300/95 leading-relaxed pt-1.5 border-t border-amber-500/20">
+                    ℹ️ <strong>Integración con el Padrón (#vecinos):</strong> Todos los habitantes que registre en esta planilla quedarán guardados e integrados en el <strong>Padrón de Vecinos de la Comunidad (#vecinos)</strong>, permitiéndole gestionarlos con CRUD individual o editar su grupo familiar desde esta planilla.
+                  </p>
                 </div>
               </div>
 
@@ -8927,13 +9047,16 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-bold mb-1">Fecha de Aplicación *</label>
-                  <input
-                    type="date"
+                  <CampoFechaCenso
+                    label="Fecha de Aplicación *"
                     name="fecha"
                     required
-                    defaultValue={planillaActiva?.planilla?.fecha || new Date().toISOString().split('T')[0]}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                    value={planillaActiva?.planilla?.fecha || new Date().toISOString().split('T')[0]}
+                    placeholder="DD/MM/AAAA"
+                    noFuturo={true}
+                    labelClassName="block text-slate-300 font-bold mb-1"
+                    inputClassName="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                    className="w-full"
                   />
                 </div>
 
@@ -8948,6 +9071,9 @@ export default function Dashboard({ user, onLogout }) {
                     placeholder="NOMBRE DEL VOCERO CENSISTA"
                     className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white uppercase focus:border-blue-500 outline-none"
                   />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Jefe(a) de Casa: <strong className="text-white">{planillaActiva?.habitantes?.[0]?.nombres_apellidos || planillaActiva?.planilla?.jefe_casa_nombre || 'Se define en el Habitante 1'}</strong>
+                  </span>
                 </div>
               </div>
 
@@ -9248,14 +9374,14 @@ export default function Dashboard({ user, onLogout }) {
 
                         {/* Fecha Nac */}
                         <div className="col-span-1 sm:col-span-2 lg:col-span-2">
-                          <label className="block text-[10px] text-slate-400 mb-0.5">Fecha Nac.</label>
-                          <input
-                            type="text"
+                          <CampoFechaCenso
+                            label="Fecha Nac."
                             name={`hab_${idx}_fecha_nac`}
                             value={hab.fecha_nacimiento ?? ''}
-                            onChange={(e) => actualizarHabitanteCenso(idx, 'fecha_nacimiento', e.target.value)}
+                            onChange={(isoVal) => actualizarHabitanteCenso(idx, 'fecha_nacimiento', isoVal)}
                             placeholder="DD/MM/AAAA"
-                            className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white"
+                            noFuturo={true}
+                            className="w-full"
                           />
                         </div>
 
@@ -9432,6 +9558,17 @@ export default function Dashboard({ user, onLogout }) {
               onSubmit={async (e) => {
                 e.preventDefault();
                 const formData = new FormData(e.target);
+                const fecNacVec = (formData.get('fecha_nacimiento') || '').trim();
+                let fecNacVecIso = '';
+                if (fecNacVec) {
+                  const resFecVec = validarFechaValida(fecNacVec, false);
+                  if (!resFecVec.valida) {
+                    toast.error(`Fecha de nacimiento no válida: ${resFecVec.error}. Debe ser una fecha real (DD/MM/AAAA o calendario) y no futura.`);
+                    return;
+                  }
+                  fecNacVecIso = resFecVec.iso;
+                }
+
                 const payload = {
                   ...(vecinoEditando ? { id: vecinoEditando.id } : { action: 'create' }),
                   cedula: (formData.get('cedula') || '').trim().toUpperCase(),
@@ -9440,7 +9577,7 @@ export default function Dashboard({ user, onLogout }) {
                   vereda: (formData.get('vereda') || 'A').trim().toUpperCase(),
                   casa: (formData.get('casa') || '').trim().toUpperCase(),
                   sexo: formData.get('sexo') || 'M',
-                  fecha_nacimiento: (formData.get('fecha_nacimiento') || '').trim(),
+                  fecha_nacimiento: fecNacVecIso,
                   tiempo_residencia: (formData.get('tiempo_residencia') || '').trim(),
                   calidad_tenencia: formData.get('calidad_tenencia') || 'Propia',
                   telefono: (formData.get('telefono') || '').trim(),
@@ -9560,13 +9697,15 @@ export default function Dashboard({ user, onLogout }) {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1">Fecha de Nacimiento</label>
-                  <input
-                    type="text"
+                  <CampoFechaCenso
+                    label="Fecha de Nacimiento"
                     name="fecha_nacimiento"
-                    defaultValue={vecinoEditando?.fecha_nacimiento || ''}
+                    value={vecinoEditando?.fecha_nacimiento || ''}
                     placeholder="DD/MM/AAAA"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                    noFuturo={true}
+                    labelClassName="block text-slate-400 mb-1"
+                    inputClassName="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                    className="w-full"
                   />
                 </div>
               </div>

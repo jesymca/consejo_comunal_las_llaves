@@ -11,62 +11,18 @@ import {
   decodificarParentesco,
   decodificarInstruccion,
   decodificarSalud,
+  normalizarTextoComparacion,
+  extraerDigitosCedula,
+  tokensSimilares,
+  esMismaPersonaEnVivienda,
+  validarFechaValida,
+  normalizarFechaISO,
 } from '@/lib/territory';
 import { cargarTerritorio } from '@/lib/territoryServer';
 import { registrarAuditoria } from '@/lib/audit';
 import { asegurarTablaCatalogos } from '@/app/api/catalogos/route';
 
 export const dynamic = 'force-dynamic';
-
-function normalizarTextoComparacion(txt) {
-  return String(txt || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function extraerDigitosCedula(ced) {
-  return String(ced || '').replace(/\D+/g, '');
-}
-
-function tokensSimilares(t1, t2) {
-  if (t1 === t2) return true;
-  if (t1.length >= 5 && t2.length >= 5) {
-    if (t1.slice(0, -1) === t2.slice(0, -1)) return true;
-    if (t1.startsWith(t2) || t2.startsWith(t1)) return true;
-  }
-  return false;
-}
-
-function esMismaPersonaEnVivienda(hab, vec) {
-  if (!hab || !vec) return false;
-  if (hab.vecino_id && Number(hab.vecino_id) === Number(vec.id)) return true;
-
-  const digHab = extraerDigitosCedula(hab.cedula);
-  const digVec = extraerDigitosCedula(vec.cedula);
-  if (digHab.length >= 5 && digVec.length >= 5 && digHab === digVec) {
-    return true;
-  }
-
-  const nomHab = normalizarTextoComparacion(hab.nombres_apellidos);
-  const nomVec = normalizarTextoComparacion(`${vec.nombres || ''} ${vec.apellidos || ''}`);
-  if (!nomHab || !nomVec) return false;
-  if (nomHab === nomVec) return true;
-
-  const tokHab = nomHab.split(' ').filter((w) => w.length >= 3);
-  const tokVec = nomVec.split(' ').filter((w) => w.length >= 3);
-  if (tokHab.length >= 2 && tokVec.length >= 2) {
-    const menor = tokHab.length <= tokVec.length ? tokHab : tokVec;
-    const mayor = tokHab.length <= tokVec.length ? tokVec : tokHab;
-    const todosCoinciden = menor.every((m) => mayor.some((M) => tokensSimilares(m, M)));
-    if (todosCoinciden) return true;
-  }
-
-  return false;
-}
 
 async function obtenerMapasCatalogosBidireccional() {
   const codigoADesc = {
@@ -309,11 +265,15 @@ export async function GET(request) {
           }
         }
         const fusionados = fusionarHabitantesConVecinosDeCasa(habsBase, vecinosCasaRes.rows, mapas);
+        const jefeC = fusionados.find((h) => String(h.parentesco || '').toLowerCase() === 'a') || fusionados[0] || null;
         return NextResponse.json({
           existe_planilla: true,
           planilla: {
             ...planillaRow,
             total_habitantes: fusionados.length > 0 ? fusionados.length : planillaRow.total_habitantes,
+            jefe_casa_nombre: jefeC?.nombres_apellidos || null,
+            jefe_casa_cedula: jefeC?.cedula || null,
+            jefe_casa: jefeC?.nombres_apellidos || null,
           },
           habitantes: fusionados,
           vecinos_casa: vecinosCasaRes.rows,
@@ -387,6 +347,7 @@ export async function GET(request) {
 
       const mapas = await obtenerMapasCatalogosBidireccional();
       const habitantesFusionados = fusionarHabitantesConVecinosDeCasa(habitantesUnicos, vecinosCasaRes.rows, mapas);
+      const jefeIndiv = habitantesFusionados.find((h) => String(h.parentesco || '').toLowerCase() === 'a') || habitantesFusionados[0] || null;
 
       return NextResponse.json({
         planilla: {
@@ -394,6 +355,9 @@ export async function GET(request) {
           telefono_contacto: planillaRow.telefono_contacto || vecinosCasaRes.rows[0]?.telefono || '',
           tiempo_residencia_desde: planillaRow.tiempo_residencia_desde || vecinosCasaRes.rows[0]?.tiempo_residencia || '',
           total_habitantes: habitantesFusionados.length > 0 ? habitantesFusionados.length : planillaRow.total_habitantes,
+          jefe_casa_nombre: jefeIndiv?.nombres_apellidos || null,
+          jefe_casa_cedula: jefeIndiv?.cedula || null,
+          jefe_casa: jefeIndiv?.nombres_apellidos || null,
         },
         habitantes: habitantesFusionados,
         vecinos_casa: vecinosCasaRes.rows,
@@ -423,7 +387,7 @@ export async function GET(request) {
     const [res, todosVecinosRes, todosHabsRes] = await Promise.all([
       db.execute({ sql, args }),
       db.execute(`SELECT * FROM vecinos WHERE estado_aprobacion != 'RECHAZADO' ORDER BY CASE WHEN estado_aprobacion = 'PENDIENTE' THEN 0 ELSE 1 END ASC, id DESC`),
-      db.execute(`SELECT id, planilla_id, nombres_apellidos, cedula, fecha_nacimiento, telefono_movil, profesion_ocupacion FROM censo_habitantes`),
+      db.execute(`SELECT id, planilla_id, numero_habitante, numero_familia, nombres_apellidos, cedula, parentesco, fecha_nacimiento, telefono_movil, profesion_ocupacion FROM censo_habitantes ORDER BY numero_habitante ASC, id ASC`),
     ]);
 
     const habsPorPlanilla = {};
@@ -480,12 +444,24 @@ export async function GET(request) {
       const vecinosDeEstaCasa = vecinosVinculadosCenso.filter((vc) => `${vc.vereda}|${vc.casa}` === kCasa);
       const pendientesCount = vecinosDeEstaCasa.filter((vc) => vc.estado_aprobacion === 'PENDIENTE').length;
       const nuevosSinIntegrarCount = vecinosDeEstaCasa.filter((vc) => !vc.ya_en_planilla).length;
+
+      // Obtener el Jefe de esa Casa: aquel con parentesco 'a' (Jefe/a) o el primer habitante registrado
+      const listaHabs = habsPorPlanilla[p.id] || [];
+      const jefe = listaHabs.find((h) => String(h.parentesco || '').toLowerCase() === 'a') || listaHabs[0] || null;
+      const jefeNombre = jefe ? jefe.nombres_apellidos : (vecinosDeEstaCasa[0]?.nombre_completo || null);
+      const jefeCedula = jefe ? jefe.cedula : (vecinosDeEstaCasa[0]?.cedula || null);
+      const jefeTelefono = jefe ? jefe.telefono_movil : (vecinosDeEstaCasa[0]?.telefono || null);
+
       return {
         ...p,
         total_habitantes: Number(p.habitantes_reales) > 0 ? Number(p.habitantes_reales) : Number(p.total_habitantes || 0),
         vecinos_portal_count: vecinosDeEstaCasa.length,
         vecinos_pendientes_count: pendientesCount,
         vecinos_por_integrar_count: nuevosSinIntegrarCount,
+        jefe_casa_nombre: jefeNombre,
+        jefe_casa_cedula: jefeCedula,
+        jefe_casa_telefono: jefeTelefono,
+        jefe_casa: jefeNombre,
       };
     });
 
@@ -605,6 +581,18 @@ export async function POST(request) {
 
     const now = new Date().toISOString();
 
+    // Validar fecha de aplicación de la planilla (no puede ser texto arbitrario ni futura)
+    let fechaPlanilla = now.split('T')[0];
+    if (fecha) {
+      const resFecPlanilla = validarFechaValida(fecha, false);
+      if (!resFecPlanilla.valida) {
+        return NextResponse.json({
+          error: `La fecha de aplicación de la planilla no es válida: ${resFecPlanilla.error}. Debe ser una fecha real (DD/MM/AAAA o AAAA-MM-DD) y no futura.`
+        }, { status: 400 });
+      }
+      fechaPlanilla = resFecPlanilla.iso;
+    }
+
     // Limpiar y deduplicar habitantes recibidos (evita duplicados dentro de la misma vivienda)
     const habitantesLimpios = [];
     const vistosPayload = new Set();
@@ -613,7 +601,19 @@ export async function POST(request) {
         const nomNorm = String(h?.nombres_apellidos || '').trim().toUpperCase().replace(/\s+/g, ' ');
         if (!nomNorm) continue;
         const cedNorm = String(h?.cedula || '').trim().toUpperCase();
-        const nacNorm = String(h?.fecha_nacimiento || '').trim();
+
+        // Validar y normalizar fecha de nacimiento a formato ISO (YYYY-MM-DD)
+        let nacNorm = '';
+        if (h?.fecha_nacimiento) {
+          const resNac = validarFechaValida(h.fecha_nacimiento, false);
+          if (!resNac.valida) {
+            return NextResponse.json({
+              error: `Fecha de nacimiento no válida para el habitante "${nomNorm}": ${resNac.error}. Debe ser una fecha real (DD/MM/AAAA o AAAA-MM-DD) y no futura.`
+            }, { status: 400 });
+          }
+          nacNorm = resNac.iso;
+        }
+
         const clave = `${nomNorm}|${cedNorm}|${nacNorm}`;
         if (!vistosPayload.has(clave)) {
           vistosPayload.add(clave);
@@ -621,6 +621,7 @@ export async function POST(request) {
             ...h,
             nombres_apellidos: nomNorm,
             cedula: cedNorm,
+            fecha_nacimiento: nacNorm,
           });
         }
       }
@@ -696,7 +697,7 @@ export async function POST(request) {
         updated_at = excluded.updated_at;`,
       args: [
         numPlanillaFinal,
-        fecha || now.split('T')[0],
+        fechaPlanilla,
         (empadronador_nombre || currentUser?.nombre || '').trim().toUpperCase(),
         currentUser?.id || null,
         vUpper,
@@ -762,7 +763,7 @@ export async function POST(request) {
 
       await db.batch(batchStmts, 'write');
 
-      // Sincronizar bidireccionalmente con la tabla `vecinos` para aquellos miembros que se registraron en #vecinos
+      // Sincronizar bidireccionalmente con la tabla `vecinos` para que TODOS los habitantes aparezcan en #vecinos
       try {
         const vecinosCasaRes = await db.execute({
           sql: `SELECT * FROM vecinos WHERE UPPER(vereda) = ? AND UPPER(casa) = ? AND estado_aprobacion != 'RECHAZADO'`,
@@ -771,7 +772,8 @@ export async function POST(request) {
         const mapas = await obtenerMapasCatalogosBidireccional();
         const puedeAprobar = hasPermission(currentUser, 'vecinos_aprobar');
 
-        for (const h of habitantesLimpios) {
+        for (let i = 0; i < habitantesLimpios.length; i++) {
+          const h = habitantesLimpios[i];
           let vecMatch = vecinosCasaRes.rows.find((v) => esMismaPersonaEnVivienda(h, v)) || null;
           if (!vecMatch && h.cedula) {
             const cedNormBusqueda = normalizarCedula(h.cedula);
@@ -782,18 +784,20 @@ export async function POST(request) {
             if (porCedRes.rows.length > 0) vecMatch = porCedRes.rows[0];
           }
 
-          if (vecMatch) {
-            const parentescoDesc = decodificarParentesco(h.parentesco || 'a', mapas.codigoADesc.parentesco);
-            const instruccionDesc = decodificarInstruccion(h.instruccion || 'c', mapas.codigoADesc.instruccion);
-            const saludDesc = decodificarSalud(h.salud || 'e', mapas.codigoADesc.salud);
-            const demoActualizado = JSON.stringify({
-              fam: Number(h.numero_familia) || 1,
-              parentesco: parentescoDesc,
-              nivel_instruccion: instruccionDesc,
-              profesion_ocupacion: h.profesion_ocupacion || '',
-              condicion_salud: saludDesc,
-            });
+          const parentescoDesc = decodificarParentesco(h.parentesco || 'a', mapas.codigoADesc.parentesco);
+          const instruccionDesc = decodificarInstruccion(h.instruccion || 'c', mapas.codigoADesc.instruccion);
+          const saludDesc = decodificarSalud(h.salud || 'e', mapas.codigoADesc.salud);
+          const demoActualizado = JSON.stringify({
+            fam: Number(h.numero_familia) || 1,
+            parentesco: parentescoDesc,
+            nivel_instruccion: instruccionDesc,
+            profesion_ocupacion: h.profesion_ocupacion || '',
+            condicion_salud: saludDesc,
+            origen: 'CENSO',
+            numero_planilla: numPlanillaFinal,
+          });
 
+          if (vecMatch) {
             const cedFinalVecino = h.cedula && extraerDigitosCedula(h.cedula).length >= 5
               ? normalizarCedula(h.cedula)
               : vecMatch.cedula;
@@ -845,6 +849,60 @@ export async function POST(request) {
                 vecMatch.id,
               ],
             });
+          } else {
+            // INSERTAR habitante como vecino en `vecinos` para que se muestre en el Padrón de Vecinos (#vecinos)
+            const partes = String(h.nombres_apellidos || '').trim().split(/\s+/);
+            let nomVec = partes[0] || 'SIN NOMBRE';
+            let apeVec = partes.slice(1).join(' ') || '';
+            if (partes.length >= 3) {
+              const mitad = Math.ceil(partes.length / 2);
+              nomVec = partes.slice(0, mitad).join(' ');
+              apeVec = partes.slice(mitad).join(' ');
+            }
+
+            let cedulaVecino = '';
+            if (h.cedula && extraerDigitosCedula(h.cedula).length >= 5) {
+              cedulaVecino = normalizarCedula(h.cedula);
+            } else {
+              cedulaVecino = `S/C-${vUpper}${cUpper}-${i + 1}`;
+            }
+
+            const checkExiste = await db.execute({
+              sql: 'SELECT id FROM vecinos WHERE cedula = ? LIMIT 1',
+              args: [cedulaVecino]
+            });
+
+            if (checkExiste.rows.length === 0) {
+              await db.execute({
+                sql: `INSERT INTO vecinos (
+                  cedula, nombres, apellidos, vereda, casa,
+                  tiempo_residencia, calidad_tenencia, telefono, email,
+                  sexo, fecha_nacimiento, estado_aprobacion,
+                  aprobado_por_usuario_id, aprobado_por_nombre, aprobado_en,
+                  observaciones, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                args: [
+                  cedulaVecino,
+                  nomVec.toUpperCase(),
+                  apeVec.toUpperCase(),
+                  vUpper,
+                  cUpper,
+                  tiempo_residencia_desde || '',
+                  tenencia_vivienda || 'Propia',
+                  h.telefono_movil || telefono_contacto || '',
+                  '',
+                  h.sexo || 'M',
+                  h.fecha_nacimiento || '',
+                  'APROBADO',
+                  currentUser.id,
+                  (currentUser.nombre || '').trim().toUpperCase(),
+                  now,
+                  demoActualizado,
+                  now,
+                  now,
+                ]
+              });
+            }
           }
         }
       } catch (syncErr) {

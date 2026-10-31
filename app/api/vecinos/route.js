@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import db from '@/lib/turso';
 import {
   normalizarCedula, esCasaValida, getCasasPorVereda, normalizarCasaVereda,
-  decodificarParentesco, decodificarInstruccion, decodificarSalud
+  decodificarParentesco, decodificarInstruccion, decodificarSalud,
+  extraerDigitosCedula, esMismaPersonaEnVivienda,
+  validarFechaValida, normalizarFechaISO
 } from '@/lib/territory';
 import { extractUserFromRequest, hasPermission } from '@/lib/auth';
 import { registrarAuditoria } from '@/lib/audit';
@@ -27,6 +29,120 @@ async function obtenerMapasCatalogos() {
     console.warn('Error cargando catalogos dinámicos en vecinos/route.js:', e);
   }
   return mapas;
+}
+
+/**
+ * Sincroniza automáticamente los habitantes registrados en las planillas de censo
+ * hacia la tabla `vecinos` para que siempre se muestren en el Padrón Comunal (#vecinos).
+ */
+async function sincronizarHabitantesFaltantesEnVecinos() {
+  try {
+    const habsRes = await db.execute(`
+      SELECT ch.id as habitante_id, ch.planilla_id, ch.numero_habitante, ch.numero_familia,
+             ch.nombres_apellidos, ch.cedula, ch.sexo, ch.fecha_nacimiento,
+             ch.parentesco, ch.instruccion, ch.profesion_ocupacion, ch.salud, ch.telefono_movil,
+             cp.numero_planilla, cp.calle_vereda_av, cp.numero_casa, cp.tiempo_residencia_desde,
+             cp.tenencia_vivienda, cp.telefono_contacto
+      FROM censo_habitantes ch
+      JOIN censo_planillas cp ON ch.planilla_id = cp.id
+    `);
+
+    if (!habsRes.rows || habsRes.rows.length === 0) return;
+
+    const vecinosRes = await db.execute(`SELECT id, cedula, nombres, apellidos, vereda, casa FROM vecinos`);
+    const cedulasVecinos = new Set(vecinosRes.rows.map(v => String(v.cedula || '').trim().toUpperCase()));
+
+    const ahora = new Date().toISOString();
+    const mapas = await obtenerMapasCatalogos();
+
+    for (const h of habsRes.rows) {
+      const vUpper = String(h.calle_vereda_av || '').trim().toUpperCase();
+      const cUpper = normalizarCasaVereda(vUpper, h.numero_casa || '');
+      const cedRaw = String(h.cedula || '').trim().toUpperCase();
+      const digitos = extraerDigitosCedula(cedRaw);
+
+      let cedulaFinal = '';
+      if (digitos.length >= 5) {
+        cedulaFinal = normalizarCedula(cedRaw);
+      } else {
+        cedulaFinal = `S/C-${vUpper}${cUpper}-${h.numero_habitante || h.habitante_id}`;
+      }
+
+      if (cedulasVecinos.has(cedulaFinal)) {
+        continue;
+      }
+
+      const existePorCasaYNombre = vecinosRes.rows.some(v =>
+        String(v.vereda).trim().toUpperCase() === vUpper &&
+        normalizarCasaVereda(vUpper, v.casa) === cUpper &&
+        esMismaPersonaEnVivienda(h, v)
+      );
+
+      if (existePorCasaYNombre) {
+        continue;
+      }
+
+      const partes = String(h.nombres_apellidos || '').trim().split(/\s+/);
+      let nomVec = partes[0] || 'SIN NOMBRE';
+      let apeVec = partes.slice(1).join(' ') || '';
+      if (partes.length >= 3) {
+        const mitad = Math.ceil(partes.length / 2);
+        nomVec = partes.slice(0, mitad).join(' ');
+        apeVec = partes.slice(mitad).join(' ');
+      }
+
+      const parentescoDesc = decodificarParentesco(h.parentesco || 'a', mapas.parentesco);
+      const instruccionDesc = decodificarInstruccion(h.instruccion || 'c', mapas.instruccion);
+      const saludDesc = decodificarSalud(h.salud || 'e', mapas.salud);
+
+      const demoObj = {
+        fam: Number(h.numero_familia) || 1,
+        parentesco: parentescoDesc,
+        nivel_instruccion: instruccionDesc,
+        profesion_ocupacion: h.profesion_ocupacion || '',
+        condicion_salud: saludDesc,
+        origen: 'CENSO',
+        numero_planilla: h.numero_planilla,
+      };
+
+      try {
+        await db.execute({
+          sql: `INSERT INTO vecinos (
+            cedula, nombres, apellidos, vereda, casa,
+            tiempo_residencia, calidad_tenencia, telefono, email,
+            sexo, fecha_nacimiento, estado_aprobacion,
+            aprobado_por_usuario_id, aprobado_por_nombre, aprobado_en,
+            observaciones, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            cedulaFinal,
+            nomVec.toUpperCase(),
+            apeVec.toUpperCase(),
+            vUpper,
+            cUpper,
+            h.tiempo_residencia_desde || '',
+            h.tenencia_vivienda || 'Propia',
+            h.telefono_movil || h.telefono_contacto || '',
+            '',
+            h.sexo || 'M',
+            normalizarFechaISO(h.fecha_nacimiento) || h.fecha_nacimiento || '',
+            'APROBADO',
+            null,
+            'CENSO COMUNAL',
+            ahora,
+            JSON.stringify(demoObj),
+            ahora,
+            ahora,
+          ],
+        });
+        cedulasVecinos.add(cedulaFinal);
+      } catch (insertErr) {
+        console.warn('Advertencia insertando habitante de censo en padrón:', insertErr);
+      }
+    }
+  } catch (err) {
+    console.warn('Advertencia en sincronizarHabitantesFaltantesEnVecinos:', err);
+  }
 }
 
 export async function GET(request) {
@@ -64,33 +180,39 @@ export async function GET(request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
+    // Sincronizar habitantes del censo hacia vecinos para que todos aparezcan en el padrón
+    await sincronizarHabitantesFaltantesEnVecinos();
+
     const vereda = searchParams.get('vereda') || '';
     const casa = searchParams.get('casa') || '';
     const estado = searchParams.get('estado') || '';
     const q = searchParams.get('q') || '';
 
-    let sql = `SELECT * FROM vecinos WHERE 1=1`;
+    let sql = `SELECT v.*,
+      (SELECT p.id FROM censo_planillas p WHERE UPPER(p.calle_vereda_av) = UPPER(v.vereda) AND UPPER(p.numero_casa) = UPPER(v.casa) ORDER BY p.id DESC LIMIT 1) AS planilla_id,
+      (SELECT p.numero_planilla FROM censo_planillas p WHERE UPPER(p.calle_vereda_av) = UPPER(v.vereda) AND UPPER(p.numero_casa) = UPPER(v.casa) ORDER BY p.id DESC LIMIT 1) AS numero_planilla
+    FROM vecinos v WHERE 1=1`;
     const args = [];
 
     if (vereda) {
-      sql += ` AND vereda = ?`;
+      sql += ` AND v.vereda = ?`;
       args.push(vereda.toUpperCase());
     }
     if (casa) {
-      sql += ` AND casa = ?`;
+      sql += ` AND v.casa = ?`;
       args.push(casa.toUpperCase());
     }
     if (estado) {
-      sql += ` AND estado_aprobacion = ?`;
+      sql += ` AND v.estado_aprobacion = ?`;
       args.push(estado.toUpperCase());
     }
     if (q) {
-      sql += ` AND (cedula LIKE ? OR nombres LIKE ? OR apellidos LIKE ?)`;
+      sql += ` AND (v.cedula LIKE ? OR v.nombres LIKE ? OR v.apellidos LIKE ?)`;
       const queryLike = `%${q}%`;
       args.push(queryLike, queryLike, queryLike);
     }
 
-    sql += ` ORDER BY id DESC LIMIT 200`;
+    sql += ` ORDER BY v.id DESC LIMIT 300`;
 
     const res = await db.execute({ sql, args });
     return NextResponse.json({ vecinos: res.rows });
@@ -198,6 +320,18 @@ export async function POST(request) {
         }
       }
 
+      // Validar y normalizar fecha de nacimiento
+      let nacNorm = '';
+      if (fecha_nacimiento) {
+        const resNac = validarFechaValida(fecha_nacimiento, false);
+        if (!resNac.valida) {
+          return NextResponse.json({
+            error: `Fecha de nacimiento no válida: ${resNac.error}. Debe ser una fecha real (DD/MM/AAAA o AAAA-MM-DD) y no futura.`
+          }, { status: 400 });
+        }
+        nacNorm = resNac.iso;
+      }
+
       const res = await db.execute({
         sql: `INSERT INTO vecinos (
           cedula, nombres, apellidos, vereda, casa, tiempo_residencia,
@@ -216,7 +350,7 @@ export async function POST(request) {
           telefono || '',
           email || '',
           sexo || 'M',
-          fecha_nacimiento || '',
+          nacNorm,
           estadoInicial,
           aprobadoPorId,
           aprobadoPorNombre,
@@ -721,6 +855,23 @@ export async function PUT(request) {
       aprobadoEn = now;
     }
 
+    // Validar y normalizar fecha_nacimiento
+    let nacFinal = prev.fecha_nacimiento || '';
+    if (fecha_nacimiento !== undefined) {
+      const fTrim = String(fecha_nacimiento).trim();
+      if (fTrim) {
+        const resNac = validarFechaValida(fTrim, false);
+        if (!resNac.valida) {
+          return NextResponse.json({
+            error: `Fecha de nacimiento no válida: ${resNac.error}. Debe ser una fecha real (DD/MM/AAAA o AAAA-MM-DD) y no futura.`
+          }, { status: 400 });
+        }
+        nacFinal = resNac.iso;
+      } else {
+        nacFinal = '';
+      }
+    }
+
     await db.execute({
       sql: `UPDATE vecinos SET
         cedula = ?,
@@ -752,7 +903,7 @@ export async function PUT(request) {
         telefono !== undefined ? String(telefono).trim() : (prev.telefono || ''),
         email !== undefined ? String(email).trim() : (prev.email || ''),
         sexo ? String(sexo).trim().toUpperCase() : (prev.sexo || 'M'),
-        fecha_nacimiento !== undefined ? String(fecha_nacimiento).trim() : (prev.fecha_nacimiento || ''),
+        nacFinal,
         estadoFinal,
         aprobadoPorId,
         aprobadoPorNombre,
@@ -762,6 +913,32 @@ export async function PUT(request) {
         targetId,
       ],
     });
+
+    // Sincronizar en censo_habitantes si el habitante está registrado en una planilla de censo
+    try {
+      if (normCedula) {
+        await db.execute({
+          sql: `UPDATE censo_habitantes SET
+            nombres_apellidos = ?,
+            cedula = ?,
+            sexo = ?,
+            fecha_nacimiento = ?,
+            telefono_movil = ?
+          WHERE cedula = ? OR cedula = ?`,
+          args: [
+            `${nomFinal} ${apeFinal}`.trim(),
+            normCedula,
+            sexo ? String(sexo).trim().toUpperCase() : (prev.sexo || 'M'),
+            nacFinal,
+            telefono !== undefined ? String(telefono).trim() : (prev.telefono || ''),
+            normCedula,
+            prev.cedula
+          ]
+        });
+      }
+    } catch (habSyncErr) {
+      console.warn('Advertencia actualizando habitante de censo desde vecino PUT:', habSyncErr);
+    }
 
     await registrarAuditoria({
       tipo_evento: 'EDICION_VECINO',
