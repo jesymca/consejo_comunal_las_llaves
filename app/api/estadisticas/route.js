@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import db from '@/lib/turso';
 import { extractUserFromRequest } from '@/lib/auth';
 import { VEREDAS, CASAS_POR_VEREDA } from '@/lib/territory';
+import { asegurarTablaCatalogos } from '@/app/api/catalogos/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -215,7 +216,134 @@ export async function GET(request) {
       habitantes_censo: censoPorVeredaMap[v]?.habitantes || 0,
     }));
 
-    // 6. Documentos por Tipo con Recaudación asociada
+    // 6. Catálogos Oficiales Dinámicos (Parentesco, Instrucción, Salud desde #configuracion)
+    await asegurarTablaCatalogos();
+    let catalogosRes = { rows: [] };
+    try {
+      catalogosRes = await db.execute(`
+        SELECT id, tipo, codigo, descripcion, orden
+        FROM catalogos_sistema
+        WHERE activo = 1
+        ORDER BY tipo ASC, orden ASC, codigo ASC
+      `);
+    } catch {}
+
+    const catParentesco = catalogosRes.rows.filter(r => r.tipo === 'parentesco');
+    const catInstruccion = catalogosRes.rows.filter(r => r.tipo === 'instruccion');
+    const catSalud = catalogosRes.rows.filter(r => r.tipo === 'salud');
+
+    // Cargar habitantes censados y observaciones de vecinos para consolidar datos demográficos
+    let habRes = { rows: [] };
+    try {
+      habRes = await db.execute(`
+        SELECT cedula, parentesco, instruccion, salud
+        FROM censo_habitantes
+      `);
+    } catch {}
+
+    let vecObsRes = { rows: [] };
+    try {
+      vecObsRes = await db.execute(`
+        SELECT cedula, observaciones
+        FROM vecinos
+      `);
+    } catch {}
+
+    const cedulasVistas = new Set();
+    const personasDemografia = [];
+
+    // Habitantes censados (fuente primaria de alta fidelidad)
+    for (const h of habRes.rows || []) {
+      const ced = String(h.cedula || '').trim().toUpperCase();
+      if (ced) cedulasVistas.add(ced);
+      personasDemografia.push({
+        parentesco: h.parentesco,
+        instruccion: h.instruccion,
+        salud: h.salud,
+      });
+    }
+
+    // Vecinos registrados con observaciones demográficas
+    for (const v of vecObsRes.rows || []) {
+      const ced = String(v.cedula || '').trim().toUpperCase();
+      if (ced && cedulasVistas.has(ced)) continue; // Evitar duplicar habitantes censados
+      if (v.observaciones) {
+        try {
+          let jsonStr = String(v.observaciones);
+          if (jsonStr.includes('{') && jsonStr.includes('}')) {
+            const match = jsonStr.match(/\{.*\}/);
+            if (match) jsonStr = match[0];
+          }
+          const parsed = JSON.parse(jsonStr);
+          if (parsed && typeof parsed === 'object') {
+            personasDemografia.push({
+              parentesco: parsed.parentesco || parsed.fam_parentesco,
+              instruccion: parsed.nivel_instruccion || parsed.instruccion,
+              salud: parsed.condicion_salud || parsed.salud,
+            });
+          }
+        } catch {}
+      }
+    }
+
+    // Función de coincidencia tolerante con códigos (ej. 'a') y descripciones (ej. 'Jefe(a)')
+    function coincideCatalogo(val, item) {
+      if (!val) return false;
+      const str = String(val).toLowerCase().trim();
+      const c = String(item.codigo || '').toLowerCase().trim();
+      const d = String(item.descripcion || '').toLowerCase().trim();
+      if (!c && !d) return false;
+      if (c && str === c) return true;
+      if (d && str === d) return true;
+      if (c && (str.startsWith(`${c}-`) || str.startsWith(`${c} -`))) return true;
+      if (d && str.includes(d)) return true;
+      return false;
+    }
+
+    const paletteParentesco = ['#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#14b8a6', '#0ea5e9'];
+    const paletteInstruccion = ['#10b981', '#14b8a6', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#f59e0b', '#84cc16', '#22c55e', '#38bdf8'];
+    const paletteSalud = ['#ef4444', '#f97316', '#f59e0b', '#eab308', '#10b981', '#64748b', '#8b5cf6', '#ec4899', '#06b6d4', '#14b8a6'];
+
+    const parentescoData = catParentesco.map((cat, idx) => {
+      const cantidad = personasDemografia.filter(p => coincideCatalogo(p.parentesco, cat)).length;
+      return {
+        id: cat.id,
+        codigo: cat.codigo,
+        descripcion: cat.descripcion,
+        name: `${cat.codigo.toUpperCase()} - ${cat.descripcion}`,
+        label: cat.descripcion,
+        cantidad,
+        color: paletteParentesco[idx % paletteParentesco.length],
+      };
+    });
+
+    const instruccionData = catInstruccion.map((cat, idx) => {
+      const cantidad = personasDemografia.filter(p => coincideCatalogo(p.instruccion, cat)).length;
+      return {
+        id: cat.id,
+        codigo: cat.codigo,
+        descripcion: cat.descripcion,
+        name: `${cat.codigo.toUpperCase()} - ${cat.descripcion}`,
+        label: cat.descripcion,
+        cantidad,
+        color: paletteInstruccion[idx % paletteInstruccion.length],
+      };
+    });
+
+    const saludData = catSalud.map((cat, idx) => {
+      const cantidad = personasDemografia.filter(p => coincideCatalogo(p.salud, cat)).length;
+      return {
+        id: cat.id,
+        codigo: cat.codigo,
+        descripcion: cat.descripcion,
+        name: `${cat.codigo.toUpperCase()} - ${cat.descripcion}`,
+        label: cat.descripcion,
+        cantidad,
+        color: paletteSalud[idx % paletteSalud.length],
+      };
+    });
+
+    // 7. Documentos por Tipo con Recaudación asociada
     const tiposDocsRes = await db.execute({
       sql: `SELECT
         tipo_documento,
@@ -282,12 +410,17 @@ export async function GET(request) {
         total_casas_subdivididas: totalCasasSubdivididas,
         casas_censadas: casasCensadasUnicas,
         casas_con_vecinos: casasConVecinos,
+        total_personas_demografia: personasDemografia.length,
+        total_catalogos_activos: catalogosRes.rows.length,
       },
       graficos: {
         horasDescargas,
         generoData,
         edadesData,
         veredasData,
+        parentescoData,
+        instruccionData,
+        saludData,
         tiposDocs: tiposDocsData,
         estadosDocs: estadosData,
       }

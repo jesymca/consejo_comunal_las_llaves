@@ -10,7 +10,7 @@ import {
   ListPlus, Store, FileCheck, Printer, Activity, Globe, Laptop, Smartphone,
   ChevronDown, ChevronRight, User, Shield, Flame, Building2, CreditCard,
   Gift, Layers, CheckSquare, Sparkles, Hash, Copy, Database,
-  UserX, Ban, Phone, Mail
+  UserX, Ban, Phone, Mail, Heart, GraduationCap
 } from 'lucide-react';
 import { 
   VEREDAS, CASAS_POR_VEREDA, getCasasPorVereda, BANCOS_VENEZUELA, CALIDADES_TENENCIA,
@@ -21,6 +21,7 @@ import SvgCanvasEditor from '@/components/SvgCanvasEditor';
 import { toast } from '@/lib/toast';
 import ConfiguradorTerritorio from '@/components/ConfiguradorTerritorio';
 import SelectorVeredaCasa from '@/components/SelectorVeredaCasa';
+import ModalResumenEstadistico from '@/components/ModalResumenEstadistico';
 import { useTerritorio } from '@/lib/useTerritorio';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -208,6 +209,7 @@ export default function Dashboard({ user, onLogout }) {
   });
   const [loadingCatalogos, setLoadingCatalogos] = useState(false);
   const [modalCatalogo, setModalCatalogo] = useState(false);
+  const [modalResumenVisual, setModalResumenVisual] = useState(false);
   const [catalogoEditando, setCatalogoEditando] = useState(null);
   const [catalogoForm, setCatalogoForm] = useState({
     tipo: 'parentesco',
@@ -572,6 +574,9 @@ export default function Dashboard({ user, onLogout }) {
         resumen: statData?.resumen || {},
         tiposDocs: statData?.graficos?.tiposDocs || [],
         veredasData: statData?.graficos?.veredasData || [],
+        parentescoData: statData?.graficos?.parentescoData || [],
+        instruccionData: statData?.graficos?.instruccionData || [],
+        saludData: statData?.graficos?.saludData || [],
         firmas: firmasRes.firmas || firmas || [],
         config: config || {},
         usuarioGenerador: user?.nombre || user?.username || 'Vocería Ejecutiva'
@@ -591,6 +596,7 @@ export default function Dashboard({ user, onLogout }) {
     cargarCatalogosSistema();
     const handleCatalogosUpdate = () => {
       cargarCatalogosSistema();
+      cargarEstadisticas();
     };
     window.addEventListener('catalogos_updated', handleCatalogosUpdate);
     return () => {
@@ -4736,6 +4742,15 @@ export default function Dashboard({ user, onLogout }) {
 
                 <button
                   type="button"
+                  onClick={() => setModalResumenVisual(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition shadow-md shadow-cyan-600/20"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Resumen Estadístico Visual</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={handleGenerarReportePdf}
                   disabled={generandoReportePdf}
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs transition shadow-md shadow-emerald-600/20"
@@ -4799,6 +4814,154 @@ export default function Dashboard({ user, onLogout }) {
                 <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Aporte en USD</span>
                 <span className="text-lg font-extrabold text-blue-400 block truncate">${Number(stats?.resumen?.recaudado_usd || 0).toFixed(2)}</span>
                 <span className="text-[10px] text-purple-400">{stats?.resumen?.documentos_exonerados || 0} exonerados</span>
+              </div>
+            </div>
+
+            {/* SECCIÓN NUEVA: CATÁLOGOS OFICIALES Y SISTEMA DE SELECCIONES (#CONFIGURACION) */}
+            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-cyan-600/20 text-cyan-400 border border-cyan-500/30">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <span>Catálogos Oficiales y Sistema de Selecciones Comunales</span>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                        {((stats?.graficos?.parentescoData?.length || 0) + (stats?.graficos?.instruccionData?.length || 0) + (stats?.graficos?.saludData?.length || 0))} Opciones Activas
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Conectado en tiempo real con <strong>#configuracion</strong>. Cualquier opción nueva agregada en Parentesco, Nivel de Instrucción o Condición de Salud se refleja automáticamente en estos gráficos.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setCurrentTab('configuracion'); setConfigSubTab('catalogos'); }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-bold transition border border-slate-700/60 shadow-sm"
+                  >
+                    <Settings className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Configurar Catálogos</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                
+                {/* Gráfico 1: Parentesco */}
+                <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3 flex flex-col justify-between">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                      <Users className="w-4 h-4 text-cyan-400" /> Estructura Familiar (Parentesco)
+                    </h4>
+                    <span className="text-[10px] font-mono text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                      {stats?.graficos?.parentescoData?.reduce((a, b) => a + (b.cantidad || 0), 0) || 0} hab.
+                    </span>
+                  </div>
+
+                  <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stats?.graficos?.parentescoData || []} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                        <XAxis type="number" stroke="#64748b" fontSize={9} />
+                        <YAxis dataKey="descripcion" type="category" stroke="#64748b" fontSize={9} width={75} />
+                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }} />
+                        <Bar dataKey="cantidad" radius={[0, 4, 4, 0]}>
+                          {stats?.graficos?.parentescoData?.map((entry, index) => (
+                            <Cell key={`bar-p-${index}`} fill={entry.color} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-1.5 pt-2 border-t border-slate-800/80 text-[10px]">
+                    {stats?.graficos?.parentescoData?.map(item => (
+                      <div key={item.codigo} className="flex items-center justify-between px-2 py-1 rounded bg-slate-900 border border-slate-800">
+                        <span className="text-slate-300 truncate max-w-[90px]">{item.descripcion}</span>
+                        <strong className="text-cyan-400 font-mono">{item.cantidad}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Gráfico 2: Nivel de Instrucción */}
+                <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3 flex flex-col justify-between">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                      <GraduationCap className="w-4 h-4 text-emerald-400" /> Nivel de Instrucción
+                    </h4>
+                    <span className="text-[10px] font-mono text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      {stats?.graficos?.instruccionData?.reduce((a, b) => a + (b.cantidad || 0), 0) || 0} hab.
+                    </span>
+                  </div>
+
+                  <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stats?.graficos?.instruccionData || []} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                        <XAxis type="number" stroke="#64748b" fontSize={9} />
+                        <YAxis dataKey="descripcion" type="category" stroke="#64748b" fontSize={9} width={75} />
+                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }} />
+                        <Bar dataKey="cantidad" radius={[0, 4, 4, 0]}>
+                          {stats?.graficos?.instruccionData?.map((entry, index) => (
+                            <Cell key={`bar-i-${index}`} fill={entry.color} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-1.5 pt-2 border-t border-slate-800/80 text-[10px]">
+                    {stats?.graficos?.instruccionData?.map(item => (
+                      <div key={item.codigo} className="flex items-center justify-between px-2 py-1 rounded bg-slate-900 border border-slate-800">
+                        <span className="text-slate-300 truncate max-w-[90px]">{item.descripcion}</span>
+                        <strong className="text-emerald-400 font-mono">{item.cantidad}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Gráfico 3: Condición de Salud */}
+                <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3 flex flex-col justify-between">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                      <Heart className="w-4 h-4 text-rose-400" /> Condición de Salud
+                    </h4>
+                    <span className="text-[10px] font-mono text-rose-300 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
+                      {stats?.graficos?.saludData?.reduce((a, b) => a + (b.cantidad || 0), 0) || 0} hab.
+                    </span>
+                  </div>
+
+                  <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stats?.graficos?.saludData || []} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                        <XAxis type="number" stroke="#64748b" fontSize={9} />
+                        <YAxis dataKey="descripcion" type="category" stroke="#64748b" fontSize={9} width={75} />
+                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }} />
+                        <Bar dataKey="cantidad" radius={[0, 4, 4, 0]}>
+                          {stats?.graficos?.saludData?.map((entry, index) => (
+                            <Cell key={`bar-s-${index}`} fill={entry.color} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-1.5 pt-2 border-t border-slate-800/80 text-[10px]">
+                    {stats?.graficos?.saludData?.map(item => (
+                      <div key={item.codigo} className="flex items-center justify-between px-2 py-1 rounded bg-slate-900 border border-slate-800">
+                        <span className="text-slate-300 truncate max-w-[90px]">{item.descripcion}</span>
+                        <strong className="text-rose-400 font-mono">{item.cantidad}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
               </div>
             </div>
 
@@ -10701,6 +10864,14 @@ export default function Dashboard({ user, onLogout }) {
           </div>
         </div>
       )}
+
+      {/* Modal de Resumen Estadístico Integral */}
+      <ModalResumenEstadistico
+        isOpen={modalResumenVisual}
+        onClose={() => setModalResumenVisual(false)}
+        stats={stats}
+        config={config}
+      />
 
     </div>
   );
