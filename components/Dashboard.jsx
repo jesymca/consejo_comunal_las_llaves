@@ -15,7 +15,7 @@ import {
 import { 
   VEREDAS, CASAS_POR_VEREDA, getCasasPorVereda, BANCOS_VENEZUELA, CALIDADES_TENENCIA,
   MAPEO_PARENTESCO, MAPEO_INSTRUCCION, MAPEO_SALUD,
-  validarFechaValida, normalizarFechaISO, formatearFechaLatina
+  validarFechaValida, normalizarFechaISO, formatearFechaLatina, calcularEdad
 } from '@/lib/territory';
 import CampoFechaCenso from '@/components/CampoFechaCenso';
 import { generarDocumentoPdf, generarReporteGestionPdf } from '@/lib/pdfGenerator';
@@ -876,6 +876,11 @@ export default function Dashboard({ user, onLogout }) {
         toast.warning(`La Casa ${casa} ya tiene la Planilla N° ${numPlan}. Se abrió esa planilla; el código ${codigoAsignadoActual} NO fue utilizado.`, { duration: 9000 });
       }
       setNumeroPlanillaModal(numPlan);
+      const famSetInit = new Set();
+      habsNorm.forEach(h => {
+        const f = Number(h.numero_familia);
+        if (!isNaN(f) && f > 0) famSetInit.add(f);
+      });
       setPlanillaActiva((prev) => ({
         planilla: {
           ...(res.planilla || {}),
@@ -885,6 +890,7 @@ export default function Dashboard({ user, onLogout }) {
           calle_vereda_av: vereda.toUpperCase(),
           numero_casa: casa.toUpperCase(),
           total_habitantes: habsNorm.length,
+          total_familias: famSetInit.size > 0 ? famSetInit.size : 1,
         },
         habitantes: habsNorm,
         vecinos_casa: res.vecinos_casa || [],
@@ -958,8 +964,18 @@ export default function Dashboard({ user, onLogout }) {
         ...actuales[idx],
         [campo]: valor,
       };
+      const famSet = new Set();
+      actuales.forEach(h => {
+        const f = Number(h.numero_familia);
+        if (!isNaN(f) && f > 0) famSet.add(f);
+      });
       return {
         ...prev,
+        planilla: {
+          ...(prev?.planilla || {}),
+          total_habitantes: actuales.length,
+          total_familias: famSet.size > 0 ? famSet.size : 1,
+        },
         habitantes: actuales,
       };
     });
@@ -977,11 +993,18 @@ export default function Dashboard({ user, onLogout }) {
       const nuevaLista = [...actuales, nuevoHab];
       nuevoTotal = nuevaLista.length;
 
+      const famSet = new Set();
+      nuevaLista.forEach(h => {
+        const f = Number(h.numero_familia);
+        if (!isNaN(f) && f > 0) famSet.add(f);
+      });
+
       return {
         ...prev,
         planilla: {
           ...(prev?.planilla || {}),
           total_habitantes: nuevaLista.length,
+          total_familias: famSet.size > 0 ? famSet.size : 1,
         },
         habitantes: nuevaLista,
       };
@@ -8935,6 +8958,14 @@ export default function Dashboard({ user, onLogout }) {
                   return;
                 }
 
+                const distinctFamilias = new Set();
+                habList.forEach(h => {
+                  const f = Number(h.numero_familia);
+                  if (!isNaN(f) && f > 0) distinctFamilias.add(f);
+                });
+                const totalFamiliasCalc = distinctFamilias.size > 0 ? distinctFamilias.size : (Number(formData.get('total_familias')) || 1);
+                const totalHabitantesCalc = habList.length > 0 ? habList.length : (Number(formData.get('total_habitantes')) || 1);
+
                 const payload = {
                   planilla_id: planillaActiva?.planilla?.id || null,
                   numero_planilla: (numeroPlanillaModal || formData.get('numero_planilla') || '').trim(),
@@ -8945,8 +8976,8 @@ export default function Dashboard({ user, onLogout }) {
                   telefono_contacto: (formData.get('telefono_contacto') || '').trim(),
                   tenencia_vivienda: formData.get('tenencia_vivienda') || 'Propia',
                   tiempo_residencia_desde: (formData.get('tiempo_residencia_desde') || '').trim(),
-                  total_familias: Number(formData.get('total_familias')) || 1,
-                  total_habitantes: habList.length > 0 ? habList.length : (Number(formData.get('total_habitantes')) || 1),
+                  total_familias: totalFamiliasCalc,
+                  total_habitantes: totalHabitantesCalc,
                   observaciones: (formData.get('observaciones') || '').trim(),
                   habitantes: habList,
                 };
@@ -9134,29 +9165,53 @@ export default function Dashboard({ user, onLogout }) {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-slate-400 mb-1">Total Familias en Vivienda</label>
-                    <input
-                      type="number"
-                      name="total_familias"
-                      min="1"
-                      max="10"
-                      defaultValue={planillaActiva?.planilla?.total_familias || 1}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white font-bold focus:border-blue-500 outline-none"
-                    />
-                  </div>
+                  {(() => {
+                    const listaHabs = Array.isArray(planillaActiva?.habitantes) && planillaActiva.habitantes.length > 0
+                      ? planillaActiva.habitantes
+                      : [];
+                    const totHabs = listaHabs.length > 0
+                      ? listaHabs.length
+                      : (Number(planillaActiva?.planilla?.total_habitantes) || 1);
+                    const setFams = new Set();
+                    listaHabs.forEach((h) => {
+                      const f = Number(h?.numero_familia);
+                      if (!isNaN(f) && f > 0) setFams.add(f);
+                    });
+                    const totFams = setFams.size > 0
+                      ? setFams.size
+                      : (Number(planillaActiva?.planilla?.total_familias) || 1);
 
-                  <div>
-                    <label className="block text-slate-400 mb-1">Total Habitantes en Vivienda</label>
-                    <input
-                      type="number"
-                      name="total_habitantes"
-                      min="1"
-                      value={planillaActiva?.habitantes?.length || planillaActiva?.planilla?.total_habitantes || 1}
-                      readOnly
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900/70 border border-slate-750 text-emerald-400 font-bold outline-none"
-                    />
-                  </div>
+                    return (
+                      <>
+                        <div>
+                          <label className="block text-slate-400 mb-1">Total Familias en Vivienda</label>
+                          <input
+                            type="number"
+                            name="total_familias"
+                            min="1"
+                            max="10"
+                            value={totFams}
+                            readOnly
+                            className="w-full px-3 py-2 rounded-xl bg-slate-900/70 border border-slate-750 text-blue-400 font-bold outline-none cursor-default"
+                          />
+                          <span className="text-[10px] text-slate-500 mt-0.5 block">Calculado automáticamente por Fam N°</span>
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-400 mb-1">Total Habitantes en Vivienda</label>
+                          <input
+                            type="number"
+                            name="total_habitantes"
+                            min="1"
+                            value={totHabs}
+                            readOnly
+                            className="w-full px-3 py-2 rounded-xl bg-slate-900/70 border border-slate-750 text-emerald-400 font-bold outline-none cursor-default"
+                          />
+                          <span className="text-[10px] text-slate-500 mt-0.5 block">Calculado automáticamente por habitantes</span>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -9230,6 +9285,11 @@ export default function Dashboard({ user, onLogout }) {
                             #{idx + 1}
                           </span>
                           <span>Habitante N° {idx + 1}</span>
+                          {calcularEdad(hab.fecha_nacimiento) !== null && (
+                            <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/40">
+                              {calcularEdad(hab.fecha_nacimiento) === 0 ? '< 1 año' : `${calcularEdad(hab.fecha_nacimiento)} ${calcularEdad(hab.fecha_nacimiento) === 1 ? 'año' : 'años'}`}
+                            </span>
+                          )}
 
                           {hab.vecino_id && (
                             <span
@@ -9265,13 +9325,20 @@ export default function Dashboard({ user, onLogout }) {
                               onClick={() => {
                                 setPlanillaActiva((prev) => {
                                   const lista = (prev?.habitantes || []).filter((_, i) => i !== idx);
+                                  const nuevaLista = lista.length > 0 ? lista : [crearHabitanteVacio(1, 'a')];
+                                  const famSet = new Set();
+                                  nuevaLista.forEach(h => {
+                                    const f = Number(h.numero_familia);
+                                    if (!isNaN(f) && f > 0) famSet.add(f);
+                                  });
                                   return {
                                     ...prev,
                                     planilla: {
                                       ...(prev?.planilla || {}),
-                                      total_habitantes: Math.max(1, lista.length),
+                                      total_habitantes: nuevaLista.length,
+                                      total_familias: famSet.size > 0 ? famSet.size : 1,
                                     },
-                                    habitantes: lista.length > 0 ? lista : [crearHabitanteVacio(1, 'a')],
+                                    habitantes: nuevaLista,
                                   };
                                 });
                               }}
@@ -9381,6 +9448,7 @@ export default function Dashboard({ user, onLogout }) {
                             onChange={(isoVal) => actualizarHabitanteCenso(idx, 'fecha_nacimiento', isoVal)}
                             placeholder="DD/MM/AAAA"
                             noFuturo={true}
+                            mostrarEdad={true}
                             className="w-full"
                           />
                         </div>

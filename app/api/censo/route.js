@@ -631,6 +631,15 @@ export async function POST(request) {
       ? habitantesLimpios.length
       : (Number(total_habitantes) || 1);
 
+    const famSetPayload = new Set();
+    habitantesLimpios.forEach(h => {
+      const f = Number(h.numero_familia);
+      if (!isNaN(f) && f > 0) famSetPayload.add(f);
+    });
+    const conteoFamiliasFinal = famSetPayload.size > 0
+      ? famSetPayload.size
+      : (Number(total_familias) || 1);
+
     numPlanillaFinal = numPlanillaFinal.toUpperCase();
     const planillaIdEdicion = Number(body.planilla_id) || null;
 
@@ -705,7 +714,7 @@ export async function POST(request) {
         telefono_contacto || '',
         tenencia_vivienda || 'Propia',
         tiempo_residencia_desde || '',
-        Number(total_familias) || 1,
+        conteoFamiliasFinal,
         conteoHabitantesFinal,
         observaciones || '',
         now,
