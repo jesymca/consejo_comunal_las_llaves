@@ -212,7 +212,7 @@ export async function GET(request) {
       args.push(queryLike, queryLike, queryLike);
     }
 
-    sql += ` ORDER BY v.id DESC LIMIT 300`;
+    sql += ` ORDER BY v.id DESC`;
 
     const res = await db.execute({ sql, args });
     const vecinos = res.rows || [];

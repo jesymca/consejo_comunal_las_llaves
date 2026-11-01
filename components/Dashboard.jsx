@@ -10486,15 +10486,15 @@ export default function Dashboard({ user, onLogout }) {
 
                   habList.push({
                     numero_familia: Number(nroFam) || 1,
-                    nombres_apellidos: nom,
-                    cedula: ced,
-                    sexo: item.sexo || formData.get(`hab_${i}_sexo`) || 'M',
+                    nombres_apellidos: nom.toUpperCase(),
+                    cedula: ced.toUpperCase(),
+                    sexo: String(item.sexo || formData.get(`hab_${i}_sexo`) || 'M').toUpperCase(),
                     fecha_nacimiento: fecNacIso,
                     parentesco: item.parentesco || formData.get(`hab_${i}_parentesco`) || 'a',
                     instruccion: item.instruccion || formData.get(`hab_${i}_instruccion`) || 'c',
-                    profesion_ocupacion: String(item.profesion_ocupacion ?? formData.get(`hab_${i}_ocupacion`) ?? '').trim(),
+                    profesion_ocupacion: String(item.profesion_ocupacion ?? formData.get(`hab_${i}_ocupacion`) ?? '').trim().toUpperCase(),
                     salud: item.salud || formData.get(`hab_${i}_salud`) || 'e',
-                    telefono_movil: String(item.telefono_movil ?? formData.get(`hab_${i}_telefono`) ?? '').trim(),
+                    telefono_movil: String(item.telefono_movil ?? formData.get(`hab_${i}_telefono`) ?? '').trim().toUpperCase(),
                     vecino_id: item.vecino_id || null,
                     aprobar_en_padron: Boolean(item.aprobar_en_padron),
                   });
@@ -10519,17 +10519,17 @@ export default function Dashboard({ user, onLogout }) {
 
                 const payload = {
                   planilla_id: planillaActiva?.planilla?.id || null,
-                  numero_planilla: (numeroPlanillaModal || formData.get('numero_planilla') || '').trim(),
+                  numero_planilla: (numeroPlanillaModal || formData.get('numero_planilla') || '').trim().toUpperCase(),
                   fecha: resFechaApp.iso,
                   empadronador_nombre: (formData.get('empadronador_nombre') || user?.nombre || '').trim().toUpperCase(),
-                  calle_vereda_av: formData.get('calle_vereda_av'),
+                  calle_vereda_av: (formData.get('calle_vereda_av') || 'A').toString().trim().toUpperCase(),
                   numero_casa: (formData.get('numero_casa') || '').trim().toUpperCase(),
-                  telefono_contacto: (formData.get('telefono_contacto') || '').trim(),
-                  tenencia_vivienda: formData.get('tenencia_vivienda') || 'Propia',
-                  tiempo_residencia_desde: (formData.get('tiempo_residencia_desde') || '').trim(),
+                  telefono_contacto: (formData.get('telefono_contacto') || '').trim().toUpperCase(),
+                  tenencia_vivienda: (formData.get('tenencia_vivienda') || 'Propia').toString().trim().toUpperCase(),
+                  tiempo_residencia_desde: (formData.get('tiempo_residencia_desde') || '').trim().toUpperCase(),
                   total_familias: totalFamiliasCalc,
                   total_habitantes: totalHabitantesCalc,
-                  observaciones: (formData.get('observaciones') || '').trim(),
+                  observaciones: (formData.get('observaciones') || '').trim().toUpperCase(),
                   habitantes: habList,
                 };
 
@@ -10684,7 +10684,8 @@ export default function Dashboard({ user, onLogout }) {
                       name="telefono_contacto"
                       defaultValue={planillaActiva?.planilla?.telefono_contacto || ''}
                       placeholder="0414-1234567"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                      onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white uppercase focus:border-blue-500 outline-none"
                     />
                   </div>
                 </div>
@@ -10694,14 +10695,14 @@ export default function Dashboard({ user, onLogout }) {
                     <label className="block text-slate-400 mb-1">Tenencia de Vivienda</label>
                     <select
                       name="tenencia_vivienda"
-                      defaultValue={planillaActiva?.planilla?.tenencia_vivienda || 'Propia'}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                      defaultValue={(planillaActiva?.planilla?.tenencia_vivienda || 'PROPIA').toUpperCase()}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white uppercase focus:border-blue-500 outline-none"
                     >
-                      <option value="Propia">Propia</option>
-                      <option value="Alquilada">Alquilada</option>
-                      <option value="En Cuido">En Cuido</option>
-                      <option value="Familia Adjunta / Agregada">Familia Adjunta / Agregada</option>
-                      <option value="Otro">Otro</option>
+                      <option value="PROPIA">PROPIA</option>
+                      <option value="ALQUILADA">ALQUILADA</option>
+                      <option value="EN CUIDO">EN CUIDO</option>
+                      <option value="FAMILIA ADJUNTA / AGREGADA">FAMILIA ADJUNTA / AGREGADA</option>
+                      <option value="OTRO">OTRO</option>
                     </select>
                   </div>
 
@@ -10710,9 +10711,10 @@ export default function Dashboard({ user, onLogout }) {
                     <input
                       type="text"
                       name="tiempo_residencia_desde"
-                      defaultValue={planillaActiva?.planilla?.tiempo_residencia_desde || ''}
-                      placeholder="Ej: 12 años (Desde 2014)"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white focus:border-blue-500 outline-none"
+                      defaultValue={(planillaActiva?.planilla?.tiempo_residencia_desde || '').toUpperCase()}
+                      placeholder="EJ: 12 AÑOS (DESDE 2014)"
+                      onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-750 text-white uppercase focus:border-blue-500 outline-none"
                     />
                   </div>
 
@@ -11045,9 +11047,10 @@ export default function Dashboard({ user, onLogout }) {
                             type="text"
                             name={`hab_${idx}_ocupacion`}
                             value={hab.profesion_ocupacion ?? ''}
-                            onChange={(e) => actualizarHabitanteCenso(idx, 'profesion_ocupacion', e.target.value)}
-                            placeholder="Ej: Docente, Estudiante"
-                            className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white"
+                            onChange={(e) => actualizarHabitanteCenso(idx, 'profesion_ocupacion', e.target.value.toUpperCase())}
+                            onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
+                            placeholder="EJ: DOCENTE, ESTUDIANTE"
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white uppercase"
                           />
                         </div>
 
@@ -11075,9 +11078,10 @@ export default function Dashboard({ user, onLogout }) {
                             type="text"
                             name={`hab_${idx}_telefono`}
                             value={hab.telefono_movil ?? ''}
-                            onChange={(e) => actualizarHabitanteCenso(idx, 'telefono_movil', e.target.value)}
+                            onChange={(e) => actualizarHabitanteCenso(idx, 'telefono_movil', e.target.value.toUpperCase())}
+                            onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
                             placeholder="0412-1234567"
-                            className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white"
+                            className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white uppercase"
                           />
                         </div>
                       </div>
@@ -11111,9 +11115,10 @@ export default function Dashboard({ user, onLogout }) {
                 <textarea
                   name="observaciones"
                   rows={2}
-                  defaultValue={planillaActiva?.planilla?.observaciones || ''}
-                  placeholder="Detalles sobre las familias, condiciones especiales de la vivienda o requerimientos de atención social"
-                  className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-white focus:border-blue-500 outline-none"
+                  defaultValue={(planillaActiva?.planilla?.observaciones || '').toUpperCase()}
+                  onInput={(e) => { e.target.value = e.target.value.toUpperCase(); }}
+                  placeholder="DETALLES SOBRE LAS FAMILIAS, CONDICIONES ESPECIALES DE LA VIVIENDA O REQUERIMIENTOS DE ATENCIÓN SOCIAL"
+                  className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-white uppercase focus:border-blue-500 outline-none"
                 />
               </div>
 

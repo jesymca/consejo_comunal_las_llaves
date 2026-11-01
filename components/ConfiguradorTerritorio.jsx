@@ -48,11 +48,17 @@ export default function ConfiguradorTerritorio() {
     return todasCasasVereda.filter(i => i.casa.toUpperCase().includes(q));
   }, [todasCasasVereda, busqueda]);
 
-  // Conteo de casas por vereda
+  // Conteo de casas y habitantes por vereda
   const conteo = useMemo(() => {
     const c = {};
     for (const it of items) c[it.vereda] = (c[it.vereda] || 0) + 1;
     return c;
+  }, [items]);
+
+  const conteoHabitantes = useMemo(() => {
+    const h = {};
+    for (const it of items) h[it.vereda] = (h[it.vereda] || 0) + (it.vecinos_count || 0);
+    return h;
   }, [items]);
 
   // Estadísticas globales del territorio
@@ -220,8 +226,9 @@ export default function ConfiguradorTerritorio() {
                   : 'bg-slate-950/70 border-slate-800 text-slate-300 hover:border-cyan-500/40 hover:bg-slate-900'
               }`}
             >
-              <div className="text-base font-black font-mono">{v}</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">{conteo[v] || 0} c.</div>
+              <div className="text-base font-black font-mono leading-none">{v}</div>
+              <div className="text-[10px] text-slate-400 mt-1 leading-tight">{conteo[v] || 0} c.</div>
+              <div className="text-[9.5px] font-semibold text-emerald-400 leading-tight">{conteoHabitantes[v] || 0} hab.</div>
             </button>
           ))}
         </div>
