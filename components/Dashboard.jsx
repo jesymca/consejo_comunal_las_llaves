@@ -190,6 +190,14 @@ export default function Dashboard({ user, onLogout }) {
   const [mensajeSello, setMensajeSello] = useState('');
   const selloFileInputRef = useRef(null);
 
+  // Estados de Dimensiones de Firmas Digitalizadas y Sellos Secundarios
+  const [firmaAnchoMm, setFirmaAnchoMm] = useState(42);
+  const [firmaAltoMm, setFirmaAltoMm] = useState(16);
+  const [selloPropioAnchoMm, setSelloPropioAnchoMm] = useState(26);
+  const [selloPropioAltoMm, setSelloPropioAltoMm] = useState(26);
+  const [guardandoFirmaConfig, setGuardandoFirmaConfig] = useState(false);
+  const [mensajeFirmaConfig, setMensajeFirmaConfig] = useState('');
+
   // Estados de módulo Presets Oficiales (Logos e Imágenes Institucionales)
   const [presetsImagenes, setPresetsImagenes] = useState([]);
   const [loadingPresets, setLoadingPresets] = useState(false);
@@ -1022,6 +1030,10 @@ export default function Dashboard({ user, onLogout }) {
       if (data.sello_ancho_mm) setSelloAnchoMm(parseFloat(data.sello_ancho_mm) || 48);
       if (data.sello_alto_mm) setSelloAltoMm(parseFloat(data.sello_alto_mm) || 26);
       if (data.sello_tamano_mm) setSelloTamanoMm(parseFloat(data.sello_tamano_mm) || 34);
+      if (data.firma_ancho_mm) setFirmaAnchoMm(parseFloat(data.firma_ancho_mm) || 42);
+      if (data.firma_alto_mm) setFirmaAltoMm(parseFloat(data.firma_alto_mm) || 16);
+      if (data.sello_propio_ancho_mm) setSelloPropioAnchoMm(parseFloat(data.sello_propio_ancho_mm) || 26);
+      if (data.sello_propio_alto_mm) setSelloPropioAltoMm(parseFloat(data.sello_propio_alto_mm) || 26);
     } catch (e) {
       console.error(e);
     }
@@ -1064,6 +1076,44 @@ export default function Dashboard({ user, onLogout }) {
       toast.error('Error de conexión');
     } finally {
       setGuardandoSello(false);
+    }
+  };
+
+  const guardarConfiguracionFirmasYSellos = async () => {
+    setGuardandoFirmaConfig(true);
+    try {
+      const res = await fetch('/api/configuracion', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: {
+            ...config,
+            firma_ancho_mm: String(firmaAnchoMm),
+            firma_alto_mm: String(firmaAltoMm),
+            sello_propio_ancho_mm: String(selloPropioAnchoMm),
+            sello_propio_alto_mm: String(selloPropioAltoMm),
+          },
+        }),
+      });
+      if (res.ok) {
+        setConfig((prev) => ({
+          ...prev,
+          firma_ancho_mm: String(firmaAnchoMm),
+          firma_alto_mm: String(firmaAltoMm),
+          sello_propio_ancho_mm: String(selloPropioAnchoMm),
+          sello_propio_alto_mm: String(selloPropioAltoMm),
+        }));
+        setMensajeFirmaConfig('¡Dimensiones de firmas y sellos secundarios guardadas!');
+        toast.success('¡Dimensiones de firmas y sellos guardadas correctamente!');
+        setTimeout(() => setMensajeFirmaConfig(''), 3500);
+      } else {
+        toast.error('Error al guardar la configuración de firmas');
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error('Error de conexión');
+    } finally {
+      setGuardandoFirmaConfig(false);
     }
   };
 
@@ -1235,6 +1285,10 @@ export default function Dashboard({ user, onLogout }) {
           sello_alto_mm: String(selloAltoMm),
           sello_tamano_mm: String(selloAnchoMm),
           sello_principal_url: selloPrincipalUrl,
+          firma_ancho_mm: String(firmaAnchoMm),
+          firma_alto_mm: String(firmaAltoMm),
+          sello_propio_ancho_mm: String(selloPropioAnchoMm),
+          sello_propio_alto_mm: String(selloPropioAltoMm),
         },
         plantilla: {
           ...pEfectiva,
@@ -1464,6 +1518,10 @@ export default function Dashboard({ user, onLogout }) {
       if (cfg.sello_forma) setSelloForma(cfg.sello_forma);
       if (cfg.sello_ancho_mm) setSelloAnchoMm(parseFloat(cfg.sello_ancho_mm) || 48);
       if (cfg.sello_alto_mm) setSelloAltoMm(parseFloat(cfg.sello_alto_mm) || 26);
+      if (cfg.firma_ancho_mm) setFirmaAnchoMm(parseFloat(cfg.firma_ancho_mm) || 42);
+      if (cfg.firma_alto_mm) setFirmaAltoMm(parseFloat(cfg.firma_alto_mm) || 16);
+      if (cfg.sello_propio_ancho_mm) setSelloPropioAnchoMm(parseFloat(cfg.sello_propio_ancho_mm) || 26);
+      if (cfg.sello_propio_alto_mm) setSelloPropioAltoMm(parseFloat(cfg.sello_propio_alto_mm) || 26);
       if (cfg.doc_costos_json) {
         try {
           const parsed = JSON.parse(cfg.doc_costos_json);
@@ -4425,6 +4483,304 @@ export default function Dashboard({ user, onLogout }) {
               </div>
             </div>
 
+            {/* PANEL DE CONTROL DE DIMENSIONES DE FIRMAS Y SELLOS SECUNDARIOS */}
+            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400">
+                    <Sliders className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-extrabold text-white">Dimensiones de Firmas Digitalizadas y Sellos Personalizados</h2>
+                    <p className="text-xs text-slate-400">
+                      Calibra el tamaño en milímetros (mm) de las firmas sobre la línea y de los sellos de comisiones que posean sello diferente al Consejo Comunal
+                    </p>
+                  </div>
+                </div>
+
+                {mensajeFirmaConfig && (
+                  <span className="text-xs font-bold text-emerald-400 flex items-center gap-1 animate-in fade-in">
+                    <Check className="w-4 h-4" /> {mensajeFirmaConfig}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* SUBPANEL 1: DIMENSIONES GENERALES DE FIRMAS DIGITALIZADAS */}
+                <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-4 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <PenTool className="w-4 h-4 text-blue-400" />
+                        <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">
+                          Firmas Digitalizadas (PDF)
+                        </h3>
+                      </div>
+                      <span className="text-[10px] font-mono text-blue-400 font-bold bg-blue-950/60 px-2 py-0.5 rounded border border-blue-800/50">
+                        {firmaAnchoMm} × {firmaAltoMm} mm
+                      </span>
+                    </div>
+
+                    {/* Vista Previa Escala de la Firma */}
+                    <div className="flex flex-col items-center justify-center p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-center space-y-1.5">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+                        Vista Previa Proporcional de Firma
+                      </span>
+                      <div
+                        style={{
+                          width: `${Math.min(180, Math.max(90, Math.round(firmaAnchoMm * 2.8)))}px`,
+                          height: `${Math.min(85, Math.max(35, Math.round(firmaAltoMm * 2.8)))}px`,
+                        }}
+                        className="relative p-1.5 flex flex-col items-center justify-end bg-white/5 border border-dashed border-blue-500/50 rounded-xl transition-all"
+                      >
+                        <img
+                          src={firmas.find((f) => f.url_firma)?.url_firma || 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/favicon.svg'}
+                          alt="Firma Muestra"
+                          className="max-h-[85%] max-w-full object-contain filter drop-shadow select-none pointer-events-none"
+                        />
+                        <div className="w-full border-t border-slate-400 mt-0.5" />
+                      </div>
+                      <span className="text-[11px] font-mono text-blue-400 font-bold">
+                        {firmaAnchoMm} mm ancho × {firmaAltoMm} mm alto
+                      </span>
+                    </div>
+
+                    {/* Controles de Ancho y Alto de Firma */}
+                    <div className="space-y-3 pt-1">
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-slate-200">
+                            Ancho Máximo de Firma (mm):
+                          </label>
+                          <span className="text-xs font-mono font-bold text-blue-400">
+                            {firmaAnchoMm} mm
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min="25"
+                            max="70"
+                            step="1"
+                            value={firmaAnchoMm}
+                            onChange={(e) => setFirmaAnchoMm(parseInt(e.target.value, 10))}
+                            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                          />
+                          <input
+                            type="number"
+                            min="25"
+                            max="70"
+                            value={firmaAnchoMm}
+                            onChange={(e) => setFirmaAnchoMm(Math.max(25, Math.min(70, parseInt(e.target.value, 10) || 42)))}
+                            className="w-16 px-2 py-1 rounded-lg bg-slate-950 border border-slate-750 text-white font-mono text-center text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-slate-200">
+                            Alto Máximo de Firma (mm):
+                          </label>
+                          <span className="text-xs font-mono font-bold text-blue-400">
+                            {firmaAltoMm} mm
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min="10"
+                            max="35"
+                            step="1"
+                            value={firmaAltoMm}
+                            onChange={(e) => setFirmaAltoMm(parseInt(e.target.value, 10))}
+                            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                          />
+                          <input
+                            type="number"
+                            min="10"
+                            max="35"
+                            value={firmaAltoMm}
+                            onChange={(e) => setFirmaAltoMm(Math.max(10, Math.min(35, parseInt(e.target.value, 10) || 16)))}
+                            className="w-16 px-2 py-1 rounded-lg bg-slate-950 border border-slate-750 text-white font-mono text-center text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Presets de Firmas */}
+                      <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                        <span className="text-[11px] text-slate-400 font-semibold">Presets:</span>
+                        {[
+                          { label: '38 × 14 mm (Compacta)', w: 38, h: 14 },
+                          { label: '42 × 16 mm (Estándar Oficial)', w: 42, h: 16 },
+                          { label: '48 × 18 mm (Grande)', w: 48, h: 18 },
+                          { label: '54 × 22 mm (Destacada)', w: 54, h: 22 },
+                        ].map((preset) => (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() => {
+                              setFirmaAnchoMm(preset.w);
+                              setFirmaAltoMm(preset.h);
+                            }}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition ${
+                              firmaAnchoMm === preset.w && firmaAltoMm === preset.h
+                                ? 'bg-blue-600 text-white font-bold'
+                                : 'bg-slate-850 hover:bg-slate-800 text-slate-300 border border-slate-750'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SUBPANEL 2: DIMENSIONES GENERALES DE SELLOS SECUNDARIOS / PROPIOS */}
+                <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-4 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                        <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">
+                          Sellos Secundarios / Propios
+                        </h3>
+                      </div>
+                      <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50">
+                        {selloPropioAnchoMm} × {selloPropioAltoMm} mm
+                      </span>
+                    </div>
+
+                    {/* Vista Previa del Sello Secundario */}
+                    <div className="flex flex-col items-center justify-center p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-center space-y-1.5">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+                        Vista Previa Sello Diferente al Consejo Comunal
+                      </span>
+                      <div
+                        style={{
+                          width: `${Math.min(130, Math.max(60, Math.round(selloPropioAnchoMm * 2.4)))}px`,
+                          height: `${Math.min(130, Math.max(60, Math.round(selloPropioAltoMm * 2.4)))}px`,
+                        }}
+                        className="relative p-2 flex items-center justify-center bg-white/5 border-2 border-dashed border-emerald-500/50 rounded-full transition-all shadow-inner"
+                      >
+                        <img
+                          src={firmas.find((f) => !f.usar_sello_principal && f.url_sello)?.url_sello || selloPrincipalUrl}
+                          alt="Sello Propio Muestra"
+                          className="w-full h-full object-contain filter drop-shadow opacity-90 select-none pointer-events-none"
+                        />
+                      </div>
+                      <span className="text-[11px] font-mono text-emerald-400 font-bold">
+                        {selloPropioAnchoMm} mm ancho × {selloPropioAltoMm} mm alto
+                      </span>
+                    </div>
+
+                    {/* Controles de Ancho y Alto de Sello Secundario */}
+                    <div className="space-y-3 pt-1">
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-slate-200">
+                            Ancho del Sello Secundario (mm):
+                          </label>
+                          <span className="text-xs font-mono font-bold text-emerald-400">
+                            {selloPropioAnchoMm} mm
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min="18"
+                            max="55"
+                            step="1"
+                            value={selloPropioAnchoMm}
+                            onChange={(e) => setSelloPropioAnchoMm(parseInt(e.target.value, 10))}
+                            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                          />
+                          <input
+                            type="number"
+                            min="18"
+                            max="55"
+                            value={selloPropioAnchoMm}
+                            onChange={(e) => setSelloPropioAnchoMm(Math.max(18, Math.min(55, parseInt(e.target.value, 10) || 26)))}
+                            className="w-16 px-2 py-1 rounded-lg bg-slate-950 border border-slate-750 text-white font-mono text-center text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-slate-200">
+                            Alto del Sello Secundario (mm):
+                          </label>
+                          <span className="text-xs font-mono font-bold text-emerald-400">
+                            {selloPropioAltoMm} mm
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min="18"
+                            max="55"
+                            step="1"
+                            value={selloPropioAltoMm}
+                            onChange={(e) => setSelloPropioAltoMm(parseInt(e.target.value, 10))}
+                            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                          />
+                          <input
+                            type="number"
+                            min="18"
+                            max="55"
+                            value={selloPropioAltoMm}
+                            onChange={(e) => setSelloPropioAltoMm(Math.max(18, Math.min(55, parseInt(e.target.value, 10) || 26)))}
+                            className="w-16 px-2 py-1 rounded-lg bg-slate-950 border border-slate-750 text-white font-mono text-center text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Presets de Sello Secundario */}
+                      <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                        <span className="text-[11px] text-slate-400 font-semibold">Presets:</span>
+                        {[
+                          { label: '24 × 24 mm (Compacto)', w: 24, h: 24 },
+                          { label: '26 × 26 mm (Estándar)', w: 26, h: 26 },
+                          { label: '30 × 30 mm (Grande)', w: 30, h: 30 },
+                          { label: '36 × 24 mm (Rectangular)', w: 36, h: 24 },
+                        ].map((preset) => (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() => {
+                              setSelloPropioAnchoMm(preset.w);
+                              setSelloPropioAltoMm(preset.h);
+                            }}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition ${
+                              selloPropioAnchoMm === preset.w && selloPropioAltoMm === preset.h
+                                ? 'bg-emerald-600 text-white font-bold'
+                                : 'bg-slate-850 hover:bg-slate-800 text-slate-300 border border-slate-750'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Botón Guardar Dimensiones de Firmas y Sellos */}
+              <div className="flex items-center justify-end pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  disabled={guardandoFirmaConfig}
+                  onClick={guardarConfiguracionFirmasYSellos}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition"
+                >
+                  <Check className="w-4 h-4" /> {guardandoFirmaConfig ? 'Guardando...' : 'Guardar Ajustes de Firmas y Sellos Secundarios'}
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               {firmas.map((f) => (
                 <div key={f.id} className="p-5 rounded-3xl glass-panel space-y-4 border border-slate-800 shadow-xl relative">
@@ -4436,8 +4792,17 @@ export default function Dashboard({ user, onLogout }) {
                       {(user?.rol === 'SUPER_ADMIN' || user?.rol === 'ADMIN') && (
                         <>
                           <button
-                            onClick={() => setModalFirma({ ...f })}
-                            title="Editar Datos y Archivos"
+                            onClick={() =>
+                              setModalFirma({
+                                ...f,
+                                ancho_firma_mm: f.ancho_firma_mm !== undefined && f.ancho_firma_mm !== null ? f.ancho_firma_mm : firmaAnchoMm,
+                                alto_firma_mm: f.alto_firma_mm !== undefined && f.alto_firma_mm !== null ? f.alto_firma_mm : firmaAltoMm,
+                                ancho_sello_mm: f.ancho_sello_mm !== undefined && f.ancho_sello_mm !== null ? f.ancho_sello_mm : selloPropioAnchoMm,
+                                alto_sello_mm: f.alto_sello_mm !== undefined && f.alto_sello_mm !== null ? f.alto_sello_mm : selloPropioAltoMm,
+                                sello_forma: f.sello_forma || 'redondo',
+                              })
+                            }
+                            title="Editar Datos, Archivos y Dimensiones"
                             className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
                           >
                             <Edit className="w-4 h-4" />
@@ -4461,12 +4826,37 @@ export default function Dashboard({ user, onLogout }) {
                     <div><span className="text-slate-400">Teléfono:</span> <strong className="text-white block">{f.telefono}</strong></div>
                   </div>
 
-                  {/* Visualización de la Firma */}
+                  {/* Etiquetas de Dimensiones Configuradas */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-semibold">
+                      ✍️ Firma: {f.ancho_firma_mm || firmaAnchoMm}×{f.alto_firma_mm || firmaAltoMm} mm
+                    </span>
+                    {f.usar_sello_principal ? (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-semibold">
+                        🛡️ Sello Principal ({selloAnchoMm}×{selloAltoMm} mm)
+                      </span>
+                    ) : f.url_sello ? (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+                        🏷️ Sello Propio: {f.ancho_sello_mm || selloPropioAnchoMm}×{f.alto_sello_mm || selloPropioAltoMm} mm ({f.sello_forma || 'redondo'})
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {/* Visualización de la Firma Proporcional */}
                   <div className="p-3 rounded-2xl bg-slate-950 border border-slate-850 text-center space-y-1">
                     <span className="text-[10px] text-slate-400 font-semibold block uppercase tracking-wider">Firma Digital PNG</span>
                     {f.url_firma ? (
-                      <div className="bg-white/5 rounded-xl p-2 border border-slate-800 flex items-center justify-center min-h-[50px]">
-                        <img src={f.url_firma} alt={`Firma ${f.nombre}`} className="max-h-12 max-w-full object-contain" />
+                      <div
+                        style={{ minHeight: `${Math.min(65, Math.max(38, Math.round((f.alto_firma_mm || firmaAltoMm) * 2.6)))}px` }}
+                        className="bg-white/5 rounded-xl p-2 border border-slate-800 flex flex-col items-center justify-end"
+                      >
+                        <img
+                          src={f.url_firma}
+                          alt={`Firma ${f.nombre}`}
+                          style={{ maxHeight: `${Math.min(52, Math.max(30, Math.round((f.alto_firma_mm || firmaAltoMm) * 2.3)))}px` }}
+                          className="max-w-full object-contain"
+                        />
+                        <div className="w-3/4 border-t border-slate-600 mt-1" />
                       </div>
                     ) : (
                       <div className="py-2.5 text-center">
@@ -4486,7 +4876,21 @@ export default function Dashboard({ user, onLogout }) {
                       </div>
                     ) : f.url_sello ? (
                       <div className="bg-white/5 rounded-xl p-2 border border-slate-800 flex items-center justify-center min-h-[50px]">
-                        <img src={f.url_sello} alt={`Sello ${f.comision}`} className="max-h-12 max-w-full object-contain" />
+                        <img
+                          src={f.url_sello}
+                          alt={`Sello ${f.comision}`}
+                          style={{
+                            maxHeight: `${Math.min(52, Math.max(30, Math.round((f.alto_sello_mm || selloPropioAnchoMm) * 1.8)))}px`,
+                            maxWidth: `${Math.min(70, Math.max(30, Math.round((f.ancho_sello_mm || selloPropioAltoMm) * 1.8)))}px`,
+                          }}
+                          className={`object-contain ${
+                            (f.sello_forma || 'redondo') === 'redondo'
+                              ? 'rounded-full'
+                              : (f.sello_forma || 'redondo') === 'ovalado'
+                              ? 'rounded-[50%]'
+                              : 'rounded-lg'
+                          }`}
+                        />
                       </div>
                     ) : (
                       <div className="py-2 text-center">
@@ -5374,8 +5778,18 @@ export default function Dashboard({ user, onLogout }) {
                         <div className="grid grid-cols-2 gap-8 text-center text-[10px] border-t border-slate-200 pt-6 mb-6">
                           {firmas.slice(0, 2).map((f) => (
                             <div key={f.id} className="space-y-0.5">
-                              <div className="h-10 flex items-center justify-center">
-                                {f.url_firma && <img src={f.url_firma} alt="Firma" className="max-h-10 object-contain" />}
+                              <div
+                                style={{ height: `${Math.min(48, Math.max(28, (f.alto_firma_mm || firmaAltoMm) * 2.2))}px` }}
+                                className="flex items-end justify-center"
+                              >
+                                {f.url_firma && (
+                                  <img
+                                    src={f.url_firma}
+                                    alt="Firma"
+                                    style={{ maxHeight: `${Math.min(48, Math.max(28, (f.alto_firma_mm || firmaAltoMm) * 2.2))}px` }}
+                                    className="object-contain"
+                                  />
+                                )}
                               </div>
                               <div className="border-t border-slate-400 pt-1 font-bold">{f.comision}</div>
                               <div>{f.nombre}</div>
@@ -10645,6 +11059,90 @@ export default function Dashboard({ user, onLogout }) {
                     }}
                   />
                 </label>
+
+                {/* Dimensiones de la Firma en PDF */}
+                <div className="pt-2.5 border-t border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-200">
+                      Dimensiones de la Firma en PDF:
+                    </span>
+                    <span className="text-xs font-mono font-bold text-blue-400 bg-blue-950/60 px-2 py-0.5 rounded border border-blue-800/50">
+                      {modalFirma.ancho_firma_mm || firmaAnchoMm} × {modalFirma.alto_firma_mm || firmaAltoMm} mm
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1">Ancho (mm):</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min="20"
+                          max="70"
+                          step="1"
+                          value={modalFirma.ancho_firma_mm || firmaAnchoMm}
+                          onChange={(e) => setModalFirma({ ...modalFirma, ancho_firma_mm: parseInt(e.target.value, 10) || 42 })}
+                          className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                        <input
+                          type="number"
+                          min="20"
+                          max="70"
+                          value={modalFirma.ancho_firma_mm || firmaAnchoMm}
+                          onChange={(e) => setModalFirma({ ...modalFirma, ancho_firma_mm: Math.max(20, Math.min(70, parseInt(e.target.value, 10) || 42)) })}
+                          className="w-14 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-750 text-white font-mono text-center text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] text-slate-400 block mb-1">Alto (mm):</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min="10"
+                          max="35"
+                          step="1"
+                          value={modalFirma.alto_firma_mm || firmaAltoMm}
+                          onChange={(e) => setModalFirma({ ...modalFirma, alto_firma_mm: parseInt(e.target.value, 10) || 16 })}
+                          className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                        <input
+                          type="number"
+                          min="10"
+                          max="35"
+                          value={modalFirma.alto_firma_mm || firmaAltoMm}
+                          onChange={(e) => setModalFirma({ ...modalFirma, alto_firma_mm: Math.max(10, Math.min(35, parseInt(e.target.value, 10) || 16)) })}
+                          className="w-14 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-750 text-white font-mono text-center text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Presets de Firma */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                    <span className="text-[10px] text-slate-500 font-semibold">Presets:</span>
+                    {[
+                      { label: '38×14 (Compacta)', w: 38, h: 14 },
+                      { label: '42×16 (Estándar)', w: 42, h: 16 },
+                      { label: '48×18 (Grande)', w: 48, h: 18 },
+                      { label: '54×22 (Destacada)', w: 54, h: 22 },
+                    ].map((p) => (
+                      <button
+                        key={p.label}
+                        type="button"
+                        onClick={() => setModalFirma({ ...modalFirma, ancho_firma_mm: p.w, alto_firma_mm: p.h })}
+                        className={`px-2 py-0.5 rounded text-[10px] transition ${
+                          (modalFirma.ancho_firma_mm || firmaAnchoMm) === p.w && (modalFirma.alto_firma_mm || firmaAltoMm) === p.h
+                            ? 'bg-blue-600 text-white font-bold'
+                            : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {/* SECCIÓN 2: CONFIGURACIÓN Y SUBIDA DE SELLO */}
@@ -10721,6 +11219,162 @@ export default function Dashboard({ user, onLogout }) {
                         }}
                       />
                     </label>
+
+                    {/* Dimensiones y Perspectiva del Sello Propio / Secundario */}
+                    <div className="pt-2.5 border-t border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-200">
+                          Dimensiones y Forma del Sello Propio:
+                        </span>
+                        <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50">
+                          {modalFirma.ancho_sello_mm || selloPropioAnchoMm} mm × {modalFirma.alto_sello_mm || selloPropioAltoMm} mm ({modalFirma.sello_forma || 'redondo'})
+                        </span>
+                      </div>
+
+                      {/* Selector de forma del sello propio */}
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[
+                          { id: 'redondo', label: 'Redondo' },
+                          { id: 'cuadrado', label: 'Cuadrado' },
+                          { id: 'rectangular', label: 'Rectangular' },
+                          { id: 'ovalado', label: 'Ovalado' },
+                        ].map((formaItem) => (
+                          <button
+                            key={formaItem.id}
+                            type="button"
+                            onClick={() => {
+                              let w = modalFirma.ancho_sello_mm || selloPropioAnchoMm || 26;
+                              let h = modalFirma.alto_sello_mm || selloPropioAltoMm || 26;
+                              if (formaItem.id === 'redondo' || formaItem.id === 'cuadrado') {
+                                const avg = Math.round((w + h) / 2);
+                                w = avg;
+                                h = avg;
+                              } else if (formaItem.id === 'rectangular') {
+                                w = Math.max(34, w);
+                                h = Math.min(26, h);
+                              }
+                              setModalFirma({
+                                ...modalFirma,
+                                sello_forma: formaItem.id,
+                                ancho_sello_mm: w,
+                                alto_sello_mm: h,
+                              });
+                            }}
+                            className={`py-1 px-1.5 rounded-lg text-[10px] font-bold border transition text-center ${
+                              (modalFirma.sello_forma || 'redondo') === formaItem.id
+                                ? 'bg-emerald-600/20 border-emerald-500 text-white shadow-sm'
+                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            {formaItem.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[11px] text-slate-400 block mb-1">Ancho (mm):</label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="15"
+                              max="55"
+                              step="1"
+                              value={modalFirma.ancho_sello_mm || selloPropioAnchoMm}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value, 10) || 26;
+                                const esSimetrico = modalFirma.sello_forma === 'redondo' || modalFirma.sello_forma === 'cuadrado';
+                                setModalFirma({
+                                  ...modalFirma,
+                                  ancho_sello_mm: val,
+                                  alto_sello_mm: esSimetrico ? val : (modalFirma.alto_sello_mm || selloPropioAltoMm),
+                                });
+                              }}
+                              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                            />
+                            <input
+                              type="number"
+                              min="15"
+                              max="55"
+                              value={modalFirma.ancho_sello_mm || selloPropioAnchoMm}
+                              onChange={(e) => {
+                                const val = Math.max(15, Math.min(55, parseInt(e.target.value, 10) || 26));
+                                const esSimetrico = modalFirma.sello_forma === 'redondo' || modalFirma.sello_forma === 'cuadrado';
+                                setModalFirma({
+                                  ...modalFirma,
+                                  ancho_sello_mm: val,
+                                  alto_sello_mm: esSimetrico ? val : (modalFirma.alto_sello_mm || selloPropioAltoMm),
+                                });
+                              }}
+                              className="w-14 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-750 text-white font-mono text-center text-xs"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] text-slate-400 block mb-1">Alto (mm):</label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="15"
+                              max="55"
+                              step="1"
+                              value={modalFirma.alto_sello_mm || selloPropioAltoMm}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value, 10) || 26;
+                                const esSimetrico = modalFirma.sello_forma === 'redondo' || modalFirma.sello_forma === 'cuadrado';
+                                setModalFirma({
+                                  ...modalFirma,
+                                  alto_sello_mm: val,
+                                  ancho_sello_mm: esSimetrico ? val : (modalFirma.ancho_sello_mm || selloPropioAnchoMm),
+                                });
+                              }}
+                              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                            />
+                            <input
+                              type="number"
+                              min="15"
+                              max="55"
+                              value={modalFirma.alto_sello_mm || selloPropioAltoMm}
+                              onChange={(e) => {
+                                const val = Math.max(15, Math.min(55, parseInt(e.target.value, 10) || 26));
+                                const esSimetrico = modalFirma.sello_forma === 'redondo' || modalFirma.sello_forma === 'cuadrado';
+                                setModalFirma({
+                                  ...modalFirma,
+                                  alto_sello_mm: val,
+                                  ancho_sello_mm: esSimetrico ? val : (modalFirma.ancho_sello_mm || selloPropioAnchoMm),
+                                });
+                              }}
+                              className="w-14 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-750 text-white font-mono text-center text-xs"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Presets de Sello Propio */}
+                      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                        <span className="text-[10px] text-slate-500 font-semibold">Presets:</span>
+                        {[
+                          { label: '24×24 (Compacto)', w: 24, h: 24, f: 'redondo' },
+                          { label: '26×26 (Estándar)', w: 26, h: 26, f: 'redondo' },
+                          { label: '30×30 (Grande)', w: 30, h: 30, f: 'redondo' },
+                          { label: '36×24 (Rectangular)', w: 36, h: 24, f: 'rectangular' },
+                        ].map((p) => (
+                          <button
+                            key={p.label}
+                            type="button"
+                            onClick={() => setModalFirma({ ...modalFirma, ancho_sello_mm: p.w, alto_sello_mm: p.h, sello_forma: p.f })}
+                            className={`px-2 py-0.5 rounded text-[10px] transition ${
+                              (modalFirma.ancho_sello_mm || selloPropioAnchoMm) === p.w && (modalFirma.alto_sello_mm || selloPropioAltoMm) === p.h
+                                ? 'bg-emerald-600 text-white font-bold'
+                                : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
+                            }`}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

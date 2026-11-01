@@ -5,16 +5,48 @@ import { registrarAuditoria } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
+let columnsChecked = false;
+async function ensureFirmaColumns() {
+  if (columnsChecked) return;
+  try {
+    const tableInfo = await db.execute('PRAGMA table_info(firmas_sellos)');
+    const cols = (tableInfo.rows || []).map(r => r.name);
+    if (!cols.includes('ancho_firma_mm')) {
+      await db.execute('ALTER TABLE firmas_sellos ADD COLUMN ancho_firma_mm REAL DEFAULT 42').catch(() => {});
+    }
+    if (!cols.includes('alto_firma_mm')) {
+      await db.execute('ALTER TABLE firmas_sellos ADD COLUMN alto_firma_mm REAL DEFAULT 16').catch(() => {});
+    }
+    if (!cols.includes('ancho_sello_mm')) {
+      await db.execute('ALTER TABLE firmas_sellos ADD COLUMN ancho_sello_mm REAL DEFAULT 26').catch(() => {});
+    }
+    if (!cols.includes('alto_sello_mm')) {
+      await db.execute('ALTER TABLE firmas_sellos ADD COLUMN alto_sello_mm REAL DEFAULT 26').catch(() => {});
+    }
+    if (!cols.includes('sello_forma')) {
+      await db.execute("ALTER TABLE firmas_sellos ADD COLUMN sello_forma TEXT DEFAULT 'redondo'").catch(() => {});
+    }
+    columnsChecked = true;
+  } catch (e) {
+    console.warn('Error checking/adding columns in firmas_sellos:', e);
+  }
+}
+
 export async function GET() {
   try {
+    await ensureFirmaColumns();
     const res = await db.execute('SELECT * FROM firmas_sellos ORDER BY orden ASC, id ASC');
-    const configRes = await db.execute("SELECT clave, valor FROM configuracion_sistema WHERE clave IN ('sello_principal_url', 'sello_tamano_mm', 'sello_forma', 'sello_ancho_mm', 'sello_alto_mm')");
+    const configRes = await db.execute("SELECT clave, valor FROM configuracion_sistema WHERE clave IN ('sello_principal_url', 'sello_tamano_mm', 'sello_forma', 'sello_ancho_mm', 'sello_alto_mm', 'firma_ancho_mm', 'firma_alto_mm', 'sello_propio_ancho_mm', 'sello_propio_alto_mm')");
     
     let selloPrincipalUrl = 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/sello.png';
     let selloTamanoMm = '34';
     let selloForma = 'rectangular'; // Modelo oficial real del Consejo Comunal
     let selloAnchoMm = '48';
     let selloAltoMm = '26';
+    let firmaAnchoMm = '42';
+    let firmaAltoMm = '16';
+    let selloPropioAnchoMm = '26';
+    let selloPropioAltoMm = '26';
 
     configRes.rows.forEach(r => {
       if (r.clave === 'sello_principal_url') selloPrincipalUrl = r.valor;
@@ -22,6 +54,10 @@ export async function GET() {
       if (r.clave === 'sello_forma') selloForma = r.valor;
       if (r.clave === 'sello_ancho_mm') selloAnchoMm = r.valor;
       if (r.clave === 'sello_alto_mm') selloAltoMm = r.valor;
+      if (r.clave === 'firma_ancho_mm') firmaAnchoMm = r.valor;
+      if (r.clave === 'firma_alto_mm') firmaAltoMm = r.valor;
+      if (r.clave === 'sello_propio_ancho_mm') selloPropioAnchoMm = r.valor;
+      if (r.clave === 'sello_propio_alto_mm') selloPropioAltoMm = r.valor;
     });
 
     return NextResponse.json({
@@ -31,6 +67,10 @@ export async function GET() {
       sello_forma: selloForma,
       sello_ancho_mm: selloAnchoMm,
       sello_alto_mm: selloAltoMm,
+      firma_ancho_mm: firmaAnchoMm,
+      firma_alto_mm: firmaAltoMm,
+      sello_propio_ancho_mm: selloPropioAnchoMm,
+      sello_propio_alto_mm: selloPropioAltoMm,
     });
   } catch (err) {
     console.error('Error en /api/firmas GET:', err);
@@ -45,8 +85,24 @@ export async function POST(request) {
       return NextResponse.json({ error: 'No autorizado para gestionar firmas y sellos' }, { status: 403 });
     }
 
+    await ensureFirmaColumns();
     const body = await request.json();
-    const { comision, nombre, cedula, telefono, url_firma, url_sello, usar_sello_principal, activo, orden } = body;
+    const {
+      comision,
+      nombre,
+      cedula,
+      telefono,
+      url_firma,
+      url_sello,
+      usar_sello_principal,
+      activo,
+      orden,
+      ancho_firma_mm,
+      alto_firma_mm,
+      ancho_sello_mm,
+      alto_sello_mm,
+      sello_forma,
+    } = body;
 
     if (!nombre || !comision) {
       return NextResponse.json({ error: 'Nombre y Comisión son obligatorios' }, { status: 400 });
@@ -61,22 +117,51 @@ export async function POST(request) {
 
     const now = new Date().toISOString();
 
-    const insertRes = await db.execute({
-      sql: `INSERT INTO firmas_sellos (orden, comision, nombre, cedula, telefono, url_firma, url_sello, usar_sello_principal, activo, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [
-        orderNum,
-        comision.trim().toUpperCase(),
-        nombre.trim().toUpperCase(),
-        (cedula || '').trim().toUpperCase(),
-        (telefono || '').trim(),
-        url_firma || null,
-        url_sello || null,
-        usar_sello_principal ? 1 : 0,
-        activo !== undefined ? (activo ? 1 : 0) : 1,
-        now,
-      ]
-    });
+    let insertRes;
+    try {
+      insertRes = await db.execute({
+        sql: `INSERT INTO firmas_sellos (
+                orden, comision, nombre, cedula, telefono, url_firma, url_sello, usar_sello_principal, activo, updated_at,
+                ancho_firma_mm, alto_firma_mm, ancho_sello_mm, alto_sello_mm, sello_forma
+              )
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          orderNum,
+          comision.trim().toUpperCase(),
+          nombre.trim().toUpperCase(),
+          (cedula || '').trim().toUpperCase(),
+          (telefono || '').trim(),
+          url_firma || null,
+          url_sello || null,
+          usar_sello_principal ? 1 : 0,
+          activo !== undefined ? (activo ? 1 : 0) : 1,
+          now,
+          ancho_firma_mm !== undefined && ancho_firma_mm !== null ? parseFloat(ancho_firma_mm) : 42,
+          alto_firma_mm !== undefined && alto_firma_mm !== null ? parseFloat(alto_firma_mm) : 16,
+          ancho_sello_mm !== undefined && ancho_sello_mm !== null ? parseFloat(ancho_sello_mm) : 26,
+          alto_sello_mm !== undefined && alto_sello_mm !== null ? parseFloat(alto_sello_mm) : 26,
+          sello_forma || 'redondo',
+        ]
+      });
+    } catch (e) {
+      // Fallback si la tabla aún tiene el esquema anterior
+      insertRes = await db.execute({
+        sql: `INSERT INTO firmas_sellos (orden, comision, nombre, cedula, telefono, url_firma, url_sello, usar_sello_principal, activo, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          orderNum,
+          comision.trim().toUpperCase(),
+          nombre.trim().toUpperCase(),
+          (cedula || '').trim().toUpperCase(),
+          (telefono || '').trim(),
+          url_firma || null,
+          url_sello || null,
+          usar_sello_principal ? 1 : 0,
+          activo !== undefined ? (activo ? 1 : 0) : 1,
+          now,
+        ]
+      });
+    }
 
     await registrarAuditoria({
       tipo_evento: 'GESTION_FIRMAS_SELLOS',
@@ -105,8 +190,25 @@ export async function PUT(request) {
       return NextResponse.json({ error: 'No autorizado para modificar firmas' }, { status: 403 });
     }
 
+    await ensureFirmaColumns();
     const body = await request.json();
-    const { id, orden, comision, nombre, cedula, telefono, url_firma, url_sello, usar_sello_principal, activo } = body;
+    const {
+      id,
+      orden,
+      comision,
+      nombre,
+      cedula,
+      telefono,
+      url_firma,
+      url_sello,
+      usar_sello_principal,
+      activo,
+      ancho_firma_mm,
+      alto_firma_mm,
+      ancho_sello_mm,
+      alto_sello_mm,
+      sello_forma,
+    } = body;
 
     if (!id || !nombre || !comision) {
       return NextResponse.json({ error: 'ID, Nombre y Comisión son obligatorios' }, { status: 400 });
@@ -114,33 +216,73 @@ export async function PUT(request) {
 
     const now = new Date().toISOString();
 
-    await db.execute({
-      sql: `UPDATE firmas_sellos SET
-        orden = ?,
-        comision = ?,
-        nombre = ?,
-        cedula = ?,
-        telefono = ?,
-        url_firma = ?,
-        url_sello = ?,
-        usar_sello_principal = ?,
-        activo = ?,
-        updated_at = ?
-        WHERE id = ?`,
-      args: [
-        orden !== undefined ? parseInt(orden, 10) : 1,
-        comision.trim().toUpperCase(),
-        nombre.trim().toUpperCase(),
-        (cedula || '').trim().toUpperCase(),
-        (telefono || '').trim(),
-        url_firma !== undefined ? url_firma : null,
-        url_sello !== undefined ? url_sello : null,
-        usar_sello_principal ? 1 : 0,
-        activo !== undefined ? (activo ? 1 : 0) : 1,
-        now,
-        id,
-      ]
-    });
+    try {
+      await db.execute({
+        sql: `UPDATE firmas_sellos SET
+          orden = ?,
+          comision = ?,
+          nombre = ?,
+          cedula = ?,
+          telefono = ?,
+          url_firma = ?,
+          url_sello = ?,
+          usar_sello_principal = ?,
+          activo = ?,
+          updated_at = ?,
+          ancho_firma_mm = ?,
+          alto_firma_mm = ?,
+          ancho_sello_mm = ?,
+          alto_sello_mm = ?,
+          sello_forma = ?
+          WHERE id = ?`,
+        args: [
+          orden !== undefined ? parseInt(orden, 10) : 1,
+          comision.trim().toUpperCase(),
+          nombre.trim().toUpperCase(),
+          (cedula || '').trim().toUpperCase(),
+          (telefono || '').trim(),
+          url_firma !== undefined ? url_firma : null,
+          url_sello !== undefined ? url_sello : null,
+          usar_sello_principal ? 1 : 0,
+          activo !== undefined ? (activo ? 1 : 0) : 1,
+          now,
+          ancho_firma_mm !== undefined && ancho_firma_mm !== null ? parseFloat(ancho_firma_mm) : 42,
+          alto_firma_mm !== undefined && alto_firma_mm !== null ? parseFloat(alto_firma_mm) : 16,
+          ancho_sello_mm !== undefined && ancho_sello_mm !== null ? parseFloat(ancho_sello_mm) : 26,
+          alto_sello_mm !== undefined && alto_sello_mm !== null ? parseFloat(alto_sello_mm) : 26,
+          sello_forma || 'redondo',
+          id,
+        ]
+      });
+    } catch (e) {
+      await db.execute({
+        sql: `UPDATE firmas_sellos SET
+          orden = ?,
+          comision = ?,
+          nombre = ?,
+          cedula = ?,
+          telefono = ?,
+          url_firma = ?,
+          url_sello = ?,
+          usar_sello_principal = ?,
+          activo = ?,
+          updated_at = ?
+          WHERE id = ?`,
+        args: [
+          orden !== undefined ? parseInt(orden, 10) : 1,
+          comision.trim().toUpperCase(),
+          nombre.trim().toUpperCase(),
+          (cedula || '').trim().toUpperCase(),
+          (telefono || '').trim(),
+          url_firma !== undefined ? url_firma : null,
+          url_sello !== undefined ? url_sello : null,
+          usar_sello_principal ? 1 : 0,
+          activo !== undefined ? (activo ? 1 : 0) : 1,
+          now,
+          id,
+        ]
+      });
+    }
 
     await registrarAuditoria({
       tipo_evento: 'GESTION_FIRMAS_SELLOS',

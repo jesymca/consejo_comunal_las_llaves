@@ -144,6 +144,11 @@ async function migrate() {
       url_firma TEXT,
       url_sello TEXT,
       usar_sello_principal INTEGER NOT NULL DEFAULT 1,
+      ancho_firma_mm REAL DEFAULT 42,
+      alto_firma_mm REAL DEFAULT 16,
+      ancho_sello_mm REAL DEFAULT 26,
+      alto_sello_mm REAL DEFAULT 26,
+      sello_forma TEXT DEFAULT 'redondo',
       activo INTEGER NOT NULL DEFAULT 1,
       updated_at TEXT NOT NULL
     );`,
