@@ -12,10 +12,10 @@ async function ensureFirmaColumns() {
     const tableInfo = await db.execute('PRAGMA table_info(firmas_sellos)');
     const cols = (tableInfo.rows || []).map(r => r.name);
     if (!cols.includes('ancho_firma_mm')) {
-      await db.execute('ALTER TABLE firmas_sellos ADD COLUMN ancho_firma_mm REAL DEFAULT 42').catch(() => {});
+      await db.execute('ALTER TABLE firmas_sellos ADD COLUMN ancho_firma_mm REAL DEFAULT 54').catch(() => {});
     }
     if (!cols.includes('alto_firma_mm')) {
-      await db.execute('ALTER TABLE firmas_sellos ADD COLUMN alto_firma_mm REAL DEFAULT 16').catch(() => {});
+      await db.execute('ALTER TABLE firmas_sellos ADD COLUMN alto_firma_mm REAL DEFAULT 22').catch(() => {});
     }
     if (!cols.includes('ancho_sello_mm')) {
       await db.execute('ALTER TABLE firmas_sellos ADD COLUMN ancho_sello_mm REAL DEFAULT 26').catch(() => {});
@@ -43,8 +43,8 @@ export async function GET() {
     let selloForma = 'rectangular'; // Modelo oficial real del Consejo Comunal
     let selloAnchoMm = '48';
     let selloAltoMm = '26';
-    let firmaAnchoMm = '42';
-    let firmaAltoMm = '16';
+    let firmaAnchoMm = '54';
+    let firmaAltoMm = '22';
     let selloPropioAnchoMm = '26';
     let selloPropioAltoMm = '26';
 
@@ -136,8 +136,8 @@ export async function POST(request) {
           usar_sello_principal ? 1 : 0,
           activo !== undefined ? (activo ? 1 : 0) : 1,
           now,
-          ancho_firma_mm !== undefined && ancho_firma_mm !== null ? parseFloat(ancho_firma_mm) : 42,
-          alto_firma_mm !== undefined && alto_firma_mm !== null ? parseFloat(alto_firma_mm) : 16,
+          ancho_firma_mm !== undefined && ancho_firma_mm !== null ? parseFloat(ancho_firma_mm) : 54,
+          alto_firma_mm !== undefined && alto_firma_mm !== null ? parseFloat(alto_firma_mm) : 22,
           ancho_sello_mm !== undefined && ancho_sello_mm !== null ? parseFloat(ancho_sello_mm) : 26,
           alto_sello_mm !== undefined && alto_sello_mm !== null ? parseFloat(alto_sello_mm) : 26,
           sello_forma || 'redondo',
@@ -246,8 +246,8 @@ export async function PUT(request) {
           usar_sello_principal ? 1 : 0,
           activo !== undefined ? (activo ? 1 : 0) : 1,
           now,
-          ancho_firma_mm !== undefined && ancho_firma_mm !== null ? parseFloat(ancho_firma_mm) : 42,
-          alto_firma_mm !== undefined && alto_firma_mm !== null ? parseFloat(alto_firma_mm) : 16,
+          ancho_firma_mm !== undefined && ancho_firma_mm !== null ? parseFloat(ancho_firma_mm) : 54,
+          alto_firma_mm !== undefined && alto_firma_mm !== null ? parseFloat(alto_firma_mm) : 22,
           ancho_sello_mm !== undefined && ancho_sello_mm !== null ? parseFloat(ancho_sello_mm) : 26,
           alto_sello_mm !== undefined && alto_sello_mm !== null ? parseFloat(alto_sello_mm) : 26,
           sello_forma || 'redondo',

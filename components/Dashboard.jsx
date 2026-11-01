@@ -191,8 +191,8 @@ export default function Dashboard({ user, onLogout }) {
   const selloFileInputRef = useRef(null);
 
   // Estados de Dimensiones de Firmas Digitalizadas y Sellos Secundarios
-  const [firmaAnchoMm, setFirmaAnchoMm] = useState(42);
-  const [firmaAltoMm, setFirmaAltoMm] = useState(16);
+  const [firmaAnchoMm, setFirmaAnchoMm] = useState(55);
+  const [firmaAltoMm, setFirmaAltoMm] = useState(22);
   const [selloPropioAnchoMm, setSelloPropioAnchoMm] = useState(26);
   const [selloPropioAltoMm, setSelloPropioAltoMm] = useState(26);
   const [guardandoFirmaConfig, setGuardandoFirmaConfig] = useState(false);
@@ -585,35 +585,52 @@ export default function Dashboard({ user, onLogout }) {
   };
 
   const obtenerFirmanteSeleccionado = (listaFirmas = firmas) => {
+    let firmante = null;
+
     if (firmanteReporteId && firmanteReporteId.startsWith('FIRMA_')) {
       const idNum = parseInt(firmanteReporteId.replace('FIRMA_', ''), 10);
-      const firmaEncontrada = listaFirmas.find(f => f.id === idNum);
-      if (firmaEncontrada) return firmaEncontrada;
+      firmante = listaFirmas.find(f => f.id === idNum);
     }
 
-    // Si es ADMIN_ACTUAL o no se encontró la firma específica:
-    const firmaAdminRegistrada = listaFirmas.find(f => 
-      (user?.cedula && f.cedula && f.cedula.replace(/[^\d]/g, '') === String(user.cedula).replace(/[^\d]/g, '')) ||
-      (f.nombre && user?.nombre && f.nombre.toUpperCase().includes(user.nombre.toUpperCase().slice(0, 8))) ||
-      f.comision?.toUpperCase().includes('ADMIN') ||
-      f.comision?.toUpperCase().includes('TECNOLOG')
-    );
+    if (!firmante) {
+      // Si es ADMIN_ACTUAL o no se encontró la firma específica:
+      const firmaAdminRegistrada = listaFirmas.find(f => 
+        (user?.cedula && f.cedula && f.cedula.replace(/[^\d]/g, '') === String(user.cedula).replace(/[^\d]/g, '')) ||
+        (f.nombre && user?.nombre && f.nombre.toUpperCase().includes(user.nombre.toUpperCase().slice(0, 8))) ||
+        f.comision?.toUpperCase().includes('ADMIN') ||
+        f.comision?.toUpperCase().includes('TECNOLOG')
+      );
 
-    if (firmaAdminRegistrada) {
-      return {
-        ...firmaAdminRegistrada,
-        nombre: firmaAdminRegistrada.nombre || user?.nombre || 'ADMINISTRADOR DEL SISTEMA',
-        comision: firmaAdminRegistrada.comision || 'ADMINISTRADOR DEL SISTEMA Y GESTIÓN COMUNAL',
-      };
+      if (firmaAdminRegistrada) {
+        firmante = {
+          ...firmaAdminRegistrada,
+          nombre: firmaAdminRegistrada.nombre || user?.nombre || 'ADMINISTRADOR DEL SISTEMA',
+          comision: firmaAdminRegistrada.comision || 'ADMINISTRADOR DEL SISTEMA Y GESTIÓN COMUNAL',
+        };
+      } else {
+        firmante = {
+          nombre: user?.nombre || 'ADMINISTRADOR DEL SISTEMA',
+          cedula: user?.cedula || config?.admin_cedula || 'V-ADMIN',
+          comision: 'ADMINISTRADOR DEL SISTEMA Y GESTIÓN COMUNAL',
+          telefono: user?.telefono || '',
+          url_firma: user?.url_firma || null,
+          usar_sello_principal: 1,
+        };
+      }
     }
+
+    // Resolver dimensiones de firma activas para garantizar que los cambios en el panel se reflejen fielmente en el PDF
+    const anchoResuelto = (firmante.ancho_firma_mm && parseFloat(firmante.ancho_firma_mm) !== 42)
+      ? parseFloat(firmante.ancho_firma_mm)
+      : (firmaAnchoMm || (config?.firma_ancho_mm ? parseFloat(config.firma_ancho_mm) : 56));
+    const altoResuelto = (firmante.alto_firma_mm && parseFloat(firmante.alto_firma_mm) !== 16)
+      ? parseFloat(firmante.alto_firma_mm)
+      : (firmaAltoMm || (config?.firma_alto_mm ? parseFloat(config.firma_alto_mm) : 22));
 
     return {
-      nombre: user?.nombre || 'ADMINISTRADOR DEL SISTEMA',
-      cedula: user?.cedula || config?.admin_cedula || 'V-ADMIN',
-      comision: 'ADMINISTRADOR DEL SISTEMA Y GESTIÓN COMUNAL',
-      telefono: user?.telefono || '',
-      url_firma: user?.url_firma || null,
-      usar_sello_principal: 1,
+      ...firmante,
+      ancho_firma_mm: anchoResuelto,
+      alto_firma_mm: altoResuelto,
     };
   };
 
@@ -645,7 +662,18 @@ export default function Dashboard({ user, onLogout }) {
         saludData: statData?.graficos?.saludData || [],
         firmas: listaFirmas,
         firmanteSeleccionado: firmanteEfectivo,
-        config: config || {},
+        config: {
+          ...config,
+          sello_forma: selloForma,
+          sello_ancho_mm: String(selloAnchoMm),
+          sello_alto_mm: String(selloAltoMm),
+          sello_tamano_mm: String(selloAnchoMm),
+          sello_principal_url: selloPrincipalUrl,
+          firma_ancho_mm: String(firmanteEfectivo.ancho_firma_mm || firmaAnchoMm),
+          firma_alto_mm: String(firmanteEfectivo.alto_firma_mm || firmaAltoMm),
+          sello_propio_ancho_mm: String(selloPropioAnchoMm),
+          sello_propio_alto_mm: String(selloPropioAltoMm),
+        },
         appUrl: typeof window !== 'undefined' ? window.location.origin : 'https://lasllaves.org',
         usuarioGenerador: user?.nombre || user?.username || 'Administrador del Sistema'
       });
@@ -1030,8 +1058,8 @@ export default function Dashboard({ user, onLogout }) {
       if (data.sello_ancho_mm) setSelloAnchoMm(parseFloat(data.sello_ancho_mm) || 48);
       if (data.sello_alto_mm) setSelloAltoMm(parseFloat(data.sello_alto_mm) || 26);
       if (data.sello_tamano_mm) setSelloTamanoMm(parseFloat(data.sello_tamano_mm) || 34);
-      if (data.firma_ancho_mm) setFirmaAnchoMm(parseFloat(data.firma_ancho_mm) || 42);
-      if (data.firma_alto_mm) setFirmaAltoMm(parseFloat(data.firma_alto_mm) || 16);
+      if (data.firma_ancho_mm) setFirmaAnchoMm(parseFloat(data.firma_ancho_mm) || 55);
+      if (data.firma_alto_mm) setFirmaAltoMm(parseFloat(data.firma_alto_mm) || 22);
       if (data.sello_propio_ancho_mm) setSelloPropioAnchoMm(parseFloat(data.sello_propio_ancho_mm) || 26);
       if (data.sello_propio_alto_mm) setSelloPropioAltoMm(parseFloat(data.sello_propio_alto_mm) || 26);
     } catch (e) {
@@ -1103,6 +1131,14 @@ export default function Dashboard({ user, onLogout }) {
           sello_propio_ancho_mm: String(selloPropioAnchoMm),
           sello_propio_alto_mm: String(selloPropioAltoMm),
         }));
+        // Sincronizar en memoria la lista de voceros cuyas firmas usan la dimensión general
+        setFirmas((prev) =>
+          prev.map((f) => ({
+            ...f,
+            ancho_firma_mm: (!f.ancho_firma_mm || f.ancho_firma_mm === 42) ? firmaAnchoMm : f.ancho_firma_mm,
+            alto_firma_mm: (!f.alto_firma_mm || f.alto_firma_mm === 16) ? firmaAltoMm : f.alto_firma_mm,
+          }))
+        );
         setMensajeFirmaConfig('¡Dimensiones de firmas y sellos secundarios guardadas!');
         toast.success('¡Dimensiones de firmas y sellos guardadas correctamente!');
         setTimeout(() => setMensajeFirmaConfig(''), 3500);
@@ -1518,8 +1554,8 @@ export default function Dashboard({ user, onLogout }) {
       if (cfg.sello_forma) setSelloForma(cfg.sello_forma);
       if (cfg.sello_ancho_mm) setSelloAnchoMm(parseFloat(cfg.sello_ancho_mm) || 48);
       if (cfg.sello_alto_mm) setSelloAltoMm(parseFloat(cfg.sello_alto_mm) || 26);
-      if (cfg.firma_ancho_mm) setFirmaAnchoMm(parseFloat(cfg.firma_ancho_mm) || 42);
-      if (cfg.firma_alto_mm) setFirmaAltoMm(parseFloat(cfg.firma_alto_mm) || 16);
+      if (cfg.firma_ancho_mm) setFirmaAnchoMm(parseFloat(cfg.firma_ancho_mm) || 55);
+      if (cfg.firma_alto_mm) setFirmaAltoMm(parseFloat(cfg.firma_alto_mm) || 22);
       if (cfg.sello_propio_ancho_mm) setSelloPropioAnchoMm(parseFloat(cfg.sello_propio_ancho_mm) || 26);
       if (cfg.sello_propio_alto_mm) setSelloPropioAltoMm(parseFloat(cfg.sello_propio_alto_mm) || 26);
       if (cfg.doc_costos_json) {
@@ -4560,7 +4596,7 @@ export default function Dashboard({ user, onLogout }) {
                           <input
                             type="range"
                             min="25"
-                            max="70"
+                            max="95"
                             step="1"
                             value={firmaAnchoMm}
                             onChange={(e) => setFirmaAnchoMm(parseInt(e.target.value, 10))}
@@ -4569,9 +4605,9 @@ export default function Dashboard({ user, onLogout }) {
                           <input
                             type="number"
                             min="25"
-                            max="70"
+                            max="95"
                             value={firmaAnchoMm}
-                            onChange={(e) => setFirmaAnchoMm(Math.max(25, Math.min(70, parseInt(e.target.value, 10) || 42)))}
+                            onChange={(e) => setFirmaAnchoMm(Math.max(25, Math.min(95, parseInt(e.target.value, 10) || 55)))}
                             className="w-16 px-2 py-1 rounded-lg bg-slate-950 border border-slate-750 text-white font-mono text-center text-xs"
                           />
                         </div>
@@ -4590,7 +4626,7 @@ export default function Dashboard({ user, onLogout }) {
                           <input
                             type="range"
                             min="10"
-                            max="35"
+                            max="45"
                             step="1"
                             value={firmaAltoMm}
                             onChange={(e) => setFirmaAltoMm(parseInt(e.target.value, 10))}
@@ -4599,9 +4635,9 @@ export default function Dashboard({ user, onLogout }) {
                           <input
                             type="number"
                             min="10"
-                            max="35"
+                            max="45"
                             value={firmaAltoMm}
-                            onChange={(e) => setFirmaAltoMm(Math.max(10, Math.min(35, parseInt(e.target.value, 10) || 16)))}
+                            onChange={(e) => setFirmaAltoMm(Math.max(10, Math.min(45, parseInt(e.target.value, 10) || 22)))}
                             className="w-16 px-2 py-1 rounded-lg bg-slate-950 border border-slate-750 text-white font-mono text-center text-xs"
                           />
                         </div>
@@ -4612,9 +4648,10 @@ export default function Dashboard({ user, onLogout }) {
                         <span className="text-[11px] text-slate-400 font-semibold">Presets:</span>
                         {[
                           { label: '38 × 14 mm (Compacta)', w: 38, h: 14 },
-                          { label: '42 × 16 mm (Estándar Oficial)', w: 42, h: 16 },
-                          { label: '48 × 18 mm (Grande)', w: 48, h: 18 },
-                          { label: '54 × 22 mm (Destacada)', w: 54, h: 22 },
+                          { label: '46 × 18 mm (Estándar)', w: 46, h: 18 },
+                          { label: '55 × 22 mm (Grande)', w: 55, h: 22 },
+                          { label: '68 × 26 mm (Destacada)', w: 68, h: 26 },
+                          { label: '80 × 32 mm (Extra Grande)', w: 80, h: 32 },
                         ].map((preset) => (
                           <button
                             key={preset.label}
@@ -11078,18 +11115,18 @@ export default function Dashboard({ user, onLogout }) {
                         <input
                           type="range"
                           min="20"
-                          max="70"
+                          max="95"
                           step="1"
                           value={modalFirma.ancho_firma_mm || firmaAnchoMm}
-                          onChange={(e) => setModalFirma({ ...modalFirma, ancho_firma_mm: parseInt(e.target.value, 10) || 42 })}
+                          onChange={(e) => setModalFirma({ ...modalFirma, ancho_firma_mm: parseInt(e.target.value, 10) || 55 })}
                           className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
                         />
                         <input
                           type="number"
                           min="20"
-                          max="70"
+                          max="95"
                           value={modalFirma.ancho_firma_mm || firmaAnchoMm}
-                          onChange={(e) => setModalFirma({ ...modalFirma, ancho_firma_mm: Math.max(20, Math.min(70, parseInt(e.target.value, 10) || 42)) })}
+                          onChange={(e) => setModalFirma({ ...modalFirma, ancho_firma_mm: Math.max(20, Math.min(95, parseInt(e.target.value, 10) || 55)) })}
                           className="w-14 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-750 text-white font-mono text-center text-xs"
                         />
                       </div>
@@ -11101,18 +11138,18 @@ export default function Dashboard({ user, onLogout }) {
                         <input
                           type="range"
                           min="10"
-                          max="35"
+                          max="45"
                           step="1"
                           value={modalFirma.alto_firma_mm || firmaAltoMm}
-                          onChange={(e) => setModalFirma({ ...modalFirma, alto_firma_mm: parseInt(e.target.value, 10) || 16 })}
+                          onChange={(e) => setModalFirma({ ...modalFirma, alto_firma_mm: parseInt(e.target.value, 10) || 22 })}
                           className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
                         />
                         <input
                           type="number"
                           min="10"
-                          max="35"
+                          max="45"
                           value={modalFirma.alto_firma_mm || firmaAltoMm}
-                          onChange={(e) => setModalFirma({ ...modalFirma, alto_firma_mm: Math.max(10, Math.min(35, parseInt(e.target.value, 10) || 16)) })}
+                          onChange={(e) => setModalFirma({ ...modalFirma, alto_firma_mm: Math.max(10, Math.min(45, parseInt(e.target.value, 10) || 22)) })}
                           className="w-14 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-750 text-white font-mono text-center text-xs"
                         />
                       </div>
@@ -11124,9 +11161,10 @@ export default function Dashboard({ user, onLogout }) {
                     <span className="text-[10px] text-slate-500 font-semibold">Presets:</span>
                     {[
                       { label: '38×14 (Compacta)', w: 38, h: 14 },
-                      { label: '42×16 (Estándar)', w: 42, h: 16 },
-                      { label: '48×18 (Grande)', w: 48, h: 18 },
-                      { label: '54×22 (Destacada)', w: 54, h: 22 },
+                      { label: '46×18 (Estándar)', w: 46, h: 18 },
+                      { label: '55×22 (Grande)', w: 55, h: 22 },
+                      { label: '68×26 (Destacada)', w: 68, h: 26 },
+                      { label: '80×32 (Extra Grande)', w: 80, h: 32 },
                     ].map((p) => (
                       <button
                         key={p.label}

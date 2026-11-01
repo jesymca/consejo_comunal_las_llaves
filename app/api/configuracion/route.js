@@ -47,6 +47,21 @@ export async function PUT(request) {
       });
     }
 
+    // Sincronizar dimensiones de firmas en voceros que usen el valor estándar predeterminado (42 mm) o NULL
+    if (settings.firma_ancho_mm || settings.firma_alto_mm) {
+      try {
+        const nuevoW = parseFloat(settings.firma_ancho_mm) || 54;
+        const nuevoH = parseFloat(settings.firma_alto_mm) || 20;
+        await db.execute({
+          sql: `UPDATE firmas_sellos SET ancho_firma_mm = ?, alto_firma_mm = ? 
+                WHERE ancho_firma_mm = 42 OR ancho_firma_mm IS NULL`,
+          args: [nuevoW, nuevoH]
+        });
+      } catch (e) {
+        console.warn('Error sincronizando dimensiones de firmas en firmas_sellos:', e);
+      }
+    }
+
     await registrarAuditoria({
       tipo_evento: 'ACTUALIZACION_CONFIGURACION',
       usuario_id: currentUser.id,
