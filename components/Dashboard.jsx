@@ -978,13 +978,19 @@ export default function Dashboard({ user, onLogout }) {
     }
   };
 
-  const abrirPlanillaPorVivienda = async (vereda, casa, silencioso = false) => {
+  const abrirPlanillaPorVivienda = async (vereda, casa, silencioso = false, planillaId = null) => {
     if (!vereda || !casa) return;
     try {
-      const res = await fetch(`/api/censo?cargar_vivienda=1&vereda=${encodeURIComponent(vereda)}&casa=${encodeURIComponent(casa)}`).then((r) => r.json());
+      const url = planillaId
+        ? `/api/censo?id=${encodeURIComponent(planillaId)}`
+        : `/api/censo?cargar_vivienda=1&vereda=${encodeURIComponent(vereda)}&casa=${encodeURIComponent(casa)}`;
+      const res = await fetch(url).then((r) => r.json());
       if (res.error) {
         if (!silencioso) toast.error(res.error);
         return;
+      }
+      if (planillaId && res.planilla) {
+        res.existe_planilla = true;
       }
       const habsNorm = normalizarHabitantesParaFormulario(res.habitantes || []);
       // REGLA: el código ya asignado al transcriptor NO se cambia si la casa aún no tiene planilla.

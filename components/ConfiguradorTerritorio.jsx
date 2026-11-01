@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   MapPin, Home, Plus, Edit, Trash2, Check, X, RefreshCw,
-  Layers, Users, FileText, Search, Sparkles, AlertCircle, ExternalLink
+  Layers, Users, FileText, Search, Sparkles, AlertCircle
 } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { useTerritorio, notificarTerritorioActualizado } from '@/lib/useTerritorio';
@@ -24,9 +24,9 @@ export default function ConfiguradorTerritorio({ onAbrirPlanilla }) {
   const [editValor, setEditValor] = useState('');
   const [guardando, setGuardando] = useState(false);
 
-  const handleAbrirPlanilla = (item) => {
+  const handleAbrirPlanilla = (item, planilla = null) => {
     if (typeof onAbrirPlanilla === 'function') {
-      onAbrirPlanilla(item.vereda, item.casa);
+      onAbrirPlanilla(item.vereda, item.casa, false, planilla?.id || null);
     } else {
       window.location.hash = 'censo';
     }
@@ -507,21 +507,46 @@ export default function ConfiguradorTerritorio({ onAbrirPlanilla }) {
                               <span className="text-slate-500 text-[9px]">0 hab</span>
                             )}
 
-                            {(item.censo_count || 0) > 0 && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAbrirPlanilla(item);
-                                }}
-                                title={`Abrir y editar Planilla ${item.numero_planilla ? `N° ${item.numero_planilla}` : 'de censo'} vinculada a la Casa ${item.casa}`}
-                                className="flex items-center gap-1 font-semibold text-blue-400 hover:text-cyan-300 bg-blue-500/10 hover:bg-blue-500/25 px-1.5 py-0.5 rounded transition cursor-pointer border border-blue-500/20 hover:border-cyan-400/40 group/censo shadow-sm"
-                              >
-                                <FileText className="w-3 h-3 text-blue-400 group-hover/censo:scale-110 transition-transform" />
-                                <span>{item.numero_planilla || `${item.censo_count} plan.`}</span>
-                                <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover/censo:opacity-100 transition-opacity" />
-                              </button>
-                            )}
+                            {/* Íconos individuales por cada planilla vinculada (sin desbordamiento de texto) */}
+                            {Array.isArray(item.planillas) && item.planillas.length > 0 ? (
+                              <div className="flex items-center gap-1">
+                                {item.planillas.map((p, idx) => (
+                                  <button
+                                    key={p.id || idx}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAbrirPlanilla(item, p);
+                                    }}
+                                    title={
+                                      p.numero_planilla
+                                        ? `Planilla ${item.planillas.length > 1 ? `#${idx + 1} ` : ''}(N° ${p.numero_planilla}) - Clic para abrir y editar`
+                                        : `Planilla de censo ${item.planillas.length > 1 ? `#${idx + 1} ` : ''}- Clic para abrir y editar`
+                                    }
+                                    className="p-1 rounded-md text-blue-400 hover:text-cyan-300 bg-blue-500/10 hover:bg-blue-500/25 border border-blue-500/20 hover:border-cyan-400/50 transition cursor-pointer shadow-sm group/censo"
+                                  >
+                                    <FileText className="w-3.5 h-3.5 group-hover/censo:scale-110 transition-transform" />
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (item.censo_count || 0) > 0 ? (
+                              <div className="flex items-center gap-1">
+                                {Array.from({ length: item.censo_count }).map((_, idx) => (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAbrirPlanilla(item);
+                                    }}
+                                    title={`Planilla de censo ${item.censo_count > 1 ? `#${idx + 1} ` : ''}- Clic para abrir y editar`}
+                                    className="p-1 rounded-md text-blue-400 hover:text-cyan-300 bg-blue-500/10 hover:bg-blue-500/25 border border-blue-500/20 hover:border-cyan-400/50 transition cursor-pointer shadow-sm group/censo"
+                                  >
+                                    <FileText className="w-3.5 h-3.5 group-hover/censo:scale-110 transition-transform" />
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
 
                           {/* Acciones de Edición y Eliminación */}
