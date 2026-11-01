@@ -15,7 +15,7 @@ import {
 import { 
   VEREDAS, CASAS_POR_VEREDA, getCasasPorVereda, BANCOS_VENEZUELA, CALIDADES_TENENCIA,
   MAPEO_PARENTESCO, MAPEO_INSTRUCCION, MAPEO_SALUD,
-  validarFechaValida, normalizarFechaISO, formatearFechaLatina, calcularEdad
+  validarFechaValida, normalizarFechaISO, formatearFechaLatina, calcularEdad, getFechaHoy
 } from '@/lib/territory';
 import CampoFechaCenso from '@/components/CampoFechaCenso';
 import { generarDocumentoPdf, generarReporteGestionPdf } from '@/lib/pdfGenerator';
@@ -151,7 +151,7 @@ export default function Dashboard({ user, onLogout }) {
   };
   const [censoForm, setCensoForm] = useState({
     numero_planilla: '',
-    fecha: new Date().toISOString().split('T')[0],
+    fecha: getFechaHoy(),
     empadronador_nombre: user?.nombre || '',
     calle_vereda_av: 'A',
     numero_casa: '',
@@ -885,7 +885,7 @@ export default function Dashboard({ user, onLogout }) {
         planilla: {
           ...(res.planilla || {}),
           numero_planilla: numPlan,
-          fecha: normalizarFechaISO(res.planilla?.fecha) || res.planilla?.fecha || new Date().toISOString().split('T')[0],
+          fecha: normalizarFechaISO(res.planilla?.fecha) || res.planilla?.fecha || getFechaHoy(),
           empadronador_nombre: res.planilla?.empadronador_nombre || user?.nombre || '',
           calle_vereda_av: vereda.toUpperCase(),
           numero_casa: casa.toUpperCase(),
@@ -2945,7 +2945,7 @@ export default function Dashboard({ user, onLogout }) {
                       setPlanillaActiva({
                         planilla: {
                           numero_planilla: nextNum,
-                          fecha: new Date().toISOString().split('T')[0],
+                          fecha: getFechaHoy(),
                           empadronador_nombre: user?.nombre || '',
                           calle_vereda_av: 'A',
                           numero_casa: '',
@@ -2965,7 +2965,7 @@ export default function Dashboard({ user, onLogout }) {
                       setPlanillaActiva({
                         planilla: {
                           numero_planilla: fallbackNum,
-                          fecha: new Date().toISOString().split('T')[0],
+                          fecha: getFechaHoy(),
                           empadronador_nombre: user?.nombre || '',
                           calle_vereda_av: 'A',
                           numero_casa: '',
@@ -3132,7 +3132,7 @@ export default function Dashboard({ user, onLogout }) {
                       setPlanillaActiva({
                         planilla: {
                           numero_planilla: nextNum,
-                          fecha: new Date().toISOString().split('T')[0],
+                          fecha: getFechaHoy(),
                           empadronador_nombre: user?.nombre || '',
                           calle_vereda_av: 'A',
                           numero_casa: '',
@@ -8950,7 +8950,7 @@ export default function Dashboard({ user, onLogout }) {
                 }
 
                 // Validación de Fecha de Aplicación de la Planilla
-                const fechaInput = formData.get('fecha') || planillaActiva?.planilla?.fecha || new Date().toISOString().split('T')[0];
+                const fechaInput = formData.get('fecha') || planillaActiva?.planilla?.fecha || getFechaHoy();
                 const resFechaApp = validarFechaValida(fechaInput, false);
                 if (!resFechaApp.valida) {
                   toast.error(`Fecha de aplicación de la planilla no es válida: ${resFechaApp.error}. Seleccione una fecha válida.`);
@@ -9082,7 +9082,7 @@ export default function Dashboard({ user, onLogout }) {
                     label="Fecha de Aplicación *"
                     name="fecha"
                     required
-                    value={planillaActiva?.planilla?.fecha || new Date().toISOString().split('T')[0]}
+                    value={planillaActiva?.planilla?.fecha || getFechaHoy()}
                     placeholder="DD/MM/AAAA"
                     noFuturo={true}
                     labelClassName="block text-slate-300 font-bold mb-1"

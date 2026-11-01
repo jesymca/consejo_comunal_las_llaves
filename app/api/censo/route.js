@@ -17,6 +17,7 @@ import {
   esMismaPersonaEnVivienda,
   validarFechaValida,
   normalizarFechaISO,
+  getFechaHoy,
 } from '@/lib/territory';
 import { cargarTerritorio } from '@/lib/territoryServer';
 import { registrarAuditoria } from '@/lib/audit';
@@ -290,7 +291,7 @@ export async function GET(request) {
         sugerido: sugeridoNum,
         planilla: {
           numero_planilla: sugeridoNum,
-          fecha: new Date().toISOString().split('T')[0],
+          fecha: getFechaHoy(),
           calle_vereda_av: vUpper,
           numero_casa: cUpper,
           telefono_contacto: primerVec?.telefono || '',
@@ -582,7 +583,7 @@ export async function POST(request) {
     const now = new Date().toISOString();
 
     // Validar fecha de aplicación de la planilla (no puede ser texto arbitrario ni futura)
-    let fechaPlanilla = now.split('T')[0];
+    let fechaPlanilla = getFechaHoy();
     if (fecha) {
       const resFecPlanilla = validarFechaValida(fecha, false);
       if (!resFecPlanilla.valida) {

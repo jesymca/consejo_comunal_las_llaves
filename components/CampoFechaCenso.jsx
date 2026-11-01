@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, AlertCircle } from 'lucide-react';
-import { normalizarFechaISO, formatearFechaLatina, validarFechaValida, calcularEdad } from '@/lib/territory';
+import { normalizarFechaISO, formatearFechaLatina, validarFechaValida, calcularEdad, getFechaHoy } from '@/lib/territory';
 
 export default function CampoFechaCenso({
   label,
@@ -16,7 +16,7 @@ export default function CampoFechaCenso({
   labelClassName = 'block text-[10px] text-slate-400 mb-0.5 font-medium',
   inputClassName = '',
   min = '1900-01-01',
-  max = new Date().toISOString().split('T')[0],
+  max = getFechaHoy(),
   disabled = false,
   mostrarEdad = false,
 }) {
