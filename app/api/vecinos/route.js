@@ -4,7 +4,7 @@ import {
   normalizarCedula, esCasaValida, getCasasPorVereda, normalizarCasaVereda,
   decodificarParentesco, decodificarInstruccion, decodificarSalud,
   extraerDigitosCedula, esMismaPersonaEnVivienda,
-  validarFechaValida, normalizarFechaISO
+  validarFechaValida, normalizarFechaISO, calcularEdad
 } from '@/lib/territory';
 import { extractUserFromRequest, hasPermission } from '@/lib/auth';
 import { registrarAuditoria } from '@/lib/audit';
@@ -215,7 +215,58 @@ export async function GET(request) {
     sql += ` ORDER BY v.id DESC LIMIT 300`;
 
     const res = await db.execute({ sql, args });
-    return NextResponse.json({ vecinos: res.rows });
+    const vecinos = res.rows || [];
+
+    let totalMujeres = 0;
+    let totalHombres = 0;
+    let totalAprobados = 0;
+    let totalPendientes = 0;
+    const casasSet = new Set();
+    const edades = {
+      '0-12': 0,
+      '13-17': 0,
+      '18-29': 0,
+      '30-59': 0,
+      '60+': 0,
+    };
+
+    vecinos.forEach(v => {
+      const s = String(v.sexo || '').toUpperCase().trim();
+      if (s === 'F' || s.startsWith('FEM') || s === 'MUJER') {
+        totalMujeres++;
+      } else if (s === 'M' || s.startsWith('MAS') || s === 'HOMBRE') {
+        totalHombres++;
+      }
+
+      if (v.estado_aprobacion === 'APROBADO') totalAprobados++;
+      else if (v.estado_aprobacion === 'PENDIENTE') totalPendientes++;
+
+      if (v.casa) {
+        casasSet.add(`${v.vereda || ''}-${v.casa}`);
+      }
+
+      const edad = calcularEdad(v.fecha_nacimiento);
+      if (edad !== null && edad !== undefined) {
+        if (edad <= 12) edades['0-12']++;
+        else if (edad <= 17) edades['13-17']++;
+        else if (edad <= 29) edades['18-29']++;
+        else if (edad <= 59) edades['30-59']++;
+        else edades['60+']++;
+      }
+    });
+
+    return NextResponse.json({
+      vecinos,
+      resumen: {
+        total: vecinos.length,
+        mujeres: totalMujeres,
+        hombres: totalHombres,
+        aprobados: totalAprobados,
+        pendientes: totalPendientes,
+        casasOcupadas: casasSet.size,
+        edades,
+      }
+    });
   } catch (err) {
     console.error('Error en /api/vecinos GET:', err);
     return NextResponse.json({ error: err.message || 'Error del servidor' }, { status: 500 });

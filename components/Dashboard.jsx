@@ -10,7 +10,7 @@ import {
   ListPlus, Store, FileCheck, Printer, Activity, Globe, Laptop, Smartphone,
   ChevronDown, ChevronRight, User, Shield, Flame, Building2, CreditCard,
   Gift, Layers, CheckSquare, Sparkles, Hash, Copy, Database,
-  UserX, Ban, Phone, Mail, Heart, GraduationCap
+  UserX, Ban, Phone, Mail, Heart, GraduationCap, MapPin, Home
 } from 'lucide-react';
 import { 
   VEREDAS, CASAS_POR_VEREDA, getCasasPorVereda, BANCOS_VENEZUELA, CALIDADES_TENENCIA,
@@ -90,9 +90,11 @@ export default function Dashboard({ user, onLogout }) {
   const [loadingStats, setLoadingStats] = useState(false);
   const [tasaBcv, setTasaBcv] = useState(875.65);
 
-  // Estados de Reporte de Gestión en PDF por Rango de Fechas
+  // Estados de Reporte de Gestión en PDF por Rango de Fechas y Filtro Territorial
   const [fechaInicioReporte, setFechaInicioReporte] = useState('');
   const [fechaFinReporte, setFechaFinReporte] = useState('');
+  const [filtroEstadisticaVereda, setFiltroEstadisticaVereda] = useState('');
+  const [filtroEstadisticaCasa, setFiltroEstadisticaCasa] = useState('');
   const [generandoReportePdf, setGenerandoReportePdf] = useState(false);
   const [firmanteReporteId, setFirmanteReporteId] = useState('ADMIN_ACTUAL');
 
@@ -549,12 +551,19 @@ export default function Dashboard({ user, onLogout }) {
     } catch (e) {}
   };
 
-  const cargarEstadisticas = async (fIni = fechaInicioReporte, fFin = fechaFinReporte) => {
+  const cargarEstadisticas = async (
+    fIni = fechaInicioReporte,
+    fFin = fechaFinReporte,
+    ver = filtroEstadisticaVereda,
+    cas = filtroEstadisticaCasa
+  ) => {
     setLoadingStats(true);
     try {
       const p = new URLSearchParams();
       if (fIni) p.append('fechaInicio', fIni);
       if (fFin) p.append('fechaFin', fFin);
+      if (ver) p.append('vereda', ver);
+      if (cas) p.append('casa', cas);
       const url = p.toString() ? `/api/estadisticas?${p.toString()}` : '/api/estadisticas';
       const res = await fetch(url);
       const data = await res.json();
@@ -637,10 +646,12 @@ export default function Dashboard({ user, onLogout }) {
   const handleGenerarReportePdf = async () => {
     setGenerandoReportePdf(true);
     try {
-      // 1. Obtener datos actualizados para el rango seleccionado
+      // 1. Obtener datos actualizados para el rango seleccionado y filtros territoriales
       const p = new URLSearchParams();
       if (fechaInicioReporte) p.append('fechaInicio', fechaInicioReporte);
       if (fechaFinReporte) p.append('fechaFin', fechaFinReporte);
+      if (filtroEstadisticaVereda) p.append('vereda', filtroEstadisticaVereda);
+      if (filtroEstadisticaCasa) p.append('casa', filtroEstadisticaCasa);
       const url = p.toString() ? `/api/estadisticas?${p.toString()}` : '/api/estadisticas';
       
       const [statsRes, firmasRes] = await Promise.all([
@@ -709,8 +720,82 @@ export default function Dashboard({ user, onLogout }) {
     if (currentTab === 'usuarios' && user?.rol === 'SUPER_ADMIN') cargarUsuarios();
     if (currentTab === 'auditoria') cargarAuditoria();
     if (currentTab === 'configuracion') { cargarConfiguracion(); cargarServiciosCatalogo(); cargarJornadas(); if (user?.rol === 'SUPER_ADMIN') cargarBackupStats(); }
-    if (currentTab === 'estadisticas') cargarEstadisticas();
-  }, [currentTab, filtroVereda, filtroCasa, filtroEstado, filtroBusqueda]);
+    if (currentTab === 'estadisticas') cargarEstadisticas(fechaInicioReporte, fechaFinReporte, filtroEstadisticaVereda, filtroEstadisticaCasa);
+  }, [currentTab, filtroVereda, filtroCasa, filtroEstado, filtroBusqueda, filtroEstadisticaVereda, filtroEstadisticaCasa]);
+
+  // Cálculo demográfico territorial reactivo en tiempo real para el Padrón de Vecinos
+  const demografiaVecinos = React.useMemo(() => {
+    const total = vecinos.length;
+    let mujeres = 0;
+    let hombres = 0;
+    let noEspecificado = 0;
+    const edades = {
+      '0-12': 0,
+      '13-17': 0,
+      '18-29': 0,
+      '30-59': 0,
+      '60+': 0,
+      'desconocida': 0,
+    };
+    const casasMap = new Map();
+    let aprobados = 0;
+    let pendientes = 0;
+
+    for (const v of vecinos) {
+      const g = (v.genero || '').toUpperCase().trim();
+      if (g.startsWith('F') || g === 'FEMENINO' || g === 'MUJER') {
+        mujeres++;
+      } else if (g.startsWith('M') || g === 'MASCULINO' || g === 'HOMBRE') {
+        hombres++;
+      } else {
+        noEspecificado++;
+      }
+
+      if (v.estado === 'APROBADO') {
+        aprobados++;
+      } else {
+        pendientes++;
+      }
+
+      const c = v.casa ? String(v.casa).trim() : 'Sin Casa';
+      casasMap.set(c, (casasMap.get(c) || 0) + 1);
+
+      const edad = calcularEdad(v.fecha_nacimiento);
+      if (edad === null || edad === undefined || isNaN(edad)) {
+        edades['desconocida']++;
+      } else if (edad <= 12) {
+        edades['0-12']++;
+      } else if (edad <= 17) {
+        edades['13-17']++;
+      } else if (edad <= 29) {
+        edades['18-29']++;
+      } else if (edad <= 59) {
+        edades['30-59']++;
+      } else {
+        edades['60+']++;
+      }
+    }
+
+    const pctMujeres = total > 0 ? Math.round((mujeres / total) * 100) : 0;
+    const pctHombres = total > 0 ? Math.round((hombres / total) * 100) : 0;
+
+    return {
+      total,
+      mujeres,
+      hombres,
+      noEspecificado,
+      pctMujeres,
+      pctHombres,
+      edades,
+      menores: edades['0-12'] + edades['13-17'],
+      adultos: edades['18-29'] + edades['30-59'],
+      adultosMayores: edades['60+'],
+      casasOcupadas: casasMap.size,
+      casasMap,
+      aprobados,
+      pendientes,
+    };
+  }, [vecinos]);
 
   useEffect(() => {
     if (jornadaSeleccionadaId) {
@@ -2696,6 +2781,198 @@ export default function Dashboard({ user, onLogout }) {
                   <option value="RECHAZADO">Rechazados</option>
                 </select>
               </div>
+            </div>
+
+            {/* Panel Dinámico de Demografía Territorial en Tiempo Real */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-2xl bg-cyan-600/20 text-cyan-400 border border-cyan-500/30">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
+                      <span>Demografía Territorial en Tiempo Real</span>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                        {filtroVereda ? `Vereda ${filtroVereda}${filtroCasa ? ` · Casa ${filtroCasa}` : ' (Toda la Vereda)'}` : 'Toda la Comunidad (Veredas A a O)'}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Indicadores automáticos por sector: población por género, rango etario y ocupación de viviendas.
+                    </p>
+                  </div>
+                </div>
+
+                {(filtroVereda || filtroCasa) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFiltroVereda('');
+                      setFiltroCasa('');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition self-start sm:self-auto border border-slate-700"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Ver Toda la Comunidad</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Indicadores Principales */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                
+                {/* 1. Habitantes y Viviendas */}
+                <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Vecinos Registrados</span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-black text-white">{demografiaVecinos.total}</span>
+                    <span className="text-[11px] text-cyan-400 font-semibold">
+                      {demografiaVecinos.casasOcupadas} {demografiaVecinos.casasOcupadas === 1 ? 'casa' : 'casas'}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 flex items-center gap-2 pt-1 border-t border-slate-850">
+                    <span className="text-emerald-400 font-medium">✓ {demografiaVecinos.aprobados} aprobados</span>
+                    {demografiaVecinos.pendientes > 0 && (
+                      <span className="text-amber-400 font-medium">⏳ {demografiaVecinos.pendientes} pendientes</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. Distribución de Género */}
+                <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1.5">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Distribución de Género</span>
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <span className="text-rose-400 flex items-center gap-1">
+                      👩 {demografiaVecinos.mujeres} <span className="text-[10px] text-slate-400">({demografiaVecinos.pctMujeres}%)</span>
+                    </span>
+                    <span className="text-blue-400 flex items-center gap-1">
+                      👨 {demografiaVecinos.hombres} <span className="text-[10px] text-slate-400">({demografiaVecinos.pctHombres}%)</span>
+                    </span>
+                  </div>
+                  {/* Barra proporcional visual */}
+                  <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden flex">
+                    <div
+                      style={{ width: `${demografiaVecinos.pctMujeres}%` }}
+                      className="h-full bg-rose-500 transition-all duration-300"
+                      title={`Mujeres: ${demografiaVecinos.mujeres} (${demografiaVecinos.pctMujeres}%)`}
+                    />
+                    <div
+                      style={{ width: `${demografiaVecinos.pctHombres}%` }}
+                      className="h-full bg-blue-500 transition-all duration-300"
+                      title={`Hombres: ${demografiaVecinos.hombres} (${demografiaVecinos.pctHombres}%)`}
+                    />
+                  </div>
+                  <div className="text-[10px] text-slate-400 text-right">
+                    {demografiaVecinos.noEspecificado > 0 ? `${demografiaVecinos.noEspecificado} sin género especificado` : '100% clasificado'}
+                  </div>
+                </div>
+
+                {/* 3. Segmentación Generacional */}
+                <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1.5">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Grupos Etarios</span>
+                  <div className="grid grid-cols-3 gap-1 text-center">
+                    <div className="p-1 rounded-lg bg-slate-900 border border-slate-800">
+                      <span className="text-[9px] text-amber-400 block font-semibold">Menores (0-17)</span>
+                      <strong className="text-xs font-bold text-white">{demografiaVecinos.menores}</strong>
+                    </div>
+                    <div className="p-1 rounded-lg bg-slate-900 border border-slate-800">
+                      <span className="text-[9px] text-emerald-400 block font-semibold">Adultos (18-59)</span>
+                      <strong className="text-xs font-bold text-white">{demografiaVecinos.adultos}</strong>
+                    </div>
+                    <div className="p-1 rounded-lg bg-slate-900 border border-slate-800">
+                      <span className="text-[9px] text-purple-400 block font-semibold">60+ Años</span>
+                      <strong className="text-xs font-bold text-white">{demografiaVecinos.adultosMayores}</strong>
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-slate-400">
+                    {demografiaVecinos.edades.desconocida > 0 ? `* ${demografiaVecinos.edades.desconocida} sin fecha nacimiento` : 'Edades verificadas'}
+                  </div>
+                </div>
+
+                {/* 4. Rangos Detallados de Edad (5 Tramos) */}
+                <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Desglose 5 Rangos de Edad</span>
+                  <div className="grid grid-cols-5 gap-1 text-center pt-0.5">
+                    <div className="p-1 rounded bg-slate-900 border border-slate-800/80">
+                      <span className="text-[8px] text-slate-400 block">0-12</span>
+                      <span className="text-[11px] font-bold text-cyan-300">{demografiaVecinos.edades['0-12']}</span>
+                    </div>
+                    <div className="p-1 rounded bg-slate-900 border border-slate-800/80">
+                      <span className="text-[8px] text-slate-400 block">13-17</span>
+                      <span className="text-[11px] font-bold text-amber-300">{demografiaVecinos.edades['13-17']}</span>
+                    </div>
+                    <div className="p-1 rounded bg-slate-900 border border-slate-800/80">
+                      <span className="text-[8px] text-slate-400 block">18-29</span>
+                      <span className="text-[11px] font-bold text-emerald-300">{demografiaVecinos.edades['18-29']}</span>
+                    </div>
+                    <div className="p-1 rounded bg-slate-900 border border-slate-800/80">
+                      <span className="text-[8px] text-slate-400 block">30-59</span>
+                      <span className="text-[11px] font-bold text-blue-300">{demografiaVecinos.edades['30-59']}</span>
+                    </div>
+                    <div className="p-1 rounded bg-slate-900 border border-slate-800/80">
+                      <span className="text-[8px] text-slate-400 block">60+</span>
+                      <span className="text-[11px] font-bold text-purple-300">{demografiaVecinos.edades['60+']}</span>
+                    </div>
+                  </div>
+                  <span className="text-[9px] text-slate-400 block text-center pt-0.5">Infancia · Adol. · Jóvenes · Adultos · Mayores</span>
+                </div>
+
+              </div>
+
+              {/* Selector Rápido e Interactivo de Casas (cuando se selecciona una vereda) */}
+              {filtroVereda && (
+                <div className="pt-2 border-t border-slate-800/80 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                      <Home className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Viviendas en Vereda {filtroVereda} (Clic para filtrar en tiempo real):</span>
+                    </span>
+                    {filtroCasa && (
+                      <button
+                        type="button"
+                        onClick={() => setFiltroCasa('')}
+                        className="text-[11px] text-cyan-400 hover:underline font-semibold"
+                      >
+                        Ver todas las casas de la Vereda {filtroVereda}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                    {getCasasPorVereda(filtroVereda).map((c) => {
+                      const cantEnCasa = demografiaVecinos.casasMap.get(c) || 0;
+                      const activa = filtroCasa === c;
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setFiltroCasa(activa ? '' : c)}
+                          className={`px-2.5 py-1 rounded-xl text-xs font-medium transition flex items-center gap-1.5 border ${
+                            activa
+                              ? 'bg-cyan-600 text-white border-cyan-400 shadow-md shadow-cyan-600/30 ring-2 ring-cyan-400/50'
+                              : cantEnCasa > 0
+                              ? 'bg-slate-950 hover:bg-slate-800 text-slate-200 border-slate-750'
+                              : 'bg-slate-950/50 text-slate-500 border-slate-850 hover:bg-slate-900'
+                          }`}
+                        >
+                          <span>{c}</span>
+                          <span
+                            className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                              activa
+                                ? 'bg-white/20 text-white'
+                                : cantEnCasa > 0
+                                ? 'bg-cyan-500/20 text-cyan-300'
+                                : 'bg-slate-800 text-slate-500'
+                            }`}
+                          >
+                            {cantEnCasa}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Tabla de Vecinos */}
@@ -5964,8 +6241,68 @@ export default function Dashboard({ user, onLogout }) {
                 <p className="text-xs text-slate-400">Análisis demográfico, horas de descarga, emisión de documentos y auditoría contralora</p>
               </div>
 
-              {/* Botón y Rango para Generación de Reporte PDF */}
+              {/* Botón y Rango para Generación de Reporte PDF y Filtros Territoriales en Tiempo Real */}
               <div className="flex flex-wrap items-center gap-2.5 p-2 rounded-2xl bg-slate-900 border border-slate-800 text-xs">
+                
+                {/* Selector Territorial: Vereda */}
+                <div className="flex items-center gap-1.5 text-slate-400">
+                  <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="font-semibold text-[11px]">Vereda:</span>
+                  <select
+                    value={filtroEstadisticaVereda}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFiltroEstadisticaVereda(v);
+                      setFiltroEstadisticaCasa('');
+                      cargarEstadisticas(fechaInicioReporte, fechaFinReporte, v, '');
+                    }}
+                    className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-750 text-white text-[11px] focus:outline-none focus:border-cyan-500 font-medium"
+                  >
+                    <option value="">Todas las Veredas</option>
+                    {VEREDAS.map((v) => (
+                      <option key={v} value={v}>Vereda {v}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Selector Territorial: Casa */}
+                <div className="flex items-center gap-1.5 text-slate-400">
+                  <Home className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="font-semibold text-[11px]">Casa:</span>
+                  <select
+                    value={filtroEstadisticaCasa}
+                    onChange={(e) => {
+                      const c = e.target.value;
+                      setFiltroEstadisticaCasa(c);
+                      cargarEstadisticas(fechaInicioReporte, fechaFinReporte, filtroEstadisticaVereda, c);
+                    }}
+                    disabled={!filtroEstadisticaVereda}
+                    className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-750 text-white text-[11px] focus:outline-none focus:border-cyan-500 font-medium disabled:opacity-40"
+                  >
+                    <option value="">Todas las Casas</option>
+                    {filtroEstadisticaVereda && getCasasPorVereda(filtroEstadisticaVereda).map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {(filtroEstadisticaVereda || filtroEstadisticaCasa) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFiltroEstadisticaVereda('');
+                      setFiltroEstadisticaCasa('');
+                      cargarEstadisticas(fechaInicioReporte, fechaFinReporte, '', '');
+                    }}
+                    className="px-2 py-1 rounded-lg bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-700/50 text-[11px] font-semibold transition"
+                    title="Restablecer a toda la comunidad"
+                  >
+                    Limpiar Sector
+                  </button>
+                )}
+
+                <div className="h-4 w-[1px] bg-slate-800 hidden sm:block"></div>
+
                 <div className="flex items-center gap-1.5 text-slate-400">
                   <Calendar className="w-3.5 h-3.5 text-blue-400" />
                   <span className="font-semibold text-[11px]">Desde:</span>
@@ -5974,7 +6311,7 @@ export default function Dashboard({ user, onLogout }) {
                     value={fechaInicioReporte}
                     onChange={(e) => {
                       setFechaInicioReporte(e.target.value);
-                      cargarEstadisticas(e.target.value, fechaFinReporte);
+                      cargarEstadisticas(e.target.value, fechaFinReporte, filtroEstadisticaVereda, filtroEstadisticaCasa);
                     }}
                     className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-750 text-white text-[11px] focus:outline-none focus:border-blue-500"
                   />
@@ -5987,7 +6324,7 @@ export default function Dashboard({ user, onLogout }) {
                     value={fechaFinReporte}
                     onChange={(e) => {
                       setFechaFinReporte(e.target.value);
-                      cargarEstadisticas(fechaInicioReporte, e.target.value);
+                      cargarEstadisticas(fechaInicioReporte, e.target.value, filtroEstadisticaVereda, filtroEstadisticaCasa);
                     }}
                     className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-750 text-white text-[11px] focus:outline-none focus:border-blue-500"
                   />
@@ -5999,11 +6336,11 @@ export default function Dashboard({ user, onLogout }) {
                     onClick={() => {
                       setFechaInicioReporte('');
                       setFechaFinReporte('');
-                      cargarEstadisticas('', '');
+                      cargarEstadisticas('', '', filtroEstadisticaVereda, filtroEstadisticaCasa);
                     }}
                     className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition"
                   >
-                    Limpiar
+                    Limpiar Fechas
                   </button>
                 )}
 
@@ -6064,6 +6401,46 @@ export default function Dashboard({ user, onLogout }) {
               </div>
             </div>
 
+            {/* Banner de Sector Territorial Activo */}
+            {filtroEstadisticaVereda && (
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-cyan-950/50 via-slate-900 to-blue-950/50 border border-cyan-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 shrink-0">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div className="text-xs space-y-0.5">
+                    <h4 className="font-extrabold text-white flex items-center gap-2">
+                      <span>Vista Territorial Activa: Vereda {filtroEstadisticaVereda}</span>
+                      {filtroEstadisticaCasa && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                          Casa {filtroEstadisticaCasa}
+                        </span>
+                      )}
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        En Tiempo Real
+                      </span>
+                    </h4>
+                    <p className="text-slate-300">
+                      Las métricas, balance de género, división de edades y registros reflejan los datos de <strong>Vereda {filtroEstadisticaVereda}{filtroEstadisticaCasa ? ` - Casa ${filtroEstadisticaCasa}` : ''}</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFiltroEstadisticaVereda('');
+                    setFiltroEstadisticaCasa('');
+                    cargarEstadisticas(fechaInicioReporte, fechaFinReporte, '', '');
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition self-start sm:self-auto shrink-0 flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3 h-3 text-cyan-400" />
+                  <span>Restablecer a Toda la Comunidad</span>
+                </button>
+              </div>
+            )}
+
             {/* Tarjetas Resumen */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
               <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
@@ -6109,6 +6486,131 @@ export default function Dashboard({ user, onLogout }) {
                 <span className="text-lg font-extrabold text-blue-400 block truncate">${Number(stats?.resumen?.recaudado_usd || 0).toFixed(2)}</span>
                 <span className="text-[10px] text-purple-400">{stats?.resumen?.documentos_exonerados || 0} exonerados</span>
               </div>
+            </div>
+
+            {/* Panel Demográfico Territorial: Habitantes, Género y Rangos de Edad */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>Demografía Territorial y Segmentación Etaria</span>
+                      <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                        {filtroEstadisticaVereda ? `Sector Vereda ${filtroEstadisticaVereda}${filtroEstadisticaCasa ? ` · Casa ${filtroEstadisticaCasa}` : ''}` : 'Población General de la Comunidad'}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400">Total de habitantes, distribución por género y división generacional en tiempo real</p>
+                  </div>
+                </div>
+
+                <div className="text-xs text-slate-300 font-semibold bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                  Total Habitantes: <strong className="text-cyan-400 font-mono text-sm">{stats?.resumen?.vecinos_total || 0}</strong>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {/* Mujeres */}
+                <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Mujeres</span>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-2xl font-black text-rose-400">{stats?.resumen?.mujeres_total || 0}</span>
+                    <span className="text-xs font-bold text-rose-300">
+                      {stats?.resumen?.vecinos_total ? Math.round(((stats?.resumen?.mujeres_total || 0) / stats.resumen.vecinos_total) * 100) : 0}%
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                    <div
+                      style={{ width: `${stats?.resumen?.vecinos_total ? Math.round(((stats?.resumen?.mujeres_total || 0) / stats.resumen.vecinos_total) * 100) : 0}%` }}
+                      className="h-full bg-rose-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Hombres */}
+                <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Hombres</span>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-2xl font-black text-blue-400">{stats?.resumen?.hombres_total || 0}</span>
+                    <span className="text-xs font-bold text-blue-300">
+                      {stats?.resumen?.vecinos_total ? Math.round(((stats?.resumen?.hombres_total || 0) / stats.resumen.vecinos_total) * 100) : 0}%
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                    <div
+                      style={{ width: `${stats?.resumen?.vecinos_total ? Math.round(((stats?.resumen?.hombres_total || 0) / stats.resumen.vecinos_total) * 100) : 0}%` }}
+                      className="h-full bg-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Menores de Edad (0-17) */}
+                <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Menores (0-17)</span>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-2xl font-black text-amber-400">{stats?.resumen?.menores_total || 0}</span>
+                    <span className="text-xs font-bold text-amber-300">
+                      {stats?.resumen?.vecinos_total ? Math.round(((stats?.resumen?.menores_total || 0) / stats.resumen.vecinos_total) * 100) : 0}%
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 block">0-12 infantes · 13-17 adol.</span>
+                </div>
+
+                {/* Adultos (18-59) */}
+                <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Adultos (18-59)</span>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-2xl font-black text-emerald-400">{stats?.resumen?.adultos_total || 0}</span>
+                    <span className="text-xs font-bold text-emerald-300">
+                      {stats?.resumen?.vecinos_total ? Math.round(((stats?.resumen?.adultos_total || 0) / stats.resumen.vecinos_total) * 100) : 0}%
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 block">Población productiva</span>
+                </div>
+
+                {/* Adultos Mayores (60+) */}
+                <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Adultos Mayores (60+)</span>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-2xl font-black text-purple-400">{stats?.resumen?.adultos_mayores_total || 0}</span>
+                    <span className="text-xs font-bold text-purple-300">
+                      {stats?.resumen?.vecinos_total ? Math.round(((stats?.resumen?.adultos_mayores_total || 0) / stats.resumen.vecinos_total) * 100) : 0}%
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 block">Tercera edad / Abuelos</span>
+                </div>
+              </div>
+
+              {/* 5 Rangos Específicos de Edad */}
+              {stats?.graficos?.gruposDetalle && (
+                <div className="pt-3 border-t border-slate-800/80">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block mb-2">Desglose Detallado por Rango de Edad (Cálculo Automático)</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
+                    <div className="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                      <span className="text-[10px] text-cyan-400 block font-semibold">0 a 12 Años (Infantes)</span>
+                      <strong className="text-sm font-bold text-white">{stats.graficos.gruposDetalle['0-12'] || 0}</strong>
+                    </div>
+                    <div className="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                      <span className="text-[10px] text-amber-400 block font-semibold">13 a 17 Años (Adolescentes)</span>
+                      <strong className="text-sm font-bold text-white">{stats.graficos.gruposDetalle['13-17'] || 0}</strong>
+                    </div>
+                    <div className="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                      <span className="text-[10px] text-emerald-400 block font-semibold">18 a 29 Años (Jóvenes)</span>
+                      <strong className="text-sm font-bold text-white">{stats.graficos.gruposDetalle['18-29'] || 0}</strong>
+                    </div>
+                    <div className="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                      <span className="text-[10px] text-blue-400 block font-semibold">30 a 59 Años (Adultos)</span>
+                      <strong className="text-sm font-bold text-white">{stats.graficos.gruposDetalle['30-59'] || 0}</strong>
+                    </div>
+                    <div className="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                      <span className="text-[10px] text-purple-400 block font-semibold">60+ Años (Adultos Mayores)</span>
+                      <strong className="text-sm font-bold text-white">{stats.graficos.gruposDetalle['60+'] || 0}</strong>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* SECCIÓN NUEVA: CATÁLOGOS OFICIALES Y SISTEMA DE SELECCIONES (#CONFIGURACION) */}
@@ -6409,6 +6911,170 @@ export default function Dashboard({ user, onLogout }) {
                   </ResponsiveContainer>
                 </div>
               </div>
+
+              {/* Tablero Territorial por Casa o Matriz de Veredas */}
+              {filtroEstadisticaVereda ? (
+                <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 col-span-1 lg:col-span-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-xl bg-cyan-600/20 text-cyan-400 border border-cyan-500/30">
+                        <Home className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-white flex items-center gap-2">
+                          <span>Desglose Territorial Casa por Casa — Vereda {filtroEstadisticaVereda}</span>
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                            {stats?.graficos?.desgloseCasas?.length || 0} Casas en Catálogo
+                          </span>
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          Cantidad de vecinos por vivienda, división de género, edades y estatus en el censo. Haz clic en una casa para filtrar.
+                        </p>
+                      </div>
+                    </div>
+
+                    {filtroEstadisticaCasa && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFiltroEstadisticaCasa('');
+                          cargarEstadisticas(fechaInicioReporte, fechaFinReporte, filtroEstadisticaVereda, '');
+                        }}
+                        className="text-xs text-cyan-400 hover:underline font-semibold"
+                      >
+                        Mostrar todas las casas de la Vereda {filtroEstadisticaVereda}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                    {(stats?.graficos?.desgloseCasas || []).map((casaItem) => {
+                      const activa = filtroEstadisticaCasa === casaItem.casa;
+                      return (
+                        <div
+                          key={casaItem.casa}
+                          onClick={() => {
+                            const nuevaCasa = activa ? '' : casaItem.casa;
+                            setFiltroEstadisticaCasa(nuevaCasa);
+                            cargarEstadisticas(fechaInicioReporte, fechaFinReporte, filtroEstadisticaVereda, nuevaCasa);
+                          }}
+                          className={`p-3.5 rounded-2xl cursor-pointer transition border space-y-2 ${
+                            activa
+                              ? 'bg-cyan-950/60 border-cyan-400 ring-2 ring-cyan-400/40 shadow-lg'
+                              : casaItem.total_vecinos > 0
+                              ? 'bg-slate-950/80 hover:bg-slate-850 border-slate-800'
+                              : 'bg-slate-950/40 border-slate-850/60 opacity-60 hover:opacity-100'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-sm text-white flex items-center gap-1.5">
+                              <Home className="w-3.5 h-3.5 text-cyan-400" />
+                              <span>Casa {casaItem.casa}</span>
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                                casaItem.total_vecinos > 0
+                                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                                  : 'bg-slate-800 text-slate-500'
+                              }`}
+                            >
+                              {casaItem.total_vecinos} {casaItem.total_vecinos === 1 ? 'vecino' : 'vecinos'}
+                            </span>
+                          </div>
+
+                          {/* Género y Grupos */}
+                          <div className="text-[11px] grid grid-cols-2 gap-1 pt-1 border-t border-slate-800/80">
+                            <span className="text-rose-400">👩 {casaItem.mujeres} Mujeres</span>
+                            <span className="text-blue-400">👨 {casaItem.hombres} Hombres</span>
+                            <span className="text-amber-400">🧒 {casaItem.menores} Menores</span>
+                            <span className="text-emerald-400">🧑 {casaItem.adultos} Adultos</span>
+                          </div>
+
+                          {/* Estatus Censo */}
+                          <div className="pt-1 border-t border-slate-800/60 flex items-center justify-between text-[10px]">
+                            {casaItem.tiene_censo ? (
+                              <span className="text-emerald-400 font-medium truncate" title={`Planilla: ${casaItem.numero_planilla}`}>
+                                ✓ Censo: {casaItem.numero_planilla || 'Registrado'}
+                              </span>
+                            ) : (
+                              <span className="text-slate-500">Sin Planilla Censo</span>
+                            )}
+                            <span className="text-cyan-400 font-semibold">{activa ? 'Filtrado' : 'Filtrar'}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                /* Matriz Territorial Comparativa de Veredas (A a O) */
+                <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 col-span-1 lg:col-span-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-xl bg-cyan-600/20 text-cyan-400 border border-cyan-500/30">
+                        <MapPin className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-white flex items-center gap-2">
+                          <span>Matriz Territorial Demográfica por Vereda (A a O)</span>
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                            {stats?.graficos?.veredasData?.length || 0} Veredas Activas
+                          </span>
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          Población registrada, proporción de mujeres/hombres y viviendas habitadas por cada sector comunal.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+                    {(stats?.graficos?.veredasData || []).map((veredaItem) => (
+                      <div
+                        key={veredaItem.vereda}
+                        className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 hover:border-slate-700 transition space-y-2.5 flex flex-col justify-between"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-black text-sm text-white">Vereda {veredaItem.vereda}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                            {veredaItem.habitantes ?? (veredaItem.habitantes_censo || veredaItem.vecinos || 0)} hab.
+                          </span>
+                        </div>
+
+                        <div className="text-[11px] space-y-1 text-slate-300">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Vecinos Padrón:</span>
+                            <strong className="text-white font-mono">{veredaItem.vecinos || 0}</strong>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-rose-400">Mujeres / Hombres:</span>
+                            <span className="font-mono text-xs font-semibold">
+                              <span className="text-rose-400">{veredaItem.mujeres || 0}</span> / <span className="text-blue-400">{veredaItem.hombres || 0}</span>
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Casas Catálogo:</span>
+                            <span className="font-mono text-xs">{veredaItem.casas_ocupadas ? `${veredaItem.casas_ocupadas} hab. / ` : ''}{veredaItem.casas || 0} c.</span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFiltroEstadisticaVereda(veredaItem.vereda);
+                            setFiltroEstadisticaCasa('');
+                            cargarEstadisticas(fechaInicioReporte, fechaFinReporte, veredaItem.vereda, '');
+                          }}
+                          className="w-full py-1.5 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                        >
+                          <MapPin className="w-3 h-3 text-cyan-400" />
+                          <span>Explorar Vereda {veredaItem.vereda}</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
             </div>
           </div>
