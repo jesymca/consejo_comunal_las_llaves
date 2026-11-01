@@ -742,18 +742,20 @@ export default function Dashboard({ user, onLogout }) {
     let pendientes = 0;
 
     for (const v of vecinos) {
-      const g = (v.genero || '').toUpperCase().trim();
-      if (g.startsWith('F') || g === 'FEMENINO' || g === 'MUJER') {
+      // El campo real en BD es `sexo` (F / M); se aceptan variantes por compatibilidad
+      const g = String(v.sexo ?? v.genero ?? '').toUpperCase().trim();
+      if (g === 'F' || g.startsWith('FEM') || g === 'MUJER') {
         mujeres++;
-      } else if (g.startsWith('M') || g === 'MASCULINO' || g === 'HOMBRE') {
+      } else if (g === 'M' || g.startsWith('MAS') || g === 'HOMBRE') {
         hombres++;
       } else {
         noEspecificado++;
       }
 
-      if (v.estado === 'APROBADO') {
+      const estadoVecino = v.estado_aprobacion ?? v.estado;
+      if (estadoVecino === 'APROBADO') {
         aprobados++;
-      } else {
+      } else if (estadoVecino === 'PENDIENTE') {
         pendientes++;
       }
 
