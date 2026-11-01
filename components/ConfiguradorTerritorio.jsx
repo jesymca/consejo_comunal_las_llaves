@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   MapPin, Home, Plus, Edit, Trash2, Check, X, RefreshCw,
-  Layers, Users, FileText, Search, Sparkles, AlertCircle
+  Layers, Users, FileText, Search, Sparkles, AlertCircle, ExternalLink
 } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { useTerritorio, notificarTerritorioActualizado } from '@/lib/useTerritorio';
@@ -14,7 +14,7 @@ import { normalizarCasaVereda, validarFormatoCasa } from '@/lib/territory';
  * Admite asignación estándar (ej: D-18), actualización/renombrado (ej: D-18 -> D-18A)
  * y creación de nuevas subdivisiones o anexos multifamiliares (ej: D-18B, D-18C).
  */
-export default function ConfiguradorTerritorio() {
+export default function ConfiguradorTerritorio({ onAbrirPlanilla }) {
   const { veredas, items, loading, recargar } = useTerritorio();
   const [veredaSel, setVeredaSel] = useState('A');
   const [nuevaCasa, setNuevaCasa] = useState('');
@@ -23,6 +23,14 @@ export default function ConfiguradorTerritorio() {
   const [editId, setEditId] = useState(null);
   const [editValor, setEditValor] = useState('');
   const [guardando, setGuardando] = useState(false);
+
+  const handleAbrirPlanilla = (item) => {
+    if (typeof onAbrirPlanilla === 'function') {
+      onAbrirPlanilla(item.vereda, item.casa);
+    } else {
+      window.location.hash = 'censo';
+    }
+  };
 
   // Normalización en vivo de la nueva casa que se está escribiendo
   const previewNueva = useMemo(() => {
@@ -500,13 +508,19 @@ export default function ConfiguradorTerritorio() {
                             )}
 
                             {(item.censo_count || 0) > 0 && (
-                              <span
-                                title={`${item.censo_count} planilla(s) de censo vinculada(s)`}
-                                className="flex items-center gap-1 font-semibold text-blue-400"
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAbrirPlanilla(item);
+                                }}
+                                title={`Abrir y editar Planilla ${item.numero_planilla ? `N° ${item.numero_planilla}` : 'de censo'} vinculada a la Casa ${item.casa}`}
+                                className="flex items-center gap-1 font-semibold text-blue-400 hover:text-cyan-300 bg-blue-500/10 hover:bg-blue-500/25 px-1.5 py-0.5 rounded transition cursor-pointer border border-blue-500/20 hover:border-cyan-400/40 group/censo shadow-sm"
                               >
-                                <FileText className="w-3 h-3" />
-                                {item.censo_count}
-                              </span>
+                                <FileText className="w-3 h-3 text-blue-400 group-hover/censo:scale-110 transition-transform" />
+                                <span>{item.numero_planilla || `${item.censo_count} plan.`}</span>
+                                <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover/censo:opacity-100 transition-opacity" />
+                              </button>
                             )}
                           </div>
 

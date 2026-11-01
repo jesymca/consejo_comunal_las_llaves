@@ -24,7 +24,7 @@ import { toast } from '@/lib/toast';
 import ConfiguradorTerritorio from '@/components/ConfiguradorTerritorio';
 import SelectorVeredaCasa from '@/components/SelectorVeredaCasa';
 import ModalResumenEstadistico from '@/components/ModalResumenEstadistico';
-import { useTerritorio } from '@/lib/useTerritorio';
+import { useTerritorio, notificarTerritorioActualizado } from '@/lib/useTerritorio';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend
@@ -9562,7 +9562,7 @@ export default function Dashboard({ user, onLogout }) {
 
             {/* SECCIÓN: CONFIGURADOR TERRITORIAL (VEREDAS A–O Y CASAS) */}
             {(configSubTab === 'todo' || configSubTab === 'territorio') && (
-              <ConfiguradorTerritorio />
+              <ConfiguradorTerritorio onAbrirPlanilla={abrirPlanillaPorVivienda} />
             )}
 
             {/* SECCIÓN: RESPALDO INTEGRAL DE BASE DE DATOS */}
@@ -10547,6 +10547,7 @@ export default function Dashboard({ user, onLogout }) {
                     cargarCenso();
                     cargarVecinos();
                     cargarEstadisticas();
+                    notificarTerritorioActualizado();
                   } else {
                     toast.error(d.error || 'Error al guardar la planilla');
                   }
