@@ -4528,17 +4528,19 @@ export default function Dashboard({ user, onLogout }) {
                 {plantillaSeleccionada && (
                   <>
                     <button
-                      onClick={() => descargarMuestraPdf(plantillaSeleccionada)}
+                      onClick={() => plantillaSeleccionada?.id === 'REPORTE_GESTION' ? handleGenerarReportePdf() : descargarMuestraPdf(plantillaSeleccionada)}
                       className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition"
                     >
-                      <Download className="w-4 h-4 text-blue-400" /> Descargar Muestra PDF
+                      <Download className="w-4 h-4 text-blue-400" /> {plantillaSeleccionada?.id === 'REPORTE_GESTION' ? 'Generar Reporte PDF' : 'Descargar Muestra PDF'}
                     </button>
-                    <button
-                      onClick={() => guardarPlantilla(plantillaSeleccionada)}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition"
-                    >
-                      <Check className="w-4 h-4" /> Guardar Todo
-                    </button>
+                    {plantillaSeleccionada?.id !== 'REPORTE_GESTION' && (
+                      <button
+                        onClick={() => guardarPlantilla(plantillaSeleccionada)}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition"
+                      >
+                        <Check className="w-4 h-4" /> Guardar Todo
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -4678,7 +4680,7 @@ export default function Dashboard({ user, onLogout }) {
                         <span className="text-[10px] text-slate-500 font-mono">ID: {p.id}</span>
                       </button>
                       {/* Botón de eliminar si no es una de las plantillas base */}
-                      {!['RESIDENCIA', 'BUENA_CONDUCTA', 'FALLECIMIENTO', 'FUNCIONAMIENTO'].includes(p.id) && user?.rol === 'SUPER_ADMIN' && (
+                      {!['RESIDENCIA', 'BUENA_CONDUCTA', 'FALLECIMIENTO', 'FUNCIONAMIENTO', 'REPORTE_GESTION'].includes(p.id) && user?.rol === 'SUPER_ADMIN' && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -4693,6 +4695,31 @@ export default function Dashboard({ user, onLogout }) {
                       )}
                     </div>
                   ))}
+
+                  {/* Documento Oficial Modelable: Reporte de Gestión y Estadísticas */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setPlantillaSeleccionada({
+                        id: 'REPORTE_GESTION',
+                        titulo: 'Reporte de Gestión y Estadísticas Comunales',
+                        subtitulo: 'Informe Oficial de Rendición de Cuentas y Demografía',
+                        cuerpo_template: 'INFORME OFICIAL DE GESTIÓN Y AUDITORÍA ESTADÍSTICA COMUNAL',
+                        esReporteGestion: true,
+                      })}
+                      className={`px-4 py-2.5 rounded-2xl text-left transition border ${
+                        plantillaSeleccionada?.id === 'REPORTE_GESTION'
+                          ? 'bg-emerald-600/25 border-emerald-500 text-white font-bold shadow-md shadow-emerald-600/25 ring-1 ring-emerald-500/40'
+                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:text-emerald-300 hover:border-emerald-500/30'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <BarChart3 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span className="text-xs font-bold block">Reporte de Gestión</span>
+                      </div>
+                      <span className="text-[10px] text-emerald-400/80 font-mono block mt-0.5">ID: REPORTE_GESTION · PDF</span>
+                    </button>
+                  </div>
 
                   {/* Botón para Crear Nuevo Documento */}
                   {(user?.rol === 'SUPER_ADMIN' || user?.rol === 'ADMIN') && (
@@ -4719,370 +4746,760 @@ export default function Dashboard({ user, onLogout }) {
 
             {/* Subtab 3: Cuerpo Legal & Redacción por Documento */}
             {modeladorSubTab === 'cuerpo' && plantillaSeleccionada && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                    <div>
-                      <span className="text-[10px] font-mono uppercase text-blue-400 font-bold">Plantilla Seleccionada: {plantillaSeleccionada.id}</span>
-                      <h3 className="text-sm font-bold text-white">{plantillaSeleccionada.titulo}</h3>
+              plantillaSeleccionada.id === 'REPORTE_GESTION' ? (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Columna Izquierda: Configuración del Documento y Selección del Firmante */}
+                  <div className="lg:col-span-2 p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            ID: REPORTE_GESTION
+                          </span>
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                            Documento Institucional (2 Páginas)
+                          </span>
+                        </div>
+                        <h3 className="text-base font-bold text-white">Reporte de Gestión y Estadísticas Comunales</h3>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Documento oficial de rendición de cuentas, auditoría demográfica y balance de gestión comunal.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleGenerarReportePdf}
+                        disabled={generandoReportePdf}
+                        className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs transition shadow-lg shadow-emerald-600/20 flex items-center gap-2 shrink-0"
+                      >
+                        {generandoReportePdf ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <span>Generando PDF...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-4 h-4" />
+                            <span>Generar y Descargar PDF</span>
+                          </>
+                        )}
+                      </button>
                     </div>
-                    <span className="text-[11px] text-slate-400">
-                      Usa la <strong>Cabecera de Documentos</strong> y <strong>Footer de Documentos</strong> únicos
-                    </span>
+
+                    {/* SELECCIÓN Y CONFIGURACIÓN DEL FIRMANTE OFICIAL */}
+                    <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <PenTool className="w-4 h-4 text-emerald-400" />
+                          <h4 className="text-sm font-bold text-white">Autoridad / Vocero Firmante del Reporte</h4>
+                        </div>
+                        <span className="text-[11px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                          Modelo Oficial
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        Selecciona el vocero o administrador que avalará el Reporte de Gestión con su firma y sello oficial en la página 2 del documento.
+                      </p>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                          Seleccionar Vocero o Administrador Responsable:
+                        </label>
+                        <select
+                          value={firmanteReporteId}
+                          onChange={(e) => handleCambiarFirmanteReporte(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-semibold focus:outline-none focus:border-emerald-500"
+                        >
+                          <option value="ADMIN_ACTUAL">
+                            👑 Administrador Actual ({user?.nombre || 'Sesión Activa'} - C.I. {user?.cedula || 'Admin'})
+                          </option>
+                          {firmas.map((f) => (
+                            <option key={f.id} value={`FIRMA_${f.id}`}>
+                              ✍️ {f.comision ? `[${f.comision}] ` : ''}{f.nombre} (C.I. {f.cedula})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Tarjeta de Detalles del Firmante Seleccionado */}
+                      {(() => {
+                        const firmanteActual = obtenerFirmanteSeleccionado(firmas);
+                        return (
+                          <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="space-y-1">
+                              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Firmante Activo Asignado</span>
+                              <h5 className="text-sm font-bold text-white">{firmanteActual?.nombre}</h5>
+                              <p className="text-xs text-emerald-400 font-medium">{firmanteActual?.comision}</p>
+                              <div className="text-[11px] text-slate-400 flex items-center gap-3 pt-0.5">
+                                <span>C.I.: <strong className="text-slate-200">{firmanteActual?.cedula}</strong></span>
+                                {firmanteActual?.telefono && <span>Tel: {firmanteActual?.telefono}</span>}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 p-2.5 rounded-lg bg-slate-950 border border-slate-800 shrink-0">
+                              <div className="text-center">
+                                <span className="text-[9px] uppercase font-mono text-slate-500 block mb-1">Firma Digital</span>
+                                {firmanteActual?.url_firma ? (
+                                  <div className="h-10 w-24 bg-white/5 rounded border border-white/10 p-1 flex items-center justify-center">
+                                    <img src={firmanteActual.url_firma} alt="Firma" className="max-h-8 max-w-full object-contain" />
+                                  </div>
+                                ) : (
+                                  <span className="text-[10px] text-amber-400 block px-2 py-1 bg-amber-500/10 rounded border border-amber-500/20">Firma Manual</span>
+                                )}
+                              </div>
+
+                              <div className="text-center border-l border-slate-800 pl-3">
+                                <span className="text-[9px] uppercase font-mono text-slate-500 block mb-1">Sello Oficial</span>
+                                <div className="h-10 w-12 bg-white/5 rounded border border-white/10 p-1 flex items-center justify-center">
+                                  <img
+                                    src={firmanteActual?.url_sello || config?.sello_principal_url || 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/sello.png'}
+                                    alt="Sello"
+                                    className="max-h-8 max-w-full object-contain"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Acciones Rápidas y Enlaces */}
+                    <div className="flex flex-wrap items-center gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setModeladorSubTab('previsualizacion')}
+                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Ver Previsualización en Hoja</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.location.hash = 'estadisticas';
+                          setCurrentTab('estadisticas');
+                        }}
+                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5"
+                      >
+                        <BarChart3 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Ir al Tablero Estadístico en Vivo (#estadisticas)</span>
+                      </button>
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">Título del Documento</label>
-                    <input
-                      type="text"
-                      value={plantillaSeleccionada.titulo}
-                      onChange={(e) => setPlantillaSeleccionada({ ...plantillaSeleccionada, titulo: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs font-bold"
-                    />
-                  </div>
+                  {/* Columna Derecha: Estructura del Documento y Marco Legal */}
+                  <div className="p-5 rounded-3xl bg-slate-950 border border-slate-800 text-xs text-slate-400 space-y-4">
+                    <div>
+                      <span className="font-bold text-white block mb-1 text-sm flex items-center gap-1.5">
+                        <FileText className="w-4 h-4 text-emerald-400" />
+                        Estructura del Documento
+                      </span>
+                      <p className="text-[11px] text-slate-400">
+                        El Reporte de Gestión es generado en formato PDF de 2 páginas con las siguientes secciones:
+                      </p>
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">Subtítulo Oficial (Opcional)</label>
-                    <input
-                      type="text"
-                      value={plantillaSeleccionada.subtitulo || ''}
-                      onChange={(e) => setPlantillaSeleccionada({ ...plantillaSeleccionada, subtitulo: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs"
-                      placeholder="Ej: NRO: {codigo_qr}"
-                    />
-                  </div>
+                    <div className="space-y-2.5">
+                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
+                        <span className="font-bold text-white block text-xs">Página 1: Análisis Demográfico y Censal</span>
+                        <ul className="text-[11px] text-slate-400 mt-1 space-y-0.5 list-disc list-inside">
+                          <li>Cabecera oficial comunal con RIF y SITUR</li>
+                          <li>Resumen Ejecutivo (Habitantes, Familias, Veredas)</li>
+                          <li>Grupos etarios y pirámide de edad</li>
+                          <li>Distribución por sexo y condiciones de salud</li>
+                        </ul>
+                      </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Cuerpo Legal y Redacción (Adaptado a la Ley Orgánica de los Consejos Comunales 2023)
-                    </label>
-                    <textarea
-                      rows="10"
-                      value={plantillaSeleccionada.cuerpo_template}
-                      onChange={(e) => setPlantillaSeleccionada({ ...plantillaSeleccionada, cuerpo_template: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs font-mono leading-relaxed"
-                    />
-                  </div>
+                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
+                        <span className="font-bold text-white block text-xs">Página 2: Rendición Operativa y Certificación</span>
+                        <ul className="text-[11px] text-slate-400 mt-1 space-y-0.5 list-disc list-inside">
+                          <li>Distribución geográfica por Vereda</li>
+                          <li>Horas pico de solicitud y tipos de constancia</li>
+                          <li>Firma digital y sello del vocero asignado</li>
+                          <li>Hash criptográfico de verificación contralora</li>
+                        </ul>
+                      </div>
+                    </div>
 
-                  <button
-                    onClick={() => guardarPlantilla(plantillaSeleccionada)}
-                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-md shadow-blue-600/30"
-                  >
-                    Guardar Cambios de Redacción
-                  </button>
+                    <div className="pt-3 border-t border-slate-800 text-[11px] text-slate-400 space-y-1.5">
+                      <span className="font-bold text-amber-400 block">Base Legal LOCC (Reforma 2023):</span>
+                      <p>
+                        • <strong>Art. 18 y 23:</strong> Colectivo de Gobierno Comunal y atribuciones de rendición pública de cuentas.
+                      </p>
+                      <p>
+                        • <strong>Art. 34 num. 19 y 20:</strong> Emisión de constancias de residencia y actualización del Censo Demográfico Comunal.
+                      </p>
+                    </div>
+                  </div>
                 </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="lg:col-span-2 p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                      <div>
+                        <span className="text-[10px] font-mono uppercase text-blue-400 font-bold">Plantilla Seleccionada: {plantillaSeleccionada.id}</span>
+                        <h3 className="text-sm font-bold text-white">{plantillaSeleccionada.titulo}</h3>
+                      </div>
+                      <span className="text-[11px] text-slate-400">
+                        Usa la <strong>Cabecera de Documentos</strong> y <strong>Footer de Documentos</strong> únicos
+                      </span>
+                    </div>
 
-                <div className="p-5 rounded-3xl bg-slate-950 border border-slate-800 text-xs text-slate-400 space-y-2.5">
-                  <span className="font-bold text-white block mb-1 text-sm">Variables Dinámicas Disponibles:</span>
-                  <p className="text-[11px] text-slate-400">Inserta estas etiquetas en el texto para que se reemplacen automáticamente con los datos del habitante al emitir:</p>
-                  <div className="space-y-1.5 pt-2">
-                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{nombre_completo}'}</code> - Nombres y apellidos</div>
-                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{cedula}'}</code> - Cédula con formato</div>
-                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{vereda}'}</code> - Vereda de residencia</div>
-                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{casa}'}</code> - Número de casa</div>
-                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{tiempo_residencia}'}</code> - Años viviendo en la comunidad</div>
-                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{codigo_qr}'}</code> - Código alfanumérico único</div>
-                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{dias}'}</code>, <code className="text-blue-400 font-mono">{'{mes}'}</code>, <code className="text-blue-400 font-mono">{'{ano}'}</code> - Fecha actual</div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">Título del Documento</label>
+                      <input
+                        type="text"
+                        value={plantillaSeleccionada.titulo}
+                        onChange={(e) => setPlantillaSeleccionada({ ...plantillaSeleccionada, titulo: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs font-bold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">Subtítulo Oficial (Opcional)</label>
+                      <input
+                        type="text"
+                        value={plantillaSeleccionada.subtitulo || ''}
+                        onChange={(e) => setPlantillaSeleccionada({ ...plantillaSeleccionada, subtitulo: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs"
+                        placeholder="Ej: NRO: {codigo_qr}"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Cuerpo Legal y Redacción (Adaptado a la Ley Orgánica de los Consejos Comunales 2023)
+                      </label>
+                      <textarea
+                        rows="10"
+                        value={plantillaSeleccionada.cuerpo_template}
+                        onChange={(e) => setPlantillaSeleccionada({ ...plantillaSeleccionada, cuerpo_template: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-750 text-white text-xs font-mono leading-relaxed"
+                      />
+                    </div>
+
+                    <button
+                      onClick={() => guardarPlantilla(plantillaSeleccionada)}
+                      className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-md shadow-blue-600/30"
+                    >
+                      Guardar Cambios de Redacción
+                    </button>
                   </div>
-                  <div className="mt-3 pt-3 border-t border-slate-800 text-[11px] text-slate-400 space-y-1">
-                    <span className="font-bold text-amber-400 block">Base Legal LOCC (Gaceta 2023):</span>
-                    <p>• <strong>Art. 18:</strong> Instancias del Consejo Comunal (Asamblea de Ciudadanas y Ciudadanos, Colectivo de Gobierno Comunal, Unidad Ejecutiva, Unidad Administrativa y Financiera Comunitaria, Unidad de Contraloría Social y Comisión Electoral).</p>
-                    <p>• <strong>Art. 34 num. 19 y 20:</strong> Emisión de constancias de residencia y actualización del Censo Demográfico Comunal.</p>
+
+                  <div className="p-5 rounded-3xl bg-slate-950 border border-slate-800 text-xs text-slate-400 space-y-2.5">
+                    <span className="font-bold text-white block mb-1 text-sm">Variables Dinámicas Disponibles:</span>
+                    <p className="text-[11px] text-slate-400">Inserta estas etiquetas en el texto para que se reemplacen automáticamente con los datos del habitante al emitir:</p>
+                    <div className="space-y-1.5 pt-2">
+                      <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{nombre_completo}'}</code> - Nombres y apellidos</div>
+                      <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{cedula}'}</code> - Cédula con formato</div>
+                      <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{vereda}'}</code> - Vereda de residencia</div>
+                      <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{casa}'}</code> - Número de casa</div>
+                      <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{tiempo_residencia}'}</code> - Años viviendo en la comunidad</div>
+                      <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{codigo_qr}'}</code> - Código alfanumérico único</div>
+                      <div className="p-2 rounded-xl bg-slate-900 border border-slate-800"><code className="text-blue-400 font-mono font-bold">{'{dias}'}</code>, <code className="text-blue-400 font-mono">{'{mes}'}</code>, <code className="text-blue-400 font-mono">{'{ano}'}</code> - Fecha actual</div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-slate-800 text-[11px] text-slate-400 space-y-1">
+                      <span className="font-bold text-amber-400 block">Base Legal LOCC (Gaceta 2023):</span>
+                      <p>• <strong>Art. 18:</strong> Instancias del Consejo Comunal (Asamblea de Ciudadanas y Ciudadanos, Colectivo de Gobierno Comunal, Unidad Ejecutiva, Unidad Administrativa y Financiera Comunitaria, Unidad de Contraloría Social y Comisión Electoral).</p>
+                      <p>• <strong>Art. 34 num. 19 y 20:</strong> Emisión de constancias de residencia y actualización del Censo Demográfico Comunal.</p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )
             )}
 
             {/* Subtab 4: Previsualización de Hoja Completa (Con Cabecera Única y Footer Único) */}
             {modeladorSubTab === 'previsualizacion' && plantillaSeleccionada && (
-              <div className="space-y-4">
-                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <span className="text-xs text-slate-300">
-                    Vista previa en tamaño Carta unificando la <strong>Cabecera de Documentos única</strong>, la redacción de <strong>{plantillaSeleccionada.titulo}</strong>, las firmas autorizadas y el <strong>Footer de Documentos único</strong>.
-                  </span>
-                  <button
-                    onClick={() => descargarMuestraPdf(plantillaSeleccionada)}
-                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow transition shrink-0"
-                  >
-                    <Download className="w-4 h-4" /> Generar y Descargar PDF
-                  </button>
-                </div>
-
-                <div className="flex justify-center p-6 bg-slate-950 rounded-3xl border border-slate-800 overflow-x-auto">
-                  <div className="w-[680px] min-h-[850px] bg-white text-slate-900 p-10 shadow-2xl rounded-lg font-serif relative flex flex-col justify-between">
-                    {/* Cabecera Única de Documentos Renderizada */}
+              plantillaSeleccionada.id === 'REPORTE_GESTION' ? (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
-                      {(() => {
-                        let parsedHeader = null;
-                        try {
-                          if (cabeceraUnicaSvg) {
-                            parsedHeader = typeof cabeceraUnicaSvg === 'string' ? JSON.parse(cabeceraUnicaSvg) : cabeceraUnicaSvg;
-                          }
-                        } catch (e) {}
+                      <span className="text-xs text-slate-200 font-bold block">
+                        Previsualización Oficial: Reporte de Gestión y Estadísticas Comunales (2 Páginas A4)
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        Firmante asignado: <strong className="text-emerald-400">{obtenerFirmanteSeleccionado(firmas)?.nombre}</strong> ({obtenerFirmanteSeleccionado(firmas)?.comision})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleGenerarReportePdf}
+                      disabled={generandoReportePdf}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 shadow transition shrink-0"
+                    >
+                      {generandoReportePdf ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          <span>Generando PDF...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4" />
+                          <span>Generar y Descargar Reporte PDF</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
 
-                        if (parsedHeader && (parsedHeader.textos?.length > 0 || parsedHeader.imagenes?.length > 0)) {
-                          const hHeight = parsedHeader.height || 180;
-                          const headerLayers = [];
-                          if (parsedHeader.mostrarLineaDivisoria !== false) {
-                            headerLayers.push({
-                              id: '__shape_linea_divisoria__',
-                              layerType: 'shape',
-                              zIndex: typeof parsedHeader.fondoZIndex === 'number' ? parsedHeader.fondoZIndex : 0,
-                            });
-                          }
-                          (parsedHeader.imagenes || []).forEach((img, idx) => {
-                            if (img.visible !== false) {
-                              headerLayers.push({
-                                id: img.id,
-                                layerType: 'image',
-                                zIndex: typeof img.zIndex === 'number' ? img.zIndex : (idx + 1) * 10,
-                                raw: img,
-                              });
-                            }
-                          });
-                          (parsedHeader.textos || []).forEach((t, idx) => {
-                            if (t.visible !== false) {
-                              headerLayers.push({
-                                id: t.id,
-                                layerType: 'text',
-                                zIndex: typeof t.zIndex === 'number' ? t.zIndex : 100 + (idx + 1) * 10,
-                                raw: t,
-                              });
-                            }
-                          });
-                          headerLayers.sort((a, b) => a.zIndex - b.zIndex);
+                  {/* Vistas previas de las 2 Páginas */}
+                  <div className="flex flex-col xl:flex-row items-center xl:items-start justify-center gap-6 p-6 bg-slate-950 rounded-3xl border border-slate-800 overflow-x-auto">
+                    {/* PÁGINA 1: ANÁLISIS DEMOGRÁFICO */}
+                    <div className="w-[520px] min-h-[735px] bg-white text-slate-900 p-7 shadow-2xl rounded-lg font-sans relative flex flex-col justify-between border border-slate-200 shrink-0">
+                      <div>
+                        {/* Cabecera Oficial */}
+                        <div className="text-center border-b border-slate-300 pb-3 mb-4 relative">
+                          <img src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/mppcomunas.png" alt="Comunas" className="absolute left-0 top-0 h-8 object-contain" />
+                          <img src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/logo.png" alt="CC" className="absolute right-0 top-0 h-10 object-contain" />
+                          <h4 className="text-[10px] font-bold text-slate-900 tracking-wider">REPÚBLICA BOLIVARIANA DE VENEZUELA</h4>
+                          <p className="text-[8px] text-slate-700">MINISTERIO DEL PODER POPULAR PARA LAS COMUNAS Y LOS MOVIMIENTOS SOCIALES</p>
+                          <p className="text-[9px] font-bold text-slate-800">CONSEJO COMUNAL &quot;LAS LLAVES&quot;</p>
+                          <p className="text-[8px] text-slate-600">Urbanización {config?.urbanizacion || 'Dr. Alfredo Travieso Paúl'} - Parroquia {config?.parroquia || 'Goaigoaza'}</p>
+                          <p className="text-[7.5px] text-slate-500">Municipio {config?.municipio || 'Puerto Cabello'}, Edo. Carabobo | RIF: {config?.rif || 'C299916862'} | SITUR: {config?.situr_codigo || '08-11-04-001-0033'}</p>
+                        </div>
 
-                          return (
-                            <div className="mb-6">
-                              <svg
-                                viewBox={`0 0 750 ${hHeight}`}
-                                className="w-full h-auto"
-                              >
-                                {headerLayers.map((layer) => {
-                                  if (layer.layerType === 'shape') {
-                                    return (
-                                      <line
-                                        key={layer.id}
-                                        x1="20"
-                                        y1={hHeight - 15}
-                                        x2="730"
-                                        y2={hHeight - 15}
-                                        stroke={parsedHeader.colorLinea || '#CBD5E1'}
-                                        strokeWidth="1.5"
-                                      />
-                                    );
-                                  }
-                                  if (layer.layerType === 'image') {
-                                    const img = layer.raw;
-                                    return (
-                                      <image
-                                        key={img.id}
-                                        href={img.url}
-                                        x={img.x}
-                                        y={img.y}
-                                        width={img.width}
-                                        height={img.height}
-                                        opacity={img.opacity ?? 1}
-                                        preserveAspectRatio={img.lockRatio ? 'xMidYMid meet' : 'none'}
-                                      />
-                                    );
-                                  }
-                                  if (layer.layerType === 'text') {
-                                    const t = layer.raw;
-                                    return (
-                                      <text
-                                        key={t.id}
-                                        x={t.x}
-                                        y={t.y}
-                                        fontSize={t.fontSize || 11}
-                                        fontWeight={t.fontWeight || 'normal'}
-                                        fontStyle={t.fontStyle || 'normal'}
-                                        textDecoration={t.textDecoration || 'none'}
-                                        fill={t.color || '#0F172A'}
-                                        textAnchor={t.align || 'middle'}
-                                        fontFamily="Helvetica, Arial, sans-serif"
-                                      >
-                                        {t.textTransform === 'uppercase' ? String(t.texto || '').toUpperCase() : t.texto}
-                                      </text>
-                                    );
-                                  }
-                                  return null;
-                                })}
-                              </svg>
-                            </div>
-                          );
-                        }
+                        <div className="text-center mb-3">
+                          <h5 className="text-xs font-black uppercase text-slate-900 tracking-wider">REPORTE DE GESTIÓN Y AUDITORÍA DEMOGRÁFICA</h5>
+                          <span className="text-[9px] text-slate-500 font-semibold">Censo Demográfico Comunal · Periodo Oficial en Curso</span>
+                        </div>
 
-                        return (
-                          <div className="text-center border-b border-slate-300 pb-4 mb-6 relative">
-                            <img src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/mppcomunas.png" alt="Comunas" className="absolute left-0 top-0 h-10 object-contain" />
-                            <img src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/logo.png" alt="CC" className="absolute right-0 top-0 h-12 object-contain" />
-                            <h4 className="text-xs font-bold text-slate-900 tracking-wider">REPÚBLICA BOLIVARIANA DE VENEZUELA</h4>
-                            <p className="text-[10px] text-slate-700">MINISTERIO DEL PODER POPULAR PARA LAS COMUNAS Y LOS MOVIMIENTOS SOCIALES</p>
-                            <p className="text-[10px] font-bold text-slate-800">CONSEJO COMUNAL &quot;LAS LLAVES&quot;</p>
-                            <p className="text-[9px] text-slate-600">Urbanización {config?.urbanizacion || 'Dr. Alfredo Travieso Paúl'} - Parroquia {config?.parroquia || 'Goaigoaza'}</p>
-                            <p className="text-[9px] text-slate-500">Municipio {config?.municipio || 'Puerto Cabello'}, Estado {config?.estado || 'Carabobo'} | RIF: {config?.rif || 'C299916862'} | SITUR: {config?.situr_codigo || '08-11-04-001-0033'}</p>
+                        {/* KPI Cards */}
+                        <div className="grid grid-cols-3 gap-2 mb-4">
+                          <div className="p-2 rounded bg-slate-50 border border-slate-200 text-center">
+                            <span className="text-[8px] text-slate-500 block uppercase font-bold">Habitantes</span>
+                            <span className="text-base font-black text-blue-700">{stats?.resumen?.totalHabitantes || 0}</span>
                           </div>
-                        );
-                      })()}
+                          <div className="p-2 rounded bg-slate-50 border border-slate-200 text-center">
+                            <span className="text-[8px] text-slate-500 block uppercase font-bold">Familias</span>
+                            <span className="text-base font-black text-emerald-700">{stats?.resumen?.totalFamilias || 0}</span>
+                          </div>
+                          <div className="p-2 rounded bg-slate-50 border border-slate-200 text-center">
+                            <span className="text-[8px] text-slate-500 block uppercase font-bold">Veredas</span>
+                            <span className="text-base font-black text-indigo-700">{stats?.resumen?.totalVeredas || 0}</span>
+                          </div>
+                        </div>
 
-                      <div className="text-right text-[11px] font-mono font-bold text-slate-700 mb-4">
-                        NRO: CCLL-MUESTRA999
+                        {/* Grupos Etarios */}
+                        <div className="mb-4">
+                          <span className="text-[9px] font-bold uppercase text-slate-800 block border-b border-slate-200 pb-1 mb-2">
+                            Distribución por Grupos de Edad
+                          </span>
+                          <div className="grid grid-cols-2 gap-1.5 text-[8.5px]">
+                            <div className="flex justify-between p-1 bg-slate-50 rounded border border-slate-200">
+                              <span>Infantes (0-5 años):</span>
+                              <strong className="text-slate-900">{stats?.graficos?.edadesData?.find(d => d.name?.includes('0-5'))?.value || 0}</strong>
+                            </div>
+                            <div className="flex justify-between p-1 bg-slate-50 rounded border border-slate-200">
+                              <span>Niños (6-12 años):</span>
+                              <strong className="text-slate-900">{stats?.graficos?.edadesData?.find(d => d.name?.includes('6-12'))?.value || 0}</strong>
+                            </div>
+                            <div className="flex justify-between p-1 bg-slate-50 rounded border border-slate-200">
+                              <span>Jóvenes (13-17 años):</span>
+                              <strong className="text-slate-900">{stats?.graficos?.edadesData?.find(d => d.name?.includes('13-17'))?.value || 0}</strong>
+                            </div>
+                            <div className="flex justify-between p-1 bg-slate-50 rounded border border-slate-200">
+                              <span>Adultos (18-59 años):</span>
+                              <strong className="text-slate-900">{stats?.graficos?.edadesData?.find(d => d.name?.includes('18-59'))?.value || 0}</strong>
+                            </div>
+                            <div className="flex justify-between p-1 bg-slate-50 rounded border border-slate-200 col-span-2">
+                              <span>Adultos Mayores (60+ años):</span>
+                              <strong className="text-slate-900">{stats?.graficos?.edadesData?.find(d => d.name?.includes('60+'))?.value || 0}</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Salud y Vulnerabilidad */}
+                        <div className="p-2.5 rounded bg-amber-50/60 border border-amber-200 text-[8.5px] text-amber-900 space-y-1">
+                          <span className="font-bold block">Auditoría Social y Salud:</span>
+                          <p>
+                            • Total de personas con condiciones crónicas o vulnerabilidad registradas en el censo: <strong>{stats?.graficos?.saludData?.reduce((acc, curr) => acc + (curr.value || 0), 0) || 0}</strong>.
+                          </p>
+                        </div>
                       </div>
 
-                      <div className="text-center text-base font-extrabold text-slate-900 tracking-wide mb-6 uppercase">
-                        {plantillaSeleccionada.titulo}
-                      </div>
-
-                      <div className="text-xs text-slate-800 leading-relaxed text-justify mb-8 whitespace-pre-line">
-                        {plantillaSeleccionada.cuerpo_template
-                          .replace(/{nombre_completo}/g, 'JUAN CARLOS PÉREZ')
-                          .replace(/{cedula}/g, 'V-15.892.450')
-                          .replace(/{vereda}/g, 'B')
-                          .replace(/{casa}/g, 'B-12')
-                          .replace(/{tiempo_residencia}/g, '18')
-                          .replace(/{codigo_qr}/g, 'MUESTRA999')
-                          .replace(/{dias}/g, String(new Date().getDate()))
-                          .replace(/{mes}/g, 'octubre')
-                          .replace(/{ano}/g, String(new Date().getFullYear()))}
-                      </div>
-
-                      <div className="text-center text-xs text-slate-800 mb-10">
-                        <p>Atentamente.</p>
-                        <p className="font-bold">Por el Consejo Comunal &quot;LAS LLAVES&quot;</p>
+                      {/* Pie de Página 1 */}
+                      <div className="border-t border-slate-200 pt-2 flex items-center justify-between text-[8px] text-slate-500">
+                        <span>Consejo Comunal Las Llaves · SITUR {config?.situr_codigo || '08-11-04-001-0033'}</span>
+                        <span className="font-bold">Página 1 de 2</span>
                       </div>
                     </div>
 
-                    {/* Firmas y Footer Único de Documentos */}
-                    <div>
-                      <div className="grid grid-cols-2 gap-8 text-center text-[10px] border-t border-slate-200 pt-6 mb-6">
-                        {firmas.slice(0, 2).map((f) => (
-                          <div key={f.id} className="space-y-0.5">
-                            <div className="h-10 flex items-center justify-center">
-                              {f.url_firma && <img src={f.url_firma} alt="Firma" className="max-h-10 object-contain" />}
+                    {/* PÁGINA 2: RENDICIÓN OPERATIVA Y FIRMA */}
+                    <div className="w-[520px] min-h-[735px] bg-white text-slate-900 p-7 shadow-2xl rounded-lg font-sans relative flex flex-col justify-between border border-slate-200 shrink-0">
+                      <div>
+                        {/* Cabecera Página 2 */}
+                        <div className="flex items-center justify-between border-b border-slate-300 pb-2 mb-4 text-[9px] text-slate-600">
+                          <span className="font-bold text-slate-800">CONSEJO COMUNAL &quot;LAS LLAVES&quot;</span>
+                          <span className="font-mono text-[8px]">REPORTE DE GESTIÓN · PÁGINA 2</span>
+                        </div>
+
+                        <div className="mb-4">
+                          <h6 className="text-[10px] font-bold uppercase text-slate-800 border-b border-slate-200 pb-1 mb-2">
+                            Balance Operativo de Emisión Documental
+                          </h6>
+                          <div className="grid grid-cols-2 gap-2 text-[8.5px]">
+                            <div className="p-2 bg-slate-50 rounded border border-slate-200">
+                              <span className="text-slate-500 block">Total Documentos Emitidos</span>
+                              <strong className="text-base text-blue-700">{stats?.resumen?.totalDocumentos || 0}</strong>
                             </div>
-                            <div className="border-t border-slate-400 pt-1 font-bold">{f.comision}</div>
-                            <div>{f.nombre}</div>
-                            <div>C.I.: {f.cedula}</div>
+                            <div className="p-2 bg-slate-50 rounded border border-slate-200">
+                              <span className="text-slate-500 block">Promedio Hab / Familia</span>
+                              <strong className="text-base text-emerald-700">{stats?.resumen?.promedioHabitantesPorFamilia || '0.0'}</strong>
+                            </div>
                           </div>
-                        ))}
+                        </div>
+
+                        {/* Base Legal */}
+                        <div className="p-2.5 rounded bg-slate-50 border border-slate-200 text-[8px] text-slate-600 leading-relaxed mb-6">
+                          <span className="font-bold text-slate-800 block mb-0.5">Certificación Legal LOCC 2023:</span>
+                          <p>
+                            El presente reporte constituye documento fidedigno emitido por el Colectivo de Gobierno Comunal del Consejo Comunal de la Urbanización Dr. Alfredo Travieso Paúl &quot;LAS LLAVES&quot;, en ejercicio de las facultades de contraloría social y gestión comunal (Gaceta Oficial N° 6.749 Extraordinaria).
+                          </p>
+                        </div>
                       </div>
 
-                      {(() => {
-                        let parsedFooter = null;
-                        try {
-                          if (footerUnicoSvg) {
-                            parsedFooter = typeof footerUnicoSvg === 'string' ? JSON.parse(footerUnicoSvg) : footerUnicoSvg;
-                          }
-                        } catch (e) {}
-
-                        if (parsedFooter && (parsedFooter.textos?.length > 0 || parsedFooter.imagenes?.length > 0)) {
-                          const fHeight = parsedFooter.height || 150;
-                          const footerLayers = [];
-                          if (parsedFooter.mostrarRecuadroValidacion !== false) {
-                            footerLayers.push({
-                              id: '__shape_recuadro_qr__',
-                              layerType: 'shape',
-                              zIndex: typeof parsedFooter.fondoZIndex === 'number' ? parsedFooter.fondoZIndex : 0,
-                            });
-                          }
-                          (parsedFooter.imagenes || []).forEach((img, idx) => {
-                            if (img.visible !== false) {
-                              footerLayers.push({
-                                id: img.id,
-                                layerType: 'image',
-                                zIndex: typeof img.zIndex === 'number' ? img.zIndex : (idx + 1) * 10,
-                                raw: img,
-                              });
-                            }
-                          });
-                          (parsedFooter.textos || []).forEach((t, idx) => {
-                            if (t.visible !== false) {
-                              footerLayers.push({
-                                id: t.id,
-                                layerType: 'text',
-                                zIndex: typeof t.zIndex === 'number' ? t.zIndex : 100 + (idx + 1) * 10,
-                                raw: t,
-                              });
-                            }
-                          });
-                          footerLayers.sort((a, b) => a.zIndex - b.zIndex);
-
+                      {/* Bloque de Firma y Sello del Vocero Autorizado */}
+                      <div>
+                        {(() => {
+                          const firmanteActual = obtenerFirmanteSeleccionado(firmas);
                           return (
-                            <div className="overflow-hidden">
-                              <svg viewBox={`0 0 750 ${fHeight}`} className="w-full h-auto">
-                                {footerLayers.map((layer) => {
-                                  if (layer.layerType === 'shape') {
-                                    return (
-                                      <rect
-                                        key={layer.id}
-                                        x="10"
-                                        y="6"
-                                        width="730"
-                                        height="95"
-                                        rx="6"
-                                        fill={parsedFooter.colorFondo || '#F8FAFC'}
-                                        stroke={parsedFooter.colorBorde || '#E2E8F0'}
-                                        strokeWidth="1"
-                                      />
-                                    );
-                                  }
-                                  if (layer.layerType === 'image') {
-                                    const img = layer.raw;
-                                    return (
-                                      <image
-                                        key={img.id}
-                                        href={img.url}
-                                        x={img.x}
-                                        y={img.y}
-                                        width={img.width}
-                                        height={img.height}
-                                        opacity={img.opacity ?? 1}
-                                        preserveAspectRatio={img.lockRatio ? 'xMidYMid meet' : 'none'}
-                                      />
-                                    );
-                                  }
-                                  if (layer.layerType === 'text') {
-                                    const t = layer.raw;
-                                    return (
-                                      <text
-                                        key={t.id}
-                                        x={t.x}
-                                        y={t.y}
-                                        fontSize={t.fontSize || 10}
-                                        fontWeight={t.fontWeight || 'normal'}
-                                        fontStyle={t.fontStyle || 'normal'}
-                                        textDecoration={t.textDecoration || 'none'}
-                                        fill={t.color || '#0F172A'}
-                                        textAnchor={t.align || 'start'}
-                                        fontFamily="Helvetica, Arial, sans-serif"
-                                      >
-                                        {t.textTransform === 'uppercase' ? String(t.texto || '').toUpperCase() : t.texto}
-                                      </text>
-                                    );
-                                  }
-                                  return null;
-                                })}
-                              </svg>
+                            <div className="mb-4">
+                              <div className="text-center mb-1">
+                                <span className="text-[8.5px] text-slate-700">Por el Consejo Comunal &quot;LAS LLAVES&quot;:</span>
+                              </div>
+
+                              <div className="relative pt-4 text-center">
+                                {/* Firma Digitalizada Centrada Proporcional */}
+                                <div className="h-12 flex items-end justify-center mb-1">
+                                  {firmanteActual?.url_firma ? (
+                                    <img src={firmanteActual.url_firma} alt="Firma" className="max-h-12 max-w-[160px] object-contain" />
+                                  ) : (
+                                    <div className="h-6" />
+                                  )}
+                                </div>
+
+                                {/* Sello Oficial Húmedo Superpuesto */}
+                                {(firmanteActual?.url_sello || config?.sello_principal_url) && (
+                                  <img
+                                    src={firmanteActual?.url_sello || config?.sello_principal_url || 'https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/sello.png'}
+                                    alt="Sello"
+                                    className="absolute right-12 bottom-6 w-14 h-14 object-contain opacity-80 pointer-events-none"
+                                  />
+                                )}
+
+                                <div className="w-56 mx-auto border-t border-slate-800 pt-1 text-[9px]">
+                                  <div className="font-bold uppercase text-slate-900">{firmanteActual?.nombre}</div>
+                                  <div className="text-slate-600">{firmanteActual?.comision}</div>
+                                  <div className="text-slate-500 font-mono text-[8px]">C.I.: {firmanteActual?.cedula}</div>
+                                </div>
+                              </div>
                             </div>
                           );
-                        }
+                        })()}
 
-                        return (
-                          <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-3">
-                            <img src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/favicon.svg" alt="QR" className="w-12 h-12 object-contain" />
-                            <div className="text-[9px] text-slate-600">
-                              <span className="font-bold text-slate-900 block">CERTIFICACIÓN Y VALIDACIÓN DIGITAL DE CONSTANCIA</span>
-                              <span>Código Único: <strong className="text-blue-600 font-mono">CCLL-MUESTRA999</strong> | Vigencia: 60 Días</span>
-                              <span className="block text-slate-400">Verifique en: https://lasllaves.org/#validar</span>
-                            </div>
+                        {/* Recuadro de Validación Criptográfica */}
+                        <div className="p-2 bg-slate-50 border border-slate-200 rounded flex items-center justify-between text-[7.5px] text-slate-500">
+                          <div>
+                            <span className="font-bold text-slate-700 block">HASH CRIPTOGRÁFICO DE VERIFICACIÓN</span>
+                            <span className="font-mono">CCLL-ESTADISTICA-{new Date().getFullYear()}-OFICIAL</span>
                           </div>
-                        );
-                      })()}
+                          <span className="font-bold text-slate-700">Página 2 de 2</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <span className="text-xs text-slate-300">
+                      Vista previa en tamaño Carta unificando la <strong>Cabecera de Documentos única</strong>, la redacción de <strong>{plantillaSeleccionada.titulo}</strong>, las firmas autorizadas y el <strong>Footer de Documentos único</strong>.
+                    </span>
+                    <button
+                      onClick={() => descargarMuestraPdf(plantillaSeleccionada)}
+                      className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow transition shrink-0"
+                    >
+                      <Download className="w-4 h-4" /> Generar y Descargar PDF
+                    </button>
+                  </div>
+
+                  <div className="flex justify-center p-6 bg-slate-950 rounded-3xl border border-slate-800 overflow-x-auto">
+                    <div className="w-[680px] min-h-[850px] bg-white text-slate-900 p-10 shadow-2xl rounded-lg font-serif relative flex flex-col justify-between">
+                      {/* Cabecera Única de Documentos Renderizada */}
+                      <div>
+                        {(() => {
+                          let parsedHeader = null;
+                          try {
+                            if (cabeceraUnicaSvg) {
+                              parsedHeader = typeof cabeceraUnicaSvg === 'string' ? JSON.parse(cabeceraUnicaSvg) : cabeceraUnicaSvg;
+                            }
+                          } catch (e) {}
+
+                          if (parsedHeader && (parsedHeader.textos?.length > 0 || parsedHeader.imagenes?.length > 0)) {
+                            const hHeight = parsedHeader.height || 180;
+                            const headerLayers = [];
+                            if (parsedHeader.mostrarLineaDivisoria !== false) {
+                              headerLayers.push({
+                                id: '__shape_linea_divisoria__',
+                                layerType: 'shape',
+                                zIndex: typeof parsedHeader.fondoZIndex === 'number' ? parsedHeader.fondoZIndex : 0,
+                              });
+                            }
+                            (parsedHeader.imagenes || []).forEach((img, idx) => {
+                              if (img.visible !== false) {
+                                headerLayers.push({
+                                  id: img.id,
+                                  layerType: 'image',
+                                  zIndex: typeof img.zIndex === 'number' ? img.zIndex : (idx + 1) * 10,
+                                  raw: img,
+                                });
+                              }
+                            });
+                            (parsedHeader.textos || []).forEach((t, idx) => {
+                              if (t.visible !== false) {
+                                headerLayers.push({
+                                  id: t.id,
+                                  layerType: 'text',
+                                  zIndex: typeof t.zIndex === 'number' ? t.zIndex : 100 + (idx + 1) * 10,
+                                  raw: t,
+                                });
+                              }
+                            });
+                            headerLayers.sort((a, b) => a.zIndex - b.zIndex);
+
+                            return (
+                              <div className="mb-6">
+                                <svg
+                                  viewBox={`0 0 750 ${hHeight}`}
+                                  className="w-full h-auto"
+                                >
+                                  {headerLayers.map((layer) => {
+                                    if (layer.layerType === 'shape') {
+                                      return (
+                                        <line
+                                          key={layer.id}
+                                          x1="20"
+                                          y1={hHeight - 15}
+                                          x2="730"
+                                          y2={hHeight - 15}
+                                          stroke={parsedHeader.colorLinea || '#CBD5E1'}
+                                          strokeWidth="1.5"
+                                        />
+                                      );
+                                    }
+                                    if (layer.layerType === 'image') {
+                                      const img = layer.raw;
+                                      return (
+                                        <image
+                                          key={img.id}
+                                          href={img.url}
+                                          x={img.x}
+                                          y={img.y}
+                                          width={img.width}
+                                          height={img.height}
+                                          opacity={img.opacity ?? 1}
+                                          preserveAspectRatio={img.lockRatio ? 'xMidYMid meet' : 'none'}
+                                        />
+                                      );
+                                    }
+                                    if (layer.layerType === 'text') {
+                                      const t = layer.raw;
+                                      return (
+                                        <text
+                                          key={t.id}
+                                          x={t.x}
+                                          y={t.y}
+                                          fontSize={t.fontSize || 11}
+                                          fontWeight={t.fontWeight || 'normal'}
+                                          fontStyle={t.fontStyle || 'normal'}
+                                          textDecoration={t.textDecoration || 'none'}
+                                          fill={t.color || '#0F172A'}
+                                          textAnchor={t.align || 'middle'}
+                                          fontFamily="Helvetica, Arial, sans-serif"
+                                        >
+                                          {t.textTransform === 'uppercase' ? String(t.texto || '').toUpperCase() : t.texto}
+                                        </text>
+                                      );
+                                    }
+                                    return null;
+                                  })}
+                                </svg>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="text-center border-b border-slate-300 pb-4 mb-6 relative">
+                              <img src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/mppcomunas.png" alt="Comunas" className="absolute left-0 top-0 h-10 object-contain" />
+                              <img src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/logo.png" alt="CC" className="absolute right-0 top-0 h-12 object-contain" />
+                              <h4 className="text-xs font-bold text-slate-900 tracking-wider">REPÚBLICA BOLIVARIANA DE VENEZUELA</h4>
+                              <p className="text-[10px] text-slate-700">MINISTERIO DEL PODER POPULAR PARA LAS COMUNAS Y LOS MOVIMIENTOS SOCIALES</p>
+                              <p className="text-[10px] font-bold text-slate-800">CONSEJO COMUNAL &quot;LAS LLAVES&quot;</p>
+                              <p className="text-[9px] text-slate-600">Urbanización {config?.urbanizacion || 'Dr. Alfredo Travieso Paúl'} - Parroquia {config?.parroquia || 'Goaigoaza'}</p>
+                              <p className="text-[9px] text-slate-500">Municipio {config?.municipio || 'Puerto Cabello'}, Estado {config?.estado || 'Carabobo'} | RIF: {config?.rif || 'C299916862'} | SITUR: {config?.situr_codigo || '08-11-04-001-0033'}</p>
+                            </div>
+                          );
+                        })()}
+
+                        <div className="text-right text-[11px] font-mono font-bold text-slate-700 mb-4">
+                          NRO: CCLL-MUESTRA999
+                        </div>
+
+                        <div className="text-center text-base font-extrabold text-slate-900 tracking-wide mb-6 uppercase">
+                          {plantillaSeleccionada.titulo}
+                        </div>
+
+                        <div className="text-xs text-slate-800 leading-relaxed text-justify mb-8 whitespace-pre-line">
+                          {plantillaSeleccionada.cuerpo_template
+                            .replace(/{nombre_completo}/g, 'JUAN CARLOS PÉREZ')
+                            .replace(/{cedula}/g, 'V-15.892.450')
+                            .replace(/{vereda}/g, 'B')
+                            .replace(/{casa}/g, 'B-12')
+                            .replace(/{tiempo_residencia}/g, '18')
+                            .replace(/{codigo_qr}/g, 'MUESTRA999')
+                            .replace(/{dias}/g, String(new Date().getDate()))
+                            .replace(/{mes}/g, 'octubre')
+                            .replace(/{ano}/g, String(new Date().getFullYear()))}
+                        </div>
+
+                        <div className="text-center text-xs text-slate-800 mb-10">
+                          <p>Atentamente.</p>
+                          <p className="font-bold">Por el Consejo Comunal &quot;LAS LLAVES&quot;</p>
+                        </div>
+                      </div>
+
+                      {/* Firmas y Footer Único de Documentos */}
+                      <div>
+                        <div className="grid grid-cols-2 gap-8 text-center text-[10px] border-t border-slate-200 pt-6 mb-6">
+                          {firmas.slice(0, 2).map((f) => (
+                            <div key={f.id} className="space-y-0.5">
+                              <div className="h-10 flex items-center justify-center">
+                                {f.url_firma && <img src={f.url_firma} alt="Firma" className="max-h-10 object-contain" />}
+                              </div>
+                              <div className="border-t border-slate-400 pt-1 font-bold">{f.comision}</div>
+                              <div>{f.nombre}</div>
+                              <div>C.I.: {f.cedula}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {(() => {
+                          let parsedFooter = null;
+                          try {
+                            if (footerUnicoSvg) {
+                              parsedFooter = typeof footerUnicoSvg === 'string' ? JSON.parse(footerUnicoSvg) : footerUnicoSvg;
+                            }
+                          } catch (e) {}
+
+                          if (parsedFooter && (parsedFooter.textos?.length > 0 || parsedFooter.imagenes?.length > 0)) {
+                            const fHeight = parsedFooter.height || 150;
+                            const footerLayers = [];
+                            if (parsedFooter.mostrarRecuadroValidacion !== false) {
+                              footerLayers.push({
+                                id: '__shape_recuadro_qr__',
+                                layerType: 'shape',
+                                zIndex: typeof parsedFooter.fondoZIndex === 'number' ? parsedFooter.fondoZIndex : 0,
+                              });
+                            }
+                            (parsedFooter.imagenes || []).forEach((img, idx) => {
+                              if (img.visible !== false) {
+                                footerLayers.push({
+                                  id: img.id,
+                                  layerType: 'image',
+                                  zIndex: typeof img.zIndex === 'number' ? img.zIndex : (idx + 1) * 10,
+                                  raw: img,
+                                });
+                              }
+                            });
+                            (parsedFooter.textos || []).forEach((t, idx) => {
+                              if (t.visible !== false) {
+                                footerLayers.push({
+                                  id: t.id,
+                                  layerType: 'text',
+                                  zIndex: typeof t.zIndex === 'number' ? t.zIndex : 100 + (idx + 1) * 10,
+                                  raw: t,
+                                });
+                              }
+                            });
+                            footerLayers.sort((a, b) => a.zIndex - b.zIndex);
+
+                            return (
+                              <div className="overflow-hidden">
+                                <svg viewBox={`0 0 750 ${fHeight}`} className="w-full h-auto">
+                                  {footerLayers.map((layer) => {
+                                    if (layer.layerType === 'shape') {
+                                      return (
+                                        <rect
+                                          key={layer.id}
+                                          x="10"
+                                          y="6"
+                                          width="730"
+                                          height="95"
+                                          rx="6"
+                                          fill={parsedFooter.colorFondo || '#F8FAFC'}
+                                          stroke={parsedFooter.colorBorde || '#E2E8F0'}
+                                          strokeWidth="1"
+                                        />
+                                      );
+                                    }
+                                    if (layer.layerType === 'image') {
+                                      const img = layer.raw;
+                                      return (
+                                        <image
+                                          key={img.id}
+                                          href={img.url}
+                                          x={img.x}
+                                          y={img.y}
+                                          width={img.width}
+                                          height={img.height}
+                                          opacity={img.opacity ?? 1}
+                                          preserveAspectRatio={img.lockRatio ? 'xMidYMid meet' : 'none'}
+                                        />
+                                      );
+                                    }
+                                    if (layer.layerType === 'text') {
+                                      const t = layer.raw;
+                                      return (
+                                        <text
+                                          key={t.id}
+                                          x={t.x}
+                                          y={t.y}
+                                          fontSize={t.fontSize || 10}
+                                          fontWeight={t.fontWeight || 'normal'}
+                                          fontStyle={t.fontStyle || 'normal'}
+                                          textDecoration={t.textDecoration || 'none'}
+                                          fill={t.color || '#0F172A'}
+                                          textAnchor={t.align || 'start'}
+                                          fontFamily="Helvetica, Arial, sans-serif"
+                                        >
+                                          {t.textTransform === 'uppercase' ? String(t.texto || '').toUpperCase() : t.texto}
+                                        </text>
+                                      );
+                                    }
+                                    return null;
+                                  })}
+                                </svg>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-3">
+                              <img src="https://pub-655532e909a84173b724499ba0ea6f8c.r2.dev/web/img/favicon.svg" alt="QR" className="w-12 h-12 object-contain" />
+                              <div className="text-[9px] text-slate-600">
+                                <span className="font-bold text-slate-900 block">CERTIFICACIÓN Y VALIDACIÓN DIGITAL DE CONSTANCIA</span>
+                                <span>Código Único: <strong className="text-blue-600 font-mono">CCLL-MUESTRA999</strong> | Vigencia: 60 Días</span>
+                                <span className="block text-slate-400">Verifique en: https://lasllaves.org/#validar</span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
             )}
           </div>
         )}
@@ -5139,26 +5556,32 @@ export default function Dashboard({ user, onLogout }) {
                   </button>
                 )}
 
-                {/* Selector de Firmante Autorizado para Reportes Estadísticos */}
-                <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-750 px-2.5 py-1 rounded-xl">
-                  <PenTool className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                  <span className="text-[11px] font-bold text-slate-300 shrink-0">Firmante:</span>
-                  <select
-                    value={firmanteReporteId}
-                    onChange={(e) => handleCambiarFirmanteReporte(e.target.value)}
-                    className="bg-slate-950 border border-slate-700 text-white text-[11px] rounded-lg px-2 py-0.5 focus:outline-none focus:border-blue-500 max-w-[210px] truncate"
-                    title="Selecciona el vocero o administrador que firma los documentos estadísticos en PDF"
-                  >
-                    <option value="ADMIN_ACTUAL">
-                      👤 {user?.nombre || user?.username || 'Administrador del Sistema'} (Admin en Sesión)
-                    </option>
-                    {firmas.filter(f => f.activo !== 0).map((f) => (
-                      <option key={f.id} value={`FIRMA_${f.id}`}>
-                        ✍️ {f.nombre} ({f.comision})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {/* Indicador de Firmante Autorizado (Configurado y Modelado en #modelador) */}
+                {(() => {
+                  const firmanteActual = obtenerFirmanteSeleccionado(firmas);
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.location.hash = 'modelador';
+                        setCurrentTab('modelador');
+                        setModeladorSubTab('cuerpo');
+                        setPlantillaSeleccionada({
+                          id: 'REPORTE_GESTION',
+                          titulo: 'Reporte de Gestión y Estadísticas Comunales',
+                          subtitulo: 'Informe Oficial de Rendición de Cuentas y Demografía',
+                          esReporteGestion: true,
+                        });
+                      }}
+                      title="El firmante se modela y configura en #modelador. Haz clic para ir al Modelador."
+                      className="hidden sm:inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-750 hover:border-blue-500/50 px-2.5 py-1.5 rounded-xl text-[11px] text-slate-300 transition"
+                    >
+                      <PenTool className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                      <span>Firmante: <strong className="text-white">{firmanteActual?.nombre || 'Administrador'}</strong></span>
+                      <span className="text-[9px] text-blue-400 font-mono bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">en #modelador</span>
+                    </button>
+                  );
+                })()}
 
                 <button
                   type="button"
@@ -5260,8 +5683,16 @@ export default function Dashboard({ user, onLogout }) {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => { setCurrentTab('configuracion'); setConfigSubTab('catalogos'); }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-bold transition border border-slate-700/60 shadow-sm"
+                    onClick={() => {
+                      window.location.hash = 'configuracion';
+                      setCurrentTab('configuracion');
+                      setConfigSubTab('catalogos');
+                      setTimeout(() => {
+                        const el = document.getElementById('seccion-catalogos-config');
+                        if (el) el.scrollIntoView({ behavior: 'smooth' });
+                      }, 100);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 text-xs font-bold transition border border-cyan-500/30 shadow-sm"
                   >
                     <Settings className="w-3.5 h-3.5 text-cyan-400" />
                     <span>Configurar Catálogos</span>
@@ -6790,6 +7221,7 @@ export default function Dashboard({ user, onLogout }) {
             <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pb-1">
               {[
                 { id: 'todo', label: 'Ver Todo' },
+                { id: 'catalogos', label: '📋 Catálogos Oficiales', highlight: true },
                 { id: 'respaldo', label: '💾 Respaldo Base de Datos', highlight: true },
                 { id: 'gas', label: '🔥 Cilindros de Gas y Precios' },
                 { id: 'jornadas', label: '📅 Jornadas Comunales' },
@@ -7809,8 +8241,8 @@ export default function Dashboard({ user, onLogout }) {
             )}
 
             {/* SECCIÓN: CATÁLOGOS OFICIALES Y SISTEMA DE SELECCIONES (PARENTESCO, INSTRUCCIÓN, SALUD) */}
-            {(configSubTab === 'todo' || configSubTab === 'general') && (
-            <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-5">
+            {(configSubTab === 'todo' || configSubTab === 'catalogos' || configSubTab === 'general') && (
+            <div id="seccion-catalogos-config" className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 rounded-2xl bg-indigo-600/20 text-indigo-400">
